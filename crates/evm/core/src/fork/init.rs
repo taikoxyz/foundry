@@ -5,11 +5,11 @@ use alloy_provider::{
     Network, Provider,
 };
 use alloy_rpc_types::BlockNumberOrTag;
-use alloy_transport::Transport;
+use alloy_transport::{RpcError, Transport, TransportResult, TransportErrorKind};
 use eyre::WrapErr;
 use foundry_common::NON_ARCHIVE_NODE_WARNING;
 
-use revm::primitives::{BlockEnv, CfgEnv, Env, TxEnv};
+use revm::primitives::{BlockEnv, CfgEnv, ChainAddress, Env, TxEnv};
 
 /// Initializes a REVM block environment based on a forked
 /// ethereum provider.
@@ -19,9 +19,31 @@ pub async fn environment<N: Network, T: Transport + Clone, P: Provider<T, N>>(
     gas_price: Option<u128>,
     override_chain_id: Option<u64>,
     pin_block: Option<u64>,
-    origin: Address,
+    origin: ChainAddress,
     disable_block_gas_limit: bool,
 ) -> eyre::Result<(Env, N::BlockResponse)> {
+    //let provider_chain_id = provider.get_chain_id().await?;
+    //println!("provider_chain_id: {:?}", provider_chain_id);
+
+    // Get the parent chain id from the provider
+    let result: TransportResult<String> = provider.client().request_noparams("eth_getParentChainId").await;
+    let parent_chain_id = if result.is_ok() {
+        let res = result.unwrap();
+        let without_prefix = res.trim_start_matches("0x");
+        // Parse as base 16
+        let parent_chain_id = u64::from_str_radix(without_prefix, 16).expect("Invalid hex input");
+        Some(parent_chain_id)
+    } else {
+        println!("error getting parent chain id: {:?}", result);
+        None
+    };
+    println!("parent_chain_id: {:?}", parent_chain_id);
+
+    let result: std::result::Result<bool, RpcError<TransportErrorKind>> = provider
+        .client()
+        .request("eth_setActiveChainId", (parent_chain_id,))
+        .await;
+
     let block_number = if let Some(pin_block) = pin_block {
         pin_block
     } else {
@@ -51,6 +73,8 @@ pub async fn environment<N: Network, T: Transport + Clone, P: Provider<T, N>>(
         eyre::bail!("Failed to get block for block number: {}", block_number)
     };
 
+    println!("FORK!!!");
+
     let mut cfg = CfgEnv::default();
     cfg.chain_id = override_chain_id.unwrap_or(rpc_chain_id);
     cfg.memory_limit = memory_limit;
@@ -60,13 +84,16 @@ pub async fn environment<N: Network, T: Transport + Clone, P: Provider<T, N>>(
     // is a contract. So we disable the check by default.
     cfg.disable_eip3607 = true;
     cfg.disable_block_gas_limit = disable_block_gas_limit;
+    cfg.xchain = true;
+    cfg.allow_mocking = true;
+    cfg.parent_chain_id = parent_chain_id;
 
     let mut env = Env {
-        cfg,
+        cfg: cfg.clone(),
         block: BlockEnv {
             number: U256::from(block.header().number()),
             timestamp: U256::from(block.header().timestamp()),
-            coinbase: block.header().coinbase(),
+            coinbase: ChainAddress(cfg.chain_id, block.header().coinbase()),
             difficulty: block.header().difficulty(),
             prevrandao: block.header().mix_hash(),
             basefee: U256::from(block.header().base_fee_per_gas().unwrap_or_default()),
@@ -76,7 +103,7 @@ pub async fn environment<N: Network, T: Transport + Clone, P: Provider<T, N>>(
         tx: TxEnv {
             caller: origin,
             gas_price: U256::from(gas_price.unwrap_or(fork_gas_price)),
-            chain_id: Some(override_chain_id.unwrap_or(rpc_chain_id)),
+            chain_ids: Some(vec![override_chain_id.unwrap_or(rpc_chain_id)]),
             gas_limit: block.header().gas_limit() as u64,
             ..Default::default()
         },

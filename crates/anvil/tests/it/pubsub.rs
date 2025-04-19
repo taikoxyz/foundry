@@ -10,6 +10,7 @@ use alloy_serde::WithOtherFields;
 use alloy_sol_types::sol;
 use anvil::{spawn, NodeConfig};
 use futures::StreamExt;
+use revm::primitives::ChainAddress;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_sub_new_heads() {
@@ -124,7 +125,7 @@ async fn test_sub_logs_impersonated() {
     // impersonate account
     let impersonate = Address::random();
     let funding = U256::from(1e18 as u64);
-    api.anvil_set_balance(impersonate, funding).await.unwrap();
+    api.anvil_set_balance(ChainAddress(api.chain_id(), impersonate), funding).await.unwrap();
     api.anvil_impersonate_account(impersonate).await.unwrap();
 
     let msg = "First Message".to_string();

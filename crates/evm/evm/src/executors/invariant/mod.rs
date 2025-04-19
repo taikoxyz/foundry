@@ -29,7 +29,7 @@ use proptest::{
     test_runner::{TestCaseError, TestRunner},
 };
 use result::{assert_after_invariant, assert_invariants, can_continue};
-use revm::primitives::HashMap;
+use revm::primitives::{ChainAddress, HashMap};
 use shrink::shrink_sequence;
 use std::{cell::RefCell, collections::btree_map::Entry, sync::Arc};
 
@@ -219,7 +219,7 @@ pub struct InvariantTestRun {
     // Invariant run stat reports (eg. gas usage).
     pub fuzz_runs: Vec<FuzzCase>,
     // Contracts created during current invariant run.
-    pub created_contracts: Vec<Address>,
+    pub created_contracts: Vec<ChainAddress>,
     // Traces of each call of the invariant run call sequence.
     pub run_traces: Vec<SparsedTraceArena>,
     // Current depth of invariant run.
@@ -476,7 +476,7 @@ impl<'a> InvariantExecutor<'a> {
         // EVM execution.
         let mut call_generator = None;
         if self.config.call_override {
-            let target_contract_ref = Arc::new(RwLock::new(Address::ZERO));
+            let target_contract_ref = Arc::new(RwLock::new(ChainAddress(0, Address::ZERO)));
 
             call_generator = Some(RandomCallGenerator::new(
                 invariant_contract.address,
@@ -532,7 +532,7 @@ impl<'a> InvariantExecutor<'a> {
     /// Priority:
     ///
     /// targetArtifactSelectors > excludeArtifacts > targetArtifacts
-    pub fn select_contract_artifacts(&mut self, invariant_address: Address) -> Result<()> {
+    pub fn select_contract_artifacts(&mut self, invariant_address: ChainAddress) -> Result<()> {
         let result = self
             .executor
             .call_sol_default(invariant_address, &IInvariantTest::targetArtifactSelectorsCall {});
@@ -623,7 +623,7 @@ impl<'a> InvariantExecutor<'a> {
     /// `targetContracts() -> address[]` and `excludeContracts() -> address[]`.
     pub fn select_contracts_and_senders(
         &self,
-        to: Address,
+        to: ChainAddress,
     ) -> Result<(SenderFilters, FuzzRunIdentifiedContracts)> {
         let targeted_senders = self
             .executor
@@ -652,11 +652,13 @@ impl<'a> InvariantExecutor<'a> {
             .call_sol_default(to, &IInvariantTest::excludeContractsCall {})
             .excludedContracts;
 
+        let chain_id = to.0;
+
         let contracts = self
             .setup_contracts
             .iter()
             .filter(|&(addr, (identifier, _))| {
-                *addr != to &&
+                *addr != to.1 &&
                     *addr != CHEATCODE_ADDRESS &&
                     *addr != HARDHAT_CONSOLE_ADDRESS &&
                     (selected.is_empty() || selected.contains(addr)) &&
@@ -664,7 +666,7 @@ impl<'a> InvariantExecutor<'a> {
                     self.artifact_filters.matches(identifier)
             })
             .map(|(addr, (identifier, abi))| {
-                (*addr, TargetedContract::new(identifier.clone(), abi.clone()))
+                (ChainAddress(chain_id, *addr), TargetedContract::new(identifier.clone(), abi.clone()))
             })
             .collect();
         let mut contracts = TargetedContracts { inner: contracts };
@@ -687,7 +689,7 @@ impl<'a> InvariantExecutor<'a> {
     /// targeting of delegate proxies and contracts deployed with `create` or `create2`.
     pub fn target_interfaces(
         &self,
-        invariant_address: Address,
+        invariant_address: ChainAddress,
         targeted_contracts: &mut TargetedContracts,
     ) -> Result<()> {
         let interfaces = self
@@ -711,9 +713,10 @@ impl<'a> InvariantExecutor<'a> {
                 if let Some((_, contract)) =
                     self.project_contracts.find_by_name_or_identifier(identifier)?
                 {
+                    let chain_id = invariant_address.0;
                     combined
                         // Check if there's an entry for the given key in the 'combined' map.
-                        .entry(*addr)
+                        .entry(ChainAddress(chain_id, *addr))
                         // If the entry exists, extends its ABI with the function list.
                         .and_modify(|entry| {
                             // Extend the ABI's function list with the new functions.
@@ -736,15 +739,16 @@ impl<'a> InvariantExecutor<'a> {
     /// `targetArtifactSelectors()`.
     pub fn select_selectors(
         &self,
-        address: Address,
+        address: ChainAddress,
         targeted_contracts: &mut TargetedContracts,
     ) -> Result<()> {
+        let chain_id = address.0;
         for (address, (identifier, _)) in self.setup_contracts.iter() {
             if let Some(selectors) = self.artifact_filters.targeted.get(identifier) {
                 if selectors.is_empty() {
                     continue;
                 }
-                self.add_address_with_functions(*address, selectors, false, targeted_contracts)?;
+                self.add_address_with_functions(ChainAddress(chain_id, *address), selectors, false, targeted_contracts)?;
             }
         }
 
@@ -752,14 +756,14 @@ impl<'a> InvariantExecutor<'a> {
         let selectors =
             self.executor.call_sol_default(address, &IInvariantTest::targetSelectorsCall {});
         for IInvariantTest::FuzzSelector { addr, selectors } in selectors.targetedSelectors {
-            self.add_address_with_functions(addr, &selectors, false, targeted_contracts)?;
+            self.add_address_with_functions(ChainAddress(chain_id, addr), &selectors, false, targeted_contracts)?;
         }
 
         // Collect contract functions excluded from fuzzing campaign.
         let selectors =
             self.executor.call_sol_default(address, &IInvariantTest::excludeSelectorsCall {});
         for IInvariantTest::FuzzSelector { addr, selectors } in selectors.excludedSelectors {
-            self.add_address_with_functions(addr, &selectors, true, targeted_contracts)?;
+            self.add_address_with_functions(ChainAddress(chain_id, addr), &selectors, true, targeted_contracts)?;
         }
 
         Ok(())
@@ -768,7 +772,7 @@ impl<'a> InvariantExecutor<'a> {
     /// Adds the address and fuzzed or excluded functions to `TargetedContracts`.
     fn add_address_with_functions(
         &self,
-        address: Address,
+        address: ChainAddress,
         selectors: &[Selector],
         should_exclude: bool,
         targeted_contracts: &mut TargetedContracts,
@@ -776,11 +780,11 @@ impl<'a> InvariantExecutor<'a> {
         let contract = match targeted_contracts.entry(address) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
-                let (identifier, abi) = self.setup_contracts.get(&address).ok_or_else(|| {
+                let (identifier, abi) = self.setup_contracts.get(&address.1).ok_or_else(|| {
                     eyre::eyre!(
                         "[{}] address does not have an associated contract: {}",
                         if should_exclude { "excludeSelectors" } else { "targetSelectors" },
-                        address
+                        address.1
                     )
                 })?;
                 entry.insert(TargetedContract::new(identifier.clone(), abi.clone()))
@@ -796,7 +800,7 @@ impl<'a> InvariantExecutor<'a> {
 /// randomly generated addresses.
 fn collect_data(
     invariant_test: &InvariantTest,
-    state_changeset: &mut HashMap<Address, revm::primitives::Account>,
+    state_changeset: &mut HashMap<ChainAddress, revm::primitives::Account>,
     tx: &BasicTxDetails,
     call_result: &RawCallResult,
     run_depth: u32,
@@ -836,10 +840,10 @@ fn collect_data(
 /// The state after the call is not persisted.
 pub(crate) fn call_after_invariant_function(
     executor: &Executor,
-    to: Address,
+    to: ChainAddress,
 ) -> std::result::Result<(RawCallResult, bool), EvmError> {
     let calldata = Bytes::from_static(&IInvariantTest::afterInvariantCall::SELECTOR);
-    let mut call_result = executor.call_raw(CALLER, to, calldata, U256::ZERO)?;
+    let mut call_result = executor.call_raw(ChainAddress(to.0, CALLER), to, calldata, U256::ZERO)?;
     let success = executor.is_raw_call_mut_success(to, &mut call_result, false);
     Ok((call_result, success))
 }
@@ -847,10 +851,10 @@ pub(crate) fn call_after_invariant_function(
 /// Calls the invariant function and returns call result and if succeeded.
 pub(crate) fn call_invariant_function(
     executor: &Executor,
-    address: Address,
+    address: ChainAddress,
     calldata: Bytes,
 ) -> Result<(RawCallResult, bool)> {
-    let mut call_result = executor.call_raw(CALLER, address, calldata, U256::ZERO)?;
+    let mut call_result = executor.call_raw(ChainAddress(address.0, CALLER), address, calldata, U256::ZERO)?;
     let success = executor.is_raw_call_mut_success(address, &mut call_result, false);
     Ok((call_result, success))
 }

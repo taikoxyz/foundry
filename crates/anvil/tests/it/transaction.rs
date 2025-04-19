@@ -13,6 +13,7 @@ use alloy_serde::WithOtherFields;
 use anvil::{spawn, EthereumHardfork, NodeConfig};
 use eyre::Ok;
 use futures::{future::join_all, FutureExt, StreamExt};
+use revm::primitives::ChainAddress;
 use std::{collections::HashSet, str::FromStr, time::Duration};
 use tokio::time::timeout;
 
@@ -220,7 +221,7 @@ async fn can_reject_too_high_gas_limits() {
     let err = pending.unwrap_err();
     assert!(err.to_string().contains("gas too high"));
 
-    api.anvil_set_balance(from, U256::MAX).await.unwrap();
+    api.anvil_set_balance(ChainAddress(api.chain_id(), from), U256::MAX).await.unwrap();
 
     tx.set_gas_limit(gas_limit);
     let pending = provider.send_transaction(tx).await;

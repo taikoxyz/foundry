@@ -29,7 +29,7 @@ use foundry_evm::{
     },
     traces::CallTraceNode,
 };
-use revm::primitives::MAX_BLOB_GAS_PER_BLOCK;
+use revm::primitives::{ChainAddress, MAX_BLOB_GAS_PER_BLOCK};
 use std::sync::Arc;
 
 /// Represents an executed transaction (transacted on the DB)
@@ -132,6 +132,7 @@ impl<'a, DB: Db + ?Sized, Validator: TransactionValidator> TransactionExecutor<'
         } else {
             None
         };
+        let chain_id = self.cfg_env.chain_id;
 
         let is_cancun = self.cfg_env.handler_cfg.spec_id >= SpecId::CANCUN;
         let excess_blob_gas = if is_cancun { self.block_env.get_blob_excess_gas() } else { None };
@@ -194,7 +195,7 @@ impl<'a, DB: Db + ?Sized, Validator: TransactionValidator> TransactionExecutor<'
                 transaction_index,
                 from: *transaction.pending_transaction.sender(),
                 to: transaction.pending_transaction.transaction.to(),
-                contract_address,
+                contract_address: contract_address.map(|a| ChainAddress(chain_id, a)),
                 traces,
                 exit,
                 out: out.map(Output::into_data),
@@ -213,8 +214,8 @@ impl<'a, DB: Db + ?Sized, Validator: TransactionValidator> TransactionExecutor<'
 
         let partial_header = PartialHeader {
             parent_hash,
-            beneficiary,
-            state_root: self.db.maybe_state_root().unwrap_or_default(),
+            beneficiary: beneficiary.1,
+            state_root: self.db.maybe_state_root(chain_id).unwrap_or_default(),
             receipts_root,
             logs_bloom: bloom,
             difficulty,
@@ -238,10 +239,10 @@ impl<'a, DB: Db + ?Sized, Validator: TransactionValidator> TransactionExecutor<'
 
     fn env_for(&self, tx: &PendingTransaction) -> EnvWithHandlerCfg {
         let mut tx_env = tx.to_revm_tx_env();
-        if self.cfg_env.handler_cfg.is_optimism {
-            tx_env.optimism.enveloped_tx =
-                Some(alloy_rlp::encode(&tx.transaction.transaction).into());
-        }
+        // if self.cfg_env.handler_cfg.is_optimism {
+        //     tx_env.optimism.enveloped_tx =
+        //         Some(alloy_rlp::encode(&tx.transaction.transaction).into());
+        // }
 
         EnvWithHandlerCfg::new_with_cfg_env(self.cfg_env.clone(), self.block_env.clone(), tx_env)
     }
@@ -350,10 +351,10 @@ impl<'a, 'b, DB: Db + ?Sized, Validator: TransactionValidator> Iterator
             ExecutionResult::Success { reason, gas_used, logs, output, .. } => {
                 (reason.into(), gas_used, Some(output), Some(logs))
             }
-            ExecutionResult::Revert { gas_used, output } => {
+            ExecutionResult::Revert { gas_used, output, gas_used_per_chain } => {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)), None)
             }
-            ExecutionResult::Halt { reason, gas_used } => (reason.into(), gas_used, None, None),
+            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain } => (reason.into(), gas_used, None, None),
         };
 
         if exit_reason == InstructionResult::OutOfGas {

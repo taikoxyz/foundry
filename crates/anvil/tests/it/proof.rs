@@ -2,6 +2,7 @@
 
 use alloy_primitives::{address, fixed_bytes, Address, Bytes, B256, U256};
 use anvil::{eth::EthApi, spawn, NodeConfig};
+use revm::primitives::ChainAddress;
 use std::{collections::BTreeMap, str::FromStr};
 
 async fn verify_account_proof(
@@ -11,7 +12,7 @@ async fn verify_account_proof(
 ) {
     let expected_proof =
         proof.into_iter().map(Bytes::from_str).collect::<Result<Vec<_>, _>>().unwrap();
-    let proof = api.get_proof(address, Vec::new(), None).await.unwrap();
+    let proof = api.get_proof(ChainAddress(0, address), Vec::new(), None).await.unwrap();
 
     assert_eq!(proof.account_proof, expected_proof);
 }
@@ -22,9 +23,10 @@ async fn verify_storage_proof(
     slot: B256,
     proof: impl IntoIterator<Item = &str>,
 ) {
+    let chain_id = api.chain_id();
     let expected_proof =
         proof.into_iter().map(Bytes::from_str).collect::<Result<Vec<_>, _>>().unwrap();
-    let proof = api.get_proof(address, vec![slot], None).await.unwrap();
+    let proof = api.get_proof(ChainAddress(chain_id, address), vec![slot], None).await.unwrap();
 
     assert_eq!(proof.storage_proof[0].proof, expected_proof);
 }
@@ -32,24 +34,25 @@ async fn verify_storage_proof(
 #[tokio::test(flavor = "multi_thread")]
 async fn test_account_proof() {
     let (api, _handle) = spawn(NodeConfig::empty_state()).await;
+    let chain_id = api.chain_id();
 
     api.anvil_set_balance(
-        address!("2031f89b3ea8014eb51a78c316e42af3e0d7695f"),
+        ChainAddress(chain_id, address!("2031f89b3ea8014eb51a78c316e42af3e0d7695f")),
         U256::from(45000000000000000000_u128),
     )
     .await
     .unwrap();
-    api.anvil_set_balance(address!("33f0fc440b8477fcfbe9d0bf8649e7dea9baedb2"), U256::from(1))
+    api.anvil_set_balance(ChainAddress(chain_id, address!("33f0fc440b8477fcfbe9d0bf8649e7dea9baedb2")), U256::from(1))
         .await
         .unwrap();
     api.anvil_set_balance(
-        address!("62b0dd4aab2b1a0a04e279e2b828791a10755528"),
+        ChainAddress(chain_id, address!("62b0dd4aab2b1a0a04e279e2b828791a10755528")),
         U256::from(1100000000000000000_u128),
     )
     .await
     .unwrap();
     api.anvil_set_balance(
-        address!("1ed9b1dd266b607ee278726d324b855a093394a6"),
+        ChainAddress(chain_id, address!("1ed9b1dd266b607ee278726d324b855a093394a6")),
         U256::from(120000000000000000_u128),
     )
     .await
@@ -92,8 +95,10 @@ async fn test_storage_proof() {
     let storage: BTreeMap<U256, B256> =
         serde_json::from_str(include_str!("../../test-data/storage_sample.json")).unwrap();
 
+    let chain_id = api.chain_id();
+
     for (key, value) in storage {
-        api.anvil_set_storage_at(target, key, value).await.unwrap();
+        api.anvil_set_storage_at(ChainAddress(chain_id, target), key, value).await.unwrap();
     }
 
     verify_storage_proof(&api, target, fixed_bytes!("0000000000000000000000000000000000000000000000000000000000000022"), [
@@ -124,9 +129,11 @@ async fn test_storage_proof() {
 async fn can_get_random_account_proofs() {
     let (api, _handle) = spawn(NodeConfig::test()).await;
 
+    let chain_id = api.chain_id();
+
     for acc in std::iter::repeat_with(Address::random).take(10) {
         let _ = api
-            .get_proof(acc, Vec::new(), None)
+            .get_proof(ChainAddress(chain_id, acc), Vec::new(), None)
             .await
             .unwrap_or_else(|_| panic!("Failed to get proof for {acc:?}"));
     }

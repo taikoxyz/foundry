@@ -4,9 +4,7 @@ use crate::snapshot::Snapshots;
 use alloy_primitives::{Address, B256, U256};
 use foundry_fork_db::DatabaseError;
 use revm::{
-    db::{CacheDB, DatabaseRef, EmptyDB},
-    primitives::{Account, AccountInfo, Bytecode, HashMap as Map},
-    Database, DatabaseCommit,
+    db::{CacheDB, DatabaseRef, EmptyDB}, primitives::{Account, AccountInfo, Bytecode, ChainAddress, HashMap as Map}, Database, DatabaseCommit, SyncDatabase, SyncDatabaseRef
 };
 
 /// Type alias for an in-memory database.
@@ -29,49 +27,50 @@ impl Default for MemDb {
     }
 }
 
-impl DatabaseRef for MemDb {
+impl SyncDatabaseRef for MemDb {
     type Error = DatabaseError;
 
-    fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
-        DatabaseRef::basic_ref(&self.inner, address)
+    fn basic_ref(&self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        SyncDatabaseRef::basic_ref(&self.inner, address)
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        DatabaseRef::code_by_hash_ref(&self.inner, code_hash)
+    fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        SyncDatabaseRef::code_by_hash_ref(&self.inner, chain_id, code_hash)
     }
 
-    fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
-        DatabaseRef::storage_ref(&self.inner, address, index)
+    fn storage_ref(&self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
+        SyncDatabaseRef::storage_ref(&self.inner, address, index)
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
-        DatabaseRef::block_hash_ref(&self.inner, number)
+    fn block_hash_ref(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        SyncDatabaseRef::block_hash_ref(&self.inner, chain_id, number)
     }
 }
 
-impl Database for MemDb {
+impl SyncDatabase for MemDb {
     type Error = DatabaseError;
 
-    fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+    fn basic(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        //println!("MemDb::basic: {:?}", address);
         // Note: this will always return `Some(AccountInfo)`, See `EmptyDBWrapper`
-        Database::basic(&mut self.inner, address)
+        SyncDatabase::basic(&mut self.inner, address)
     }
 
-    fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        Database::code_by_hash(&mut self.inner, code_hash)
+    fn code_by_hash(&mut self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        SyncDatabase::code_by_hash(&mut self.inner, chain_id, code_hash)
     }
 
-    fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
-        Database::storage(&mut self.inner, address, index)
+    fn storage(&mut self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
+        SyncDatabase::storage(&mut self.inner, address, index)
     }
 
-    fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
-        Database::block_hash(&mut self.inner, number)
+    fn block_hash(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        SyncDatabase::block_hash(&mut self.inner, chain_id, number)
     }
 }
 
 impl DatabaseCommit for MemDb {
-    fn commit(&mut self, changes: Map<Address, Account>) {
+    fn commit(&mut self, changes: Map<ChainAddress, Account>) {
         DatabaseCommit::commit(&mut self.inner, changes)
     }
 }
@@ -96,23 +95,23 @@ impl DatabaseCommit for MemDb {
 #[derive(Clone, Debug, Default)]
 pub struct EmptyDBWrapper(EmptyDB);
 
-impl DatabaseRef for EmptyDBWrapper {
+impl SyncDatabaseRef for EmptyDBWrapper {
     type Error = DatabaseError;
 
-    fn basic_ref(&self, _address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+    fn basic_ref(&self, _address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
         // Note: this will always return `Some(AccountInfo)`, for the reason explained above
         Ok(Some(AccountInfo::default()))
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        Ok(self.0.code_by_hash_ref(code_hash)?)
+    fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        Ok(self.0.code_by_hash_ref(chain_id, code_hash)?)
     }
-    fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
+    fn storage_ref(&self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
         Ok(self.0.storage_ref(address, index)?)
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
-        Ok(self.0.block_hash_ref(number)?)
+    fn block_hash_ref(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        Ok(self.0.block_hash_ref(chain_id, number)?)
     }
 }
 
@@ -127,9 +126,9 @@ mod tests {
     #[test]
     fn cache_db_insert_basic_non_existing() {
         let mut db = CacheDB::new(EmptyDB::default());
-        let address = Address::random();
+        let address = ChainAddress(1, Address::random());
         // call `basic` on a non-existing account
-        let info = Database::basic(&mut db, address).unwrap();
+        let info = SyncDatabase::basic(&mut db, address).unwrap();
         assert!(info.is_none());
         let mut info = info.unwrap_or_default();
         info.balance = U256::from(500u64);
@@ -139,7 +138,7 @@ mod tests {
 
         // when fetching again, the `AccountInfo` is still `None` because the state of the account
         // is `AccountState::NotExisting`, see <https://github.com/bluealloy/revm/blob/8f4348dc93022cffb3730d9db5d3ab1aad77676a/crates/revm/src/db/in_memory_db.rs#L217-L226>
-        let info = Database::basic(&mut db, address).unwrap();
+        let info = SyncDatabase::basic(&mut db, address).unwrap();
         assert!(info.is_none());
     }
 
@@ -147,10 +146,10 @@ mod tests {
     #[test]
     fn cache_db_insert_basic_default() {
         let mut db = CacheDB::new(EmptyDB::default());
-        let address = Address::random();
+        let address = ChainAddress(1, Address::random());
 
         // We use `basic_ref` here to ensure that the account is not marked as `NotExisting`.
-        let info = DatabaseRef::basic_ref(&db, address).unwrap();
+        let info = SyncDatabaseRef::basic_ref(&db, address).unwrap();
         assert!(info.is_none());
         let mut info = info.unwrap_or_default();
         info.balance = U256::from(500u64);
@@ -158,7 +157,7 @@ mod tests {
         // insert the modified account info
         db.insert_account_info(address, info.clone());
 
-        let loaded = Database::basic(&mut db, address).unwrap();
+        let loaded = SyncDatabase::basic(&mut db, address).unwrap();
         assert!(loaded.is_some());
         assert_eq!(loaded.unwrap(), info)
     }
@@ -167,11 +166,11 @@ mod tests {
     #[test]
     fn mem_db_insert_basic_default() {
         let mut db = MemDb::default();
-        let address = Address::from_word(b256!(
+        let address = ChainAddress(1, Address::from_word(b256!(
             "000000000000000000000000d8da6bf26964af9d7eed9e03e53415d37aa96045"
-        ));
+        )));
 
-        let info = Database::basic(&mut db, address).unwrap();
+        let info = SyncDatabase::basic(&mut db, address).unwrap();
         // We know info exists, as MemDb always returns `Some(AccountInfo)` due to the
         // `EmptyDbWrapper`.
         assert!(info.is_some());
@@ -181,7 +180,7 @@ mod tests {
         // insert the modified account info
         db.inner.insert_account_info(address, info.clone());
 
-        let loaded = Database::basic(&mut db, address).unwrap();
+        let loaded = SyncDatabase::basic(&mut db, address).unwrap();
         assert!(loaded.is_some());
         assert_eq!(loaded.unwrap(), info)
     }

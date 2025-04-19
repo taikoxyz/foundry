@@ -1,6 +1,7 @@
 //! Implementations of [`Testing`](spec::Group::Testing) cheatcodes.
 
 use chrono::DateTime;
+use revm::primitives::ChainAddress;
 use std::env;
 
 use crate::{Cheatcode, Cheatcodes, CheatsCtxt, DatabaseExt, Result, Vm::*};
@@ -85,7 +86,7 @@ impl Cheatcode for skipCall {
 }
 
 /// Adds or removes the given breakpoint to the state.
-fn breakpoint(state: &mut Cheatcodes, caller: &Address, s: &str, add: bool) -> Result {
+fn breakpoint(state: &mut Cheatcodes, caller: &ChainAddress, s: &str, add: bool) -> Result {
     let mut chars = s.chars();
     let (Some(point), None) = (chars.next(), chars.next()) else {
         bail!("breakpoints must be exactly one character");
@@ -93,7 +94,7 @@ fn breakpoint(state: &mut Cheatcodes, caller: &Address, s: &str, add: bool) -> R
     ensure!(point.is_alphabetic(), "only alphabetic characters are accepted as breakpoints");
 
     if add {
-        state.breakpoints.insert(point, (*caller, state.pc));
+        state.breakpoints.insert(point, (caller.1, state.pc));
     } else {
         state.breakpoints.remove(&point);
     }

@@ -19,10 +19,10 @@ use revm::{
     inspectors::NoOpInspector,
     precompile::{PrecompileSpecId, Precompiles},
     primitives::{
-        Account, AccountInfo, Bytecode, Env, EnvWithHandlerCfg, EvmState, EvmStorageSlot,
-        HashMap as Map, Log, ResultAndState, SpecId, KECCAK_EMPTY,
+        Account, AccountInfo, Bytecode, CfgEnv, ChainAddress, Env, EnvWithHandlerCfg, EvmState,
+        EvmStorageSlot, HashMap as Map, Log, ResultAndState, SpecId, TransactTo, KECCAK_EMPTY,
     },
-    Database, DatabaseCommit, JournaledState,
+    Database, DatabaseCommit, JournaledState, SyncDatabase, SyncDatabaseRef,
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -70,7 +70,7 @@ pub const GLOBAL_FAIL_SLOT: U256 =
 
 /// An extension trait that allows us to easily extend the `revm::Inspector` capabilities
 #[auto_impl::auto_impl(&mut)]
-pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit {
+pub trait DatabaseExt: SyncDatabase<Error = DatabaseError> + DatabaseCommit {
     /// Creates a new snapshot at the current point of execution.
     ///
     /// A snapshot is associated with a new unique id that's created for the snapshot.
@@ -266,7 +266,7 @@ pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit {
     /// Returns a more useful error message if that's the case
     fn diagnose_revert(
         &self,
-        callee: Address,
+        callee: ChainAddress,
         journaled_state: &JournaledState,
     ) -> Option<RevertDiagnostic>;
 
@@ -275,22 +275,22 @@ pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit {
     /// Returns [Ok] if all accounts were successfully inserted into the journal, [Err] otherwise.
     fn load_allocs(
         &mut self,
-        allocs: &BTreeMap<Address, GenesisAccount>,
+        allocs: &BTreeMap<ChainAddress, GenesisAccount>,
         journaled_state: &mut JournaledState,
     ) -> Result<(), BackendError>;
 
     /// Returns true if the given account is currently marked as persistent.
-    fn is_persistent(&self, acc: &Address) -> bool;
+    fn is_persistent(&self, acc: &ChainAddress) -> bool;
 
     /// Revokes persistent status from the given account.
-    fn remove_persistent_account(&mut self, account: &Address) -> bool;
+    fn remove_persistent_account(&mut self, account: &ChainAddress) -> bool;
 
     /// Marks the given account as persistent.
-    fn add_persistent_account(&mut self, account: Address) -> bool;
+    fn add_persistent_account(&mut self, account: ChainAddress) -> bool;
 
     /// Removes persistent status from all given accounts.
     #[auto_impl(keep_default_for(&, &mut, Rc, Arc, Box))]
-    fn remove_persistent_accounts(&mut self, accounts: impl IntoIterator<Item = Address>)
+    fn remove_persistent_accounts(&mut self, accounts: impl IntoIterator<Item = ChainAddress>)
     where
         Self: Sized,
     {
@@ -301,7 +301,7 @@ pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit {
 
     /// Extends the persistent accounts with the accounts the iterator yields.
     #[auto_impl(keep_default_for(&, &mut, Rc, Arc, Box))]
-    fn extend_persistent_accounts(&mut self, accounts: impl IntoIterator<Item = Address>)
+    fn extend_persistent_accounts(&mut self, accounts: impl IntoIterator<Item = ChainAddress>)
     where
         Self: Sized,
     {
@@ -313,29 +313,33 @@ pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit {
     /// Grants cheatcode access for the given `account`
     ///
     /// Returns true if the `account` already has access
-    fn allow_cheatcode_access(&mut self, account: Address) -> bool;
+    fn allow_cheatcode_access(&mut self, account: ChainAddress) -> bool;
 
     /// Revokes cheatcode access for the given account
     ///
     /// Returns true if the `account` was previously allowed cheatcode access
-    fn revoke_cheatcode_access(&mut self, account: &Address) -> bool;
+    fn revoke_cheatcode_access(&mut self, account: &ChainAddress) -> bool;
 
     /// Returns `true` if the given account is allowed to execute cheatcodes
-    fn has_cheatcode_access(&self, account: &Address) -> bool;
+    fn has_cheatcode_access(&self, account: &ChainAddress) -> bool;
 
     /// Ensures that `account` is allowed to execute cheatcodes
     ///
     /// Returns an error if [`Self::has_cheatcode_access`] returns `false`
-    fn ensure_cheatcode_access(&self, account: &Address) -> Result<(), BackendError> {
+    fn ensure_cheatcode_access(&self, account: &ChainAddress) -> Result<(), BackendError> {
         if !self.has_cheatcode_access(account) {
-            return Err(BackendError::NoCheats(*account));
+            return Err(BackendError::NoCheats(account.1));
         }
         Ok(())
     }
 
     /// Same as [`Self::ensure_cheatcode_access()`] but only enforces it if the backend is currently
     /// in forking mode
-    fn ensure_cheatcode_access_forking_mode(&self, account: &Address) -> Result<(), BackendError> {
+    fn ensure_cheatcode_access_forking_mode(
+        &self,
+        account: &ChainAddress,
+    ) -> Result<(), BackendError> {
+        //println!("ensure_cheatcode_access_forking_mode: {:?}", account);
         if self.is_forked_mode() {
             return self.ensure_cheatcode_access(account);
         }
@@ -356,7 +360,7 @@ pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit {
     /// - Setting a blockhash for the current block (number == block.number) has no effect
     /// - Setting a blockhash for future blocks (number > block.number) has no effect
     /// - Setting a blockhash for blocks older than `block.number - 256` has no effect
-    fn set_blockhash(&mut self, block_number: U256, block_hash: B256);
+    fn set_blockhash(&mut self, chain_id: u64, block_number: U256, block_hash: B256);
 }
 
 struct _ObjectSafe(dyn DatabaseExt);
@@ -515,7 +519,7 @@ impl Backend {
         }
     }
 
-    pub fn insert_account_info(&mut self, address: Address, account: AccountInfo) {
+    pub fn insert_account_info(&mut self, address: ChainAddress, account: AccountInfo) {
         if let Some(db) = self.active_fork_db_mut() {
             db.insert_account_info(address, account)
         } else {
@@ -526,7 +530,7 @@ impl Backend {
     /// Inserts a value on an account's storage without overriding account info
     pub fn insert_account_storage(
         &mut self,
-        address: Address,
+        address: ChainAddress,
         slot: U256,
         value: U256,
     ) -> Result<(), DatabaseError> {
@@ -543,7 +547,7 @@ impl Backend {
     /// unset storage slots instead of trying to fetch it.
     pub fn replace_account_storage(
         &mut self,
-        address: Address,
+        address: ChainAddress,
         storage: Map<U256, U256>,
     ) -> Result<(), DatabaseError> {
         if let Some(db) = self.active_fork_db_mut() {
@@ -564,16 +568,18 @@ impl Backend {
     /// previous test contract address
     ///
     /// This will also grant cheatcode access to the test account
-    pub fn set_test_contract(&mut self, acc: Address) -> &mut Self {
+    pub fn set_test_contract(&mut self, acc: ChainAddress) -> &mut Self {
         trace!(?acc, "setting test account");
+        println!("set_test_contract: {:?}", acc);
         self.add_persistent_account(acc);
         self.allow_cheatcode_access(acc);
         self
     }
 
     /// Sets the caller address
-    pub fn set_caller(&mut self, acc: Address) -> &mut Self {
+    pub fn set_caller(&mut self, acc: ChainAddress) -> &mut Self {
         trace!(?acc, "setting caller account");
+        println!("set_caller: {:?}", acc);
         self.inner.caller = Some(acc);
         self.allow_cheatcode_access(acc);
         self
@@ -587,7 +593,7 @@ impl Backend {
     }
 
     /// Returns the set caller address
-    pub fn caller_address(&self) -> Option<Address> {
+    pub fn caller_address(&self) -> Option<ChainAddress> {
         self.inner.caller
     }
 
@@ -608,11 +614,12 @@ impl Backend {
     /// When creating or switching forks, we update the AccountInfo of the contract
     pub(crate) fn update_fork_db(
         &self,
+        chain_id: u64,
         active_journaled_state: &mut JournaledState,
         target_fork: &mut Fork,
     ) {
         self.update_fork_db_contracts(
-            self.inner.persistent_accounts.iter().copied(),
+            self.inner.persistent_accounts.iter().cloned().map(|a| ChainAddress(chain_id, a)),
             active_journaled_state,
             target_fork,
         )
@@ -621,7 +628,7 @@ impl Backend {
     /// Merges the state of all `accounts` from the currently active db into the given `fork`
     pub(crate) fn update_fork_db_contracts(
         &self,
-        accounts: impl IntoIterator<Item = Address>,
+        accounts: impl IntoIterator<Item = ChainAddress>,
         active_journaled_state: &mut JournaledState,
         target_fork: &mut Fork,
     ) {
@@ -669,7 +676,7 @@ impl Backend {
 
     /// Returns the current database implementation as a `&dyn` value.
     #[inline(always)]
-    pub fn db(&self) -> &dyn Database<Error = DatabaseError> {
+    pub fn db(&self) -> &dyn SyncDatabase<Error = DatabaseError> {
         match self.active_fork_db() {
             Some(fork_db) => fork_db,
             None => &self.mem_db,
@@ -678,7 +685,7 @@ impl Backend {
 
     /// Returns the current database implementation as a `&mut dyn` value.
     #[inline(always)]
-    pub fn db_mut(&mut self) -> &mut dyn Database<Error = DatabaseError> {
+    pub fn db_mut(&mut self) -> &mut dyn SyncDatabase<Error = DatabaseError> {
         match self.active_fork_ids.map(|(_, idx)| &mut self.inner.get_fork_mut(idx).db) {
             Some(fork_db) => fork_db,
             None => &mut self.mem_db,
@@ -727,13 +734,13 @@ impl Backend {
         self.set_spec_id(env.handler_cfg.spec_id);
 
         let test_contract = match env.tx.transact_to {
-            TxKind::Call(to) => to,
-            TxKind::Create => {
+            TransactTo::Call(to) => to,
+            TransactTo::Create => {
                 let nonce = self
                     .basic_ref(env.tx.caller)
                     .map(|b| b.unwrap_or_default().nonce)
                     .unwrap_or_default();
-                env.tx.caller.create(nonce)
+                ChainAddress(env.tx.caller.0, env.tx.caller.1.create(nonce))
             }
         };
         self.set_test_contract(test_contract);
@@ -754,10 +761,16 @@ impl Backend {
         env: &mut EnvWithHandlerCfg,
         inspector: I,
     ) -> eyre::Result<ResultAndState> {
+        println!("backend::inspect");
+        //println!("env pre: {:?}", env);
+
         self.initialize(env);
+
         let mut evm = crate::utils::new_evm_with_inspector(self, env.clone(), inspector);
 
         let res = evm.transact().wrap_err("backend: failed while inspecting")?;
+
+        // println!("res: {:?}", res.result);
 
         env.env = evm.context.evm.inner.env;
 
@@ -790,7 +803,7 @@ impl Backend {
             .fork_init_journaled_state
             .state
             .iter()
-            .filter(|(addr, _)| !self.is_existing_precompile(addr) && !self.is_persistent(addr))
+            .filter(|(addr, _)| !self.is_existing_precompile(&addr.1) && !self.is_persistent(&addr))
             .map(|(addr, _)| addr)
             .copied()
             .collect::<Vec<_>>();
@@ -807,13 +820,13 @@ impl Backend {
                 // created account takes precedence: for example contract creation in setups
                 if init_account.is_created() {
                     trace!(?loaded_account, "skipping created account");
-                    continue
+                    continue;
                 }
 
                 // otherwise we need to replace the account's info with the one from the fork's
                 // database
-                let fork_account = Database::basic(&mut fork.db, loaded_account)?
-                    .ok_or(BackendError::MissingAccount(loaded_account))?;
+                let fork_account = SyncDatabase::basic(&mut fork.db, loaded_account)?
+                    .ok_or(BackendError::MissingAccount(loaded_account.1))?;
                 init_account.info = fork_account;
             }
             fork.journaled_state = journaled_state;
@@ -824,22 +837,24 @@ impl Backend {
     /// Returns the block numbers required for replaying a transaction
     fn get_block_number_and_block_for_transaction(
         &self,
+        chain_id: u64,
         id: LocalForkId,
         transaction: B256,
     ) -> eyre::Result<(u64, Block<WithOtherFields<Transaction>>)> {
         let fork = self.inner.get_fork_by_id(id)?;
-        let tx = fork.db.db.get_transaction(transaction)?;
+        let tx = fork.db.db.get_transaction(chain_id, transaction)?;
 
         // get the block number we need to fork
         if let Some(tx_block) = tx.block_number {
-            let block = fork.db.db.get_full_block(tx_block)?;
+            let block = fork.db.db.get_full_block(tx.chain_id.unwrap(), tx_block)?;
 
             // we need to subtract 1 here because we want the state before the transaction
             // was mined
             let fork_block = tx_block - 1;
             Ok((fork_block, block.inner))
         } else {
-            let block = fork.db.db.get_full_block(BlockNumberOrTag::Latest)?;
+            let block =
+                fork.db.db.get_full_block(tx.chain_id.unwrap(), BlockNumberOrTag::Latest)?;
 
             let number = block.header.number;
 
@@ -866,13 +881,14 @@ impl Backend {
 
         let env = self.env_with_handler_cfg(env);
         let fork = self.inner.get_fork_by_id_mut(id)?;
-        let full_block = fork.db.db.get_full_block(env.block.number.to::<u64>())?;
+        let full_block =
+            fork.db.db.get_full_block(env.cfg.chain_id, env.block.number.to::<u64>())?;
 
         for tx in full_block.transactions.clone().into_transactions() {
             // System transactions such as on L2s don't contain any pricing info so we skip them
             // otherwise this would cause reverts
-            if is_known_system_sender(tx.from) ||
-                tx.transaction_type == Some(SYSTEM_TRANSACTION_TYPE)
+            if is_known_system_sender(tx.from)
+                || tx.transaction_type == Some(SYSTEM_TRANSACTION_TYPE)
             {
                 trace!(tx=?tx.hash, "skipping system transaction");
                 continue;
@@ -880,7 +896,7 @@ impl Backend {
 
             if tx.hash == tx_hash {
                 // found the target transaction
-                return Ok(Some(tx.inner))
+                return Ok(Some(tx.inner));
             }
             trace!(tx=?tx.hash, "committing transaction");
 
@@ -929,7 +945,9 @@ impl DatabaseExt for Backend {
             // Check if an error occurred either during or before the snapshot.
             // DSTest contracts don't have snapshot functionality, so this slot is enough to check
             // for failure here.
-            if let Some(account) = current_state.state.get(&CHEATCODE_ADDRESS) {
+            if let Some(account) =
+                current_state.state.get(&ChainAddress(current.cfg.chain_id, CHEATCODE_ADDRESS))
+            {
                 if let Some(slot) = account.storage.get(&GLOBAL_FAIL_SLOT) {
                     if !slot.present_value.is_zero() {
                         self.set_snapshot_failure(true);
@@ -1063,8 +1081,8 @@ impl DatabaseExt for Backend {
             if target_fork.journaled_state.depth == 0 {
                 // Initialize caller with its fork info
                 if let Some(mut acc) = caller_account {
-                    let fork_account = Database::basic(&mut target_fork.db, caller)?
-                        .ok_or(BackendError::MissingAccount(caller))?;
+                    let fork_account = SyncDatabase::basic(&mut target_fork.db, caller)?
+                        .ok_or(BackendError::MissingAccount(caller.1))?;
 
                     acc.info = fork_account;
                     target_fork.journaled_state.state.insert(caller, acc);
@@ -1112,7 +1130,7 @@ impl DatabaseExt for Backend {
                 caller_account.into()
             });
 
-            self.update_fork_db(active_journaled_state, &mut fork);
+            self.update_fork_db(env.tx.transact_to.to().unwrap().0, active_journaled_state, &mut fork);
 
             // insert the fork back
             self.inner.set_fork(idx, fork);
@@ -1154,14 +1172,19 @@ impl DatabaseExt for Backend {
                 // reset cached state from the previous block
                 let mut persistent_addrs = self.inner.persistent_accounts.clone();
                 // we also want to copy the caller state here
-                persistent_addrs.extend(self.caller_address());
+                persistent_addrs.extend(self.caller_address().map(|a| a.1));
 
                 let active = self.inner.get_fork_mut(active_idx);
                 active.journaled_state = self.fork_init_journaled_state.clone();
 
+                let chain_id = 0;
                 active.journaled_state.depth = journaled_state.depth;
                 for addr in persistent_addrs {
-                    merge_journaled_state_data(addr, journaled_state, &mut active.journaled_state);
+                    merge_journaled_state_data(
+                        ChainAddress(chain_id, addr),
+                        journaled_state,
+                        &mut active.journaled_state,
+                    );
                 }
 
                 // Ensure all previously loaded accounts are present in the journaled state to
@@ -1202,7 +1225,7 @@ impl DatabaseExt for Backend {
         let id = self.ensure_fork(id)?;
 
         let (fork_block, block) =
-            self.get_block_number_and_block_for_transaction(id, transaction)?;
+            self.get_block_number_and_block_for_transaction(env.cfg.chain_id, id, transaction)?;
 
         // roll the fork to the transaction's block or latest if it's pending
         self.roll_fork(Some(id), fork_block, env, journaled_state)?;
@@ -1225,6 +1248,7 @@ impl DatabaseExt for Backend {
         journaled_state: &mut JournaledState,
         inspector: &mut dyn InspectorExt<Self>,
     ) -> eyre::Result<()> {
+        println!("backend::transact");
         trace!(?maybe_id, ?transaction, "execute transaction");
         let persistent_accounts = self.inner.persistent_accounts.clone();
         let id = self.ensure_fork(maybe_id)?;
@@ -1232,13 +1256,13 @@ impl DatabaseExt for Backend {
 
         let tx = {
             let fork = self.inner.get_fork_by_id_mut(id)?;
-            fork.db.db.get_transaction(transaction)?
+            fork.db.db.get_transaction(env.tx.caller.0, transaction)?
         };
 
         // This is a bit ambiguous because the user wants to transact an arbitrary transaction in the current context, but we're assuming the user wants to transact the transaction as it was mined. Usually this is used in a combination of a fork at the transaction's parent transaction in the block and then the transaction is transacted: <https://github.com/foundry-rs/foundry/issues/6538>
         // So we modify the env to match the transaction's block
         let (_fork_block, block) =
-            self.get_block_number_and_block_for_transaction(id, transaction)?;
+            self.get_block_number_and_block_for_transaction(env.cfg.chain_id, id, transaction)?;
         let mut env = env.clone();
         update_env_block(&mut env, &block);
 
@@ -1262,12 +1286,18 @@ impl DatabaseExt for Backend {
         journaled_state: &mut JournaledState,
         inspector: &mut dyn InspectorExt<Self>,
     ) -> eyre::Result<()> {
+        println!("backend::transact_from_tx");
+
         trace!(?tx, "execute signed transaction");
 
         let mut env = env.clone();
 
-        env.tx.caller =
-            tx.from.ok_or_else(|| eyre::eyre!("transact_from_tx: No `from` field found"))?;
+        let chain_id = tx.chain_id.unwrap();
+
+        env.tx.caller = ChainAddress(
+            chain_id,
+            tx.from.ok_or_else(|| eyre::eyre!("transact_from_tx: No `from` field found"))?,
+        );
         env.tx.gas_limit =
             tx.gas.ok_or_else(|| eyre::eyre!("transact_from_tx: No `gas` field found"))? as u64;
         env.tx.gas_price = U256::from(tx.gas_price.or(tx.max_fee_per_gas).unwrap_or_default());
@@ -1277,9 +1307,12 @@ impl DatabaseExt for Backend {
         env.tx.value =
             tx.value.ok_or_else(|| eyre::eyre!("transact_from_tx: No `value` field found"))?;
         env.tx.data = tx.input.into_input().unwrap_or_default();
-        env.tx.transact_to =
-            tx.to.ok_or_else(|| eyre::eyre!("transact_from_tx: No `to` field found"))?;
-        env.tx.chain_id = tx.chain_id;
+        env.tx.transact_to = convert_tx_kind(
+            chain_id,
+            tx.to.ok_or_else(|| eyre::eyre!("transact_from_tx: No `to` field found"))?,
+        );
+        // env.tx.chain_id = tx.chain_id;
+        env.tx.chain_ids = Some(vec![chain_id]);
 
         self.commit(journaled_state.state.clone());
 
@@ -1326,7 +1359,7 @@ impl DatabaseExt for Backend {
 
     fn diagnose_revert(
         &self,
-        callee: Address,
+        callee: ChainAddress,
         journaled_state: &JournaledState,
     ) -> Option<RevertDiagnostic> {
         let active_id = self.active_fork_id()?;
@@ -1350,7 +1383,7 @@ impl DatabaseExt for Backend {
 
             return if available_on.is_empty() {
                 Some(RevertDiagnostic::ContractDoesNotExist {
-                    contract: callee,
+                    contract: callee.1,
                     active: active_id,
                     persistent: self.is_persistent(&callee),
                 })
@@ -1358,7 +1391,7 @@ impl DatabaseExt for Backend {
                 // likely user error: called a contract that's not available on active fork but is
                 // present other forks
                 Some(RevertDiagnostic::ContractExistsOnOtherForks {
-                    contract: callee,
+                    contract: callee.1,
                     active: active_id,
                     available_on,
                 })
@@ -1372,7 +1405,7 @@ impl DatabaseExt for Backend {
     /// Returns [Ok] if all accounts were successfully inserted into the journal, [Err] otherwise.
     fn load_allocs(
         &mut self,
-        allocs: &BTreeMap<Address, GenesisAccount>,
+        allocs: &BTreeMap<ChainAddress, GenesisAccount>,
         journaled_state: &mut JournaledState,
     ) -> Result<(), BackendError> {
         // Loop through all of the allocs defined in the map and commit them to the journal.
@@ -1419,81 +1452,87 @@ impl DatabaseExt for Backend {
         Ok(())
     }
 
-    fn add_persistent_account(&mut self, account: Address) -> bool {
+    fn add_persistent_account(&mut self, account: ChainAddress) -> bool {
         trace!(?account, "add persistent account");
-        self.inner.persistent_accounts.insert(account)
+        //println!("bbb add_persistent_account: {:?}", account);
+        self.inner.persistent_accounts.insert(account.1)
     }
 
-    fn remove_persistent_account(&mut self, account: &Address) -> bool {
+    fn remove_persistent_account(&mut self, account: &ChainAddress) -> bool {
         trace!(?account, "remove persistent account");
-        self.inner.persistent_accounts.remove(account)
+        self.inner.persistent_accounts.remove(&account.1)
     }
 
-    fn is_persistent(&self, acc: &Address) -> bool {
-        self.inner.persistent_accounts.contains(acc)
+    fn is_persistent(&self, acc: &ChainAddress) -> bool {
+        self.inner.persistent_accounts.contains(&acc.1)
     }
 
-    fn allow_cheatcode_access(&mut self, account: Address) -> bool {
+    fn allow_cheatcode_access(&mut self, account: ChainAddress) -> bool {
         trace!(?account, "allow cheatcode access");
-        self.inner.cheatcode_access_accounts.insert(account)
+        //println!("bbb allow_cheatcode_access: {:?}", account);
+        self.inner.cheatcode_access_accounts.insert(account.1)
+        //true
     }
 
-    fn revoke_cheatcode_access(&mut self, account: &Address) -> bool {
+    fn revoke_cheatcode_access(&mut self, account: &ChainAddress) -> bool {
         trace!(?account, "revoke cheatcode access");
-        self.inner.cheatcode_access_accounts.remove(account)
+        self.inner.cheatcode_access_accounts.remove(&account.1)
     }
 
-    fn has_cheatcode_access(&self, account: &Address) -> bool {
-        self.inner.cheatcode_access_accounts.contains(account)
+    fn has_cheatcode_access(&self, account: &ChainAddress) -> bool {
+        self.inner.cheatcode_access_accounts.contains(&account.1)
     }
 
-    fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
+    fn set_blockhash(&mut self, chain_id: u64, block_number: U256, block_hash: B256) {
         if let Some(db) = self.active_fork_db_mut() {
-            db.block_hashes.insert(block_number, block_hash);
+            db.block_hashes.insert((chain_id, block_number), block_hash);
         } else {
-            self.mem_db.block_hashes.insert(block_number, block_hash);
+            self.mem_db.block_hashes.insert((chain_id, block_number), block_hash);
         }
     }
 }
 
-impl DatabaseRef for Backend {
+impl SyncDatabaseRef for Backend {
     type Error = DatabaseError;
 
-    fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+    fn basic_ref(&self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        //println!("forks: {:?}", self.forks);
         if let Some(db) = self.active_fork_db() {
+            //println!("using db");
             db.basic_ref(address)
         } else {
+            //println!("using mem_db");
             Ok(self.mem_db.basic_ref(address)?)
         }
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+    fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
         if let Some(db) = self.active_fork_db() {
-            db.code_by_hash_ref(code_hash)
+            db.code_by_hash_ref(chain_id, code_hash)
         } else {
-            Ok(self.mem_db.code_by_hash_ref(code_hash)?)
+            Ok(self.mem_db.code_by_hash_ref(chain_id, code_hash)?)
         }
     }
 
-    fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
+    fn storage_ref(&self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
         if let Some(db) = self.active_fork_db() {
-            DatabaseRef::storage_ref(db, address, index)
+            SyncDatabaseRef::storage_ref(db, address, index)
         } else {
-            Ok(DatabaseRef::storage_ref(&self.mem_db, address, index)?)
+            Ok(SyncDatabaseRef::storage_ref(&self.mem_db, address, index)?)
         }
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
+    fn block_hash_ref(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
         if let Some(db) = self.active_fork_db() {
-            db.block_hash_ref(number)
+            db.block_hash_ref(chain_id, number)
         } else {
-            Ok(self.mem_db.block_hash_ref(number)?)
+            Ok(self.mem_db.block_hash_ref(chain_id, number)?)
         }
     }
 }
 
 impl DatabaseCommit for Backend {
-    fn commit(&mut self, changes: Map<Address, Account>) {
+    fn commit(&mut self, changes: Map<ChainAddress, Account>) {
         if let Some(db) = self.active_fork_db_mut() {
             db.commit(changes)
         } else {
@@ -1502,9 +1541,10 @@ impl DatabaseCommit for Backend {
     }
 }
 
-impl Database for Backend {
+impl SyncDatabase for Backend {
     type Error = DatabaseError;
-    fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+    fn basic(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        println!("Backend::basic: {:?}", address);
         if let Some(db) = self.active_fork_db_mut() {
             Ok(db.basic(address)?)
         } else {
@@ -1512,27 +1552,30 @@ impl Database for Backend {
         }
     }
 
-    fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        if let Some(db) = self.active_fork_db_mut() {
-            Ok(db.code_by_hash(code_hash)?)
+    fn code_by_hash(&mut self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        println!("Backend::code_by_hash: {:?}", code_hash);
+        let res = if let Some(db) = self.active_fork_db_mut() {
+            Ok(db.code_by_hash(chain_id, code_hash)?)
         } else {
-            Ok(self.mem_db.code_by_hash(code_hash)?)
+            Ok(self.mem_db.code_by_hash(chain_id, code_hash)?)
+        };
+        println!("code: {:?}", res);
+        res
+    }
+
+    fn storage(&mut self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
+        if let Some(db) = self.active_fork_db_mut() {
+            Ok(SyncDatabase::storage(db, address, index)?)
+        } else {
+            Ok(SyncDatabase::storage(&mut self.mem_db, address, index)?)
         }
     }
 
-    fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
+    fn block_hash(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
         if let Some(db) = self.active_fork_db_mut() {
-            Ok(Database::storage(db, address, index)?)
+            Ok(db.block_hash(chain_id, number)?)
         } else {
-            Ok(Database::storage(&mut self.mem_db, address, index)?)
-        }
-    }
-
-    fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
-        if let Some(db) = self.active_fork_db_mut() {
-            Ok(db.block_hash(number)?)
-        } else {
-            Ok(self.mem_db.block_hash(number)?)
+            Ok(self.mem_db.block_hash(chain_id, number)?)
         }
     }
 }
@@ -1555,7 +1598,7 @@ pub struct Fork {
 
 impl Fork {
     /// Returns true if the account is a contract
-    pub fn is_contract(&self, acc: Address) -> bool {
+    pub fn is_contract(&self, acc: ChainAddress) -> bool {
         if let Ok(Some(acc)) = self.db.basic_ref(acc) {
             if acc.code_hash != KECCAK_EMPTY {
                 return true;
@@ -1604,7 +1647,7 @@ pub struct BackendInner {
     /// additionally
     pub has_snapshot_failure: bool,
     /// Tracks the caller of the test function
-    pub caller: Option<Address>,
+    pub caller: Option<ChainAddress>,
     /// Tracks numeric identifiers for forks
     pub next_fork_id: LocalForkId,
     /// All accounts that should be kept persistent when switching forks.
@@ -1724,11 +1767,12 @@ impl BackendInner {
         let fork_id = self.ensure_fork_id(id)?;
         let idx = self.ensure_fork_index(fork_id)?;
 
+        let chain_id = 0;
         if let Some(active) = self.forks[idx].as_mut() {
             // we initialize a _new_ `ForkDB` but keep the state of persistent accounts
             let mut new_db = ForkDB::new(backend);
             for addr in self.persistent_accounts.iter().copied() {
-                merge_db_account_data(addr, &active.db, &mut new_db);
+                merge_db_account_data(ChainAddress(chain_id, addr), &active.db, &mut new_db);
             }
             active.db = new_db;
         }
@@ -1778,7 +1822,11 @@ impl BackendInner {
 
     /// Returns a new, empty, `JournaledState` with set precompiles
     pub fn new_journaled_state(&self) -> JournaledState {
-        JournaledState::new(self.spec_id, self.precompiles().addresses().copied().collect())
+        println!("new_journaled_state");
+        JournaledState::new(
+            self.spec_id,
+            self.precompiles().addresses().copied().map(|a| ChainAddress(160010, a)).collect(),
+        )
     }
 }
 
@@ -1810,13 +1858,14 @@ impl Default for BackendInner {
 pub(crate) fn update_current_env_with_fork_env(current: &mut Env, fork: Env) {
     current.block = fork.block;
     current.cfg = fork.cfg;
-    current.tx.chain_id = fork.tx.chain_id;
+    // current.tx.chain_id = fork.tx.chain_id;
+    current.tx.chain_ids = None;
 }
 
 /// Clones the data of the given `accounts` from the `active` database into the `fork_db`
 /// This includes the data held in storage (`CacheDB`) and kept in the `JournaledState`.
-pub(crate) fn merge_account_data<ExtDB: DatabaseRef>(
-    accounts: impl IntoIterator<Item = Address>,
+pub(crate) fn merge_account_data<ExtDB: SyncDatabaseRef>(
+    accounts: impl IntoIterator<Item = ChainAddress>,
     active: &CacheDB<ExtDB>,
     active_journaled_state: &mut JournaledState,
     target_fork: &mut Fork,
@@ -1837,7 +1886,7 @@ pub(crate) fn merge_account_data<ExtDB: DatabaseRef>(
 
 /// Clones the account data from the `active_journaled_state`  into the `fork_journaled_state`
 fn merge_journaled_state_data(
-    addr: Address,
+    addr: ChainAddress,
     active_journaled_state: &JournaledState,
     fork_journaled_state: &mut JournaledState,
 ) {
@@ -1854,8 +1903,8 @@ fn merge_journaled_state_data(
 }
 
 /// Clones the account data from the `active` db into the `ForkDB`
-fn merge_db_account_data<ExtDB: DatabaseRef>(
-    addr: Address,
+fn merge_db_account_data<ExtDB: SyncDatabaseRef>(
+    addr: ChainAddress,
     active: &CacheDB<ExtDB>,
     fork_db: &mut ForkDB,
 ) {
@@ -1883,7 +1932,7 @@ fn merge_db_account_data<ExtDB: DatabaseRef>(
 }
 
 /// Returns true of the address is a contract
-fn is_contract_in_state(journaled_state: &JournaledState, acc: Address) -> bool {
+fn is_contract_in_state(journaled_state: &JournaledState, acc: ChainAddress) -> bool {
     journaled_state
         .state
         .get(&acc)
@@ -1894,7 +1943,7 @@ fn is_contract_in_state(journaled_state: &JournaledState, acc: Address) -> bool 
 /// Updates the env's block with the block's data
 fn update_env_block<T>(env: &mut Env, block: &Block<T>) {
     env.block.timestamp = U256::from(block.header.timestamp);
-    env.block.coinbase = block.header.miner;
+    env.block.coinbase = ChainAddress(env.tx.chain_ids.clone().unwrap()[0], block.header.miner);
     env.block.difficulty = block.header.difficulty;
     env.block.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
     env.block.basefee = U256::from(block.header.base_fee_per_gas.unwrap_or_default());
@@ -1913,6 +1962,8 @@ fn commit_transaction<I: InspectorExt<Backend>>(
     persistent_accounts: &HashSet<Address>,
     inspector: I,
 ) -> eyre::Result<()> {
+    println!("backend::commit_transaction");
+
     configure_tx_env(&mut env.env, &tx.inner);
 
     let now = Instant::now();
@@ -1935,13 +1986,13 @@ fn commit_transaction<I: InspectorExt<Backend>>(
 
 /// Helper method which updates data in the state with the data from the database.
 /// Does not change state for persistent accounts (for roll fork to transaction and transact).
-pub fn update_state<DB: Database>(
+pub fn update_state<DB: SyncDatabase>(
     state: &mut EvmState,
     db: &mut DB,
     persistent_accounts: Option<&HashSet<Address>>,
 ) -> Result<(), DB::Error> {
     for (addr, acc) in state.iter_mut() {
-        if !persistent_accounts.map_or(false, |accounts| accounts.contains(addr)) {
+        if !persistent_accounts.map_or(false, |accounts| accounts.contains(&addr.1)) {
             acc.info = db.basic(*addr)?.unwrap_or_default();
             for (key, val) in acc.storage.iter_mut() {
                 val.present_value = db.storage(*addr, *key)?;
@@ -1955,7 +2006,7 @@ pub fn update_state<DB: Database>(
 /// Applies the changeset of a transaction to the active journaled state and also commits it in the
 /// forked db
 fn apply_state_changeset(
-    state: Map<revm::primitives::Address, Account>,
+    state: Map<revm::primitives::ChainAddress, Account>,
     journaled_state: &mut JournaledState,
     fork: &mut Fork,
     persistent_accounts: &HashSet<Address>,
@@ -1969,6 +2020,13 @@ fn apply_state_changeset(
     Ok(())
 }
 
+const fn convert_tx_kind(chain_id: u64, tx: TxKind) -> TransactTo {
+    match tx {
+        TxKind::Create => TransactTo::Create,
+        TxKind::Call(address) => TransactTo::Call(ChainAddress(chain_id, address)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{backend::Backend, fork::CreateFork, opts::EvmOpts};
@@ -1977,7 +2035,7 @@ mod tests {
     use foundry_common::provider::get_http_provider;
     use foundry_config::{Config, NamedChain};
     use foundry_fork_db::cache::{BlockchainDb, BlockchainDbMeta};
-    use revm::DatabaseRef;
+    use revm::{primitives::ChainAddress, DatabaseRef, SyncDatabaseRef};
 
     const ENDPOINT: Option<&str> = option_env!("ETH_RPC_URL");
 
@@ -2004,8 +2062,10 @@ mod tests {
 
         let backend = Backend::spawn(Some(fork));
 
+        let chain_id = 1;
         // some rng contract from etherscan
-        let address: Address = "63091244180ae240c87d1f528f5f269134cb07b3".parse().unwrap();
+        let address: ChainAddress =
+            ChainAddress(chain_id, "63091244180ae240c87d1f528f5f269134cb07b3".parse().unwrap());
 
         let idx = U256::from(0u64);
         let _value = backend.storage_ref(address, idx);

@@ -2,6 +2,7 @@ use alloy_json_abi::{Function, JsonAbi};
 use alloy_primitives::{Address, Bytes, Selector};
 use itertools::Either;
 use parking_lot::Mutex;
+use revm::primitives::ChainAddress;
 use std::{collections::BTreeMap, sync::Arc};
 
 mod call_override;
@@ -38,7 +39,7 @@ impl FuzzRunIdentifiedContracts {
         project_contracts: &ContractsByArtifact,
         setup_contracts: &ContractsByAddress,
         artifact_filters: &ArtifactFilters,
-        created_contracts: &mut Vec<Address>,
+        created_contracts: &mut Vec<ChainAddress>,
     ) -> eyre::Result<()> {
         if !self.is_updatable {
             return Ok(());
@@ -46,7 +47,7 @@ impl FuzzRunIdentifiedContracts {
 
         let mut targets = self.targets.lock();
         for (address, account) in state_changeset {
-            if setup_contracts.contains_key(address) {
+            if setup_contracts.contains_key(&address.1) {
                 continue;
             }
             if !account.is_touched() {
@@ -81,7 +82,7 @@ impl FuzzRunIdentifiedContracts {
     }
 
     /// Clears targeted contracts created during an invariant run.
-    pub fn clear_created_contracts(&self, created_contracts: Vec<Address>) {
+    pub fn clear_created_contracts(&self, created_contracts: Vec<ChainAddress>) {
         if !created_contracts.is_empty() {
             let mut targets = self.targets.lock();
             for addr in created_contracts.iter() {
@@ -95,7 +96,7 @@ impl FuzzRunIdentifiedContracts {
 #[derive(Clone, Debug, Default)]
 pub struct TargetedContracts {
     /// The inner map of targeted contracts.
-    pub inner: BTreeMap<Address, TargetedContract>,
+    pub inner: BTreeMap<ChainAddress, TargetedContract>,
 }
 
 impl TargetedContracts {
@@ -119,7 +120,7 @@ impl TargetedContracts {
 
     /// Returns flatten target contract address and functions to be fuzzed.
     /// Includes contract targeted functions if specified, else all mutable contract functions.
-    pub fn fuzzed_functions(&self) -> impl Iterator<Item = (&Address, &Function)> {
+    pub fn fuzzed_functions(&self) -> impl Iterator<Item = (&ChainAddress, &Function)> {
         self.inner
             .iter()
             .filter(|(_, c)| !c.abi.functions.is_empty())
@@ -128,7 +129,7 @@ impl TargetedContracts {
 }
 
 impl std::ops::Deref for TargetedContracts {
-    type Target = BTreeMap<Address, TargetedContract>;
+    type Target = BTreeMap<ChainAddress, TargetedContract>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
@@ -202,7 +203,7 @@ impl TargetedContract {
 #[derive(Clone, Debug)]
 pub struct BasicTxDetails {
     // Transaction sender address.
-    pub sender: Address,
+    pub sender: ChainAddress,
     // Transaction call details.
     pub call_details: CallDetails,
 }
@@ -211,7 +212,7 @@ pub struct BasicTxDetails {
 #[derive(Clone, Debug)]
 pub struct CallDetails {
     // Address of target contract.
-    pub target: Address,
+    pub target: ChainAddress,
     // The data of the transaction.
     pub calldata: Bytes,
 }
@@ -220,7 +221,7 @@ pub struct CallDetails {
 #[derive(Clone, Debug)]
 pub struct InvariantContract<'a> {
     /// Address of the test contract.
-    pub address: Address,
+    pub address: ChainAddress,
     /// Invariant function present in the test contract.
     pub invariant_function: &'a Function,
     /// If true, `afterInvariant` function is called after each invariant run.

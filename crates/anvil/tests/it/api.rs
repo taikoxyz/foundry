@@ -14,6 +14,7 @@ use alloy_rpc_types::{
 use alloy_serde::WithOtherFields;
 use anvil::{eth::api::CLIENT_VERSION, spawn, NodeConfig, CHAIN_ID};
 use futures::join;
+use revm::primitives::ChainAddress;
 use std::{collections::HashMap, time::Duration};
 
 #[tokio::test(flavor = "multi_thread")]
@@ -228,8 +229,10 @@ async fn can_call_on_pending_block() {
 
     let accounts: Vec<Address> = handle.dev_wallets().map(|w| w.address()).collect();
 
+    let chain_id = api.chain_id();
+
     for i in 1..10 {
-        api.anvil_set_coinbase(accounts[i % accounts.len()]).await.unwrap();
+        api.anvil_set_coinbase(ChainAddress(chain_id, accounts[i % accounts.len()])).await.unwrap();
         api.evm_set_block_gas_limit(U256::from(30_000_000 + i)).unwrap();
 
         api.anvil_mine(Some(U256::from(1)), None).await.unwrap();

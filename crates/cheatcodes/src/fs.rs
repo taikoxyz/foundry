@@ -10,7 +10,7 @@ use dialoguer::{Input, Password};
 use foundry_common::fs;
 use foundry_config::fs_permissions::FsAccessKind;
 use foundry_evm_core::backend::DatabaseExt;
-use revm::interpreter::CreateInputs;
+use revm::{interpreter::CreateInputs, primitives::ChainAddress};
 use semver::Version;
 use std::{
     collections::hash_map::Entry,

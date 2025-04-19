@@ -5,6 +5,7 @@ use alloy_primitives::{hex, Address, Bytes};
 use anvil::{spawn, NodeConfig};
 use foundry_test_utils::{rpc, ScriptOutcome, ScriptTester};
 use regex::Regex;
+use revm_primitives::ChainAddress;
 use serde_json::Value;
 use std::{env, path::PathBuf, str::FromStr};
 
@@ -146,7 +147,7 @@ forgetest_async!(assert_exit_code_error_on_failure_script, |prj, cmd| {
 
     // run command and assert error exit code
     cmd.assert_failure().stderr_eq(str![[r#"
-Error: 
+Error:
 script failed: revert: failed
 
 "#]]);
@@ -163,7 +164,7 @@ forgetest_async!(assert_exit_code_error_on_failure_script_with_json, |prj, cmd| 
 
     // run command and assert error exit code
     cmd.assert_failure().stderr_eq(str![[r#"
-Error: 
+Error:
 script failed: revert: failed
 
 "#]]);
@@ -230,12 +231,12 @@ Warning (2018): Function state mutability can be restricted to view
 Traces:
   [81040] DeployScript::run()
     ├─ [0] VM::startBroadcast()
-    │   └─ ← [Return] 
+    │   └─ ← [Return]
     ├─ [45299] → new GasWaster@[..]
     │   └─ ← [Return] 226 bytes of code
     ├─ [226] GasWaster::wasteGas(200000 [2e5])
-    │   └─ ← [Stop] 
-    └─ ← [Stop] 
+    │   └─ ← [Stop]
+    └─ ← [Stop]
 
 
 Script ran successfully.
@@ -249,7 +250,7 @@ Gas limit was set in script to 500000
     └─ ← [Return] 226 bytes of code
 
   [226] GasWaster::wasteGas(200000 [2e5])
-    └─ ← [Stop] 
+    └─ ← [Stop]
 
 
 ==========================
@@ -338,12 +339,12 @@ Warning (2018): Function state mutability can be restricted to view
 Traces:
   [81040] DeployScript::run()
     ├─ [0] VM::startBroadcast()
-    │   └─ ← [Return] 
+    │   └─ ← [Return]
     ├─ [45299] → new GasWaster@[..]
     │   └─ ← [Return] 226 bytes of code
     ├─ [226] GasWaster::wasteGas(200000 [2e5])
-    │   └─ ← [Stop] 
-    └─ ← [Stop] 
+    │   └─ ← [Stop]
+    └─ ← [Stop]
 
 
 Script ran successfully.
@@ -357,7 +358,7 @@ Gas limit was set in script to 500000
     └─ ← [Return] 226 bytes of code
 
   [226] GasWaster::wasteGas(200000 [2e5])
-    └─ ← [Stop] 
+    └─ ← [Stop]
 
 
 ==========================
@@ -524,10 +525,10 @@ Compiler run successful!
 Traces:
   [116040] DeployScript::run()
     ├─ [0] VM::startBroadcast()
-    │   └─ ← [Return] 
+    │   └─ ← [Return]
     ├─ [75723] → new HashChecker@[..]
     │   └─ ← [Return] 378 bytes of code
-    └─ ← [Stop] 
+    └─ ← [Stop]
 
 
 Script ran successfully.
@@ -604,58 +605,58 @@ Compiler run successful!
 Traces:
   [51327] RunScript::run()
     ├─ [0] VM::startBroadcast()
-    │   └─ ← [Return] 
+    │   └─ ← [Return]
     ├─ [0] VM::roll([..])
-    │   └─ ← [Return] 
+    │   └─ ← [Return]
     ├─ [0] VM::roll([..])
-    │   └─ ← [Return] 
+    │   └─ ← [Return]
     ├─ [22394] [..]::update()
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [239] [..]::checkLastHash() [staticcall]
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [0] VM::roll([..])
-    │   └─ ← [Return] 
+    │   └─ ← [Return]
     ├─ [494] [..]::update()
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [239] [..]::checkLastHash() [staticcall]
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [0] VM::roll([..])
-    │   └─ ← [Return] 
+    │   └─ ← [Return]
     ├─ [494] [..]::update()
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [239] [..]::checkLastHash() [staticcall]
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [0] VM::roll([..])
-    │   └─ ← [Return] 
+    │   └─ ← [Return]
     ├─ [494] [..]::update()
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [239] [..]::checkLastHash() [staticcall]
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [0] VM::roll([..])
-    │   └─ ← [Return] 
+    │   └─ ← [Return]
     ├─ [494] [..]::update()
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [239] [..]::checkLastHash() [staticcall]
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [0] VM::roll([..])
-    │   └─ ← [Return] 
+    │   └─ ← [Return]
     ├─ [494] [..]::update()
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [239] [..]::checkLastHash() [staticcall]
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [0] VM::roll([..])
-    │   └─ ← [Return] 
+    │   └─ ← [Return]
     ├─ [494] [..]::update()
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [239] [..]::checkLastHash() [staticcall]
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [0] VM::roll([..])
-    │   └─ ← [Return] 
+    │   └─ ← [Return]
     ├─ [494] [..]::update()
-    │   └─ ← [Stop] 
+    │   └─ ← [Stop]
     ├─ [239] [..]::checkLastHash() [staticcall]
-    │   └─ ← [Stop] 
-    └─ ← [Stop] 
+    │   └─ ← [Stop]
+    └─ ← [Stop]
 
 
 Script ran successfully.
@@ -839,7 +840,7 @@ forgetest_async!(can_deploy_with_create2, |prj, cmd| {
 
     // Prepare CREATE2 Deployer
     api.anvil_set_code(
-        foundry_evm::constants::DEFAULT_CREATE2_DEPLOYER,
+        ChainAddress(0, foundry_evm::constants::DEFAULT_CREATE2_DEPLOYER),
         Bytes::from_static(foundry_evm::constants::DEFAULT_CREATE2_DEPLOYER_RUNTIME_CODE),
     )
     .await
@@ -915,10 +916,12 @@ forgetest_async!(check_broadcast_log, |prj, cmd| {
     let (api, handle) = spawn(NodeConfig::test()).await;
     let mut tester = ScriptTester::new_broadcast(cmd, &handle.http_endpoint(), prj.root());
 
+    let chain_id = api.chain_id();
+
     // Prepare CREATE2 Deployer
     let addr = Address::from_str("0x4e59b44847b379578588920ca78fbf26c0b4956c").unwrap();
     let code = hex::decode("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf3").expect("Could not decode create2 deployer init_code").into();
-    api.anvil_set_code(addr, code).await.unwrap();
+    api.anvil_set_code(ChainAddress(chain_id, addr), code).await.unwrap();
 
     tester
         .load_private_keys(&[0])
@@ -1603,7 +1606,7 @@ contract Script {
 
     cmd.arg("script").args([&script.to_string_lossy(), "--sig", "run"]);
     cmd.assert_failure().stderr_eq(str![[r#"
-Error: 
+Error:
 Multiple functions with the same name `run` found in the ABI
 
 "#]]);
@@ -1646,7 +1649,7 @@ contract CustomErrorScript is Script {
 
     cmd.forge_fuse().arg("script").arg(script).args(["--tc", "CustomErrorScript"]);
     cmd.assert_failure().stderr_eq(str![[r#"
-Error: 
+Error:
 script failed: CustomError()
 
 "#]]);
@@ -1874,7 +1877,7 @@ contract SimpleScript is Script {
     ]);
 
     cmd.assert_failure().stderr_eq(str![[r#"
-Error: 
+Error:
 script failed: missing CREATE2 deployer
 
 "#]]);

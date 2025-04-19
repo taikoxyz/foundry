@@ -1,6 +1,6 @@
 use crate::{HitMap, HitMaps};
 use alloy_primitives::B256;
-use revm::{interpreter::Interpreter, Database, EvmContext, Inspector};
+use revm::{interpreter::Interpreter, Database, EvmContext, Inspector, SyncDatabase};
 
 #[derive(Clone, Debug, Default)]
 pub struct CoverageCollector {
@@ -8,7 +8,7 @@ pub struct CoverageCollector {
     pub maps: HitMaps,
 }
 
-impl<DB: Database> Inspector<DB> for CoverageCollector {
+impl<DB: SyncDatabase> Inspector<DB> for CoverageCollector {
     #[inline]
     fn initialize_interp(&mut self, interp: &mut Interpreter, _context: &mut EvmContext<DB>) {
         self.maps

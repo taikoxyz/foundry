@@ -21,6 +21,7 @@ use foundry_compilers::{
 };
 use foundry_evm::{constants::DEFAULT_CREATE2_DEPLOYER, traces::debug::ContractSources};
 use foundry_linking::Linker;
+use revm_primitives::ChainAddress;
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
 /// Container for the compiled contracts.
@@ -76,9 +77,10 @@ impl BuildData {
                 ),
             )
         } else {
+            let chain_id = script_config.config.tx_origin.0;
             let output = self.get_linker().link_with_nonce_or_address(
                 known_libraries,
-                script_config.evm_opts.sender,
+                ChainAddress(chain_id, script_config.evm_opts.sender),
                 script_config.sender_nonce,
                 [&self.target],
             )?;

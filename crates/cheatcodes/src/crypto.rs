@@ -224,7 +224,7 @@ fn sign_with_wallet(
     let signer = if let Some(signer) = signer {
         signer
     } else if let Some(provided_sender) = maybe_provided_sender {
-        provided_sender
+        provided_sender.1
     } else if signers.len() == 1 {
         *signers.keys().next().unwrap()
     } else {

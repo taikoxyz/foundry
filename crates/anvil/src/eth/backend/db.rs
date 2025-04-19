@@ -19,13 +19,14 @@ use foundry_evm::{
         Database, DatabaseCommit,
     },
 };
+use revm::{primitives::ChainAddress, SyncDatabase, SyncDatabaseRef};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, path::Path};
 
 /// Helper trait get access to the full state data of the database
 #[auto_impl::auto_impl(Box)]
-pub trait MaybeFullDatabase: DatabaseRef<Error = DatabaseError> {
-    fn maybe_as_full_db(&self) -> Option<&HashMap<Address, DbAccount>> {
+pub trait MaybeFullDatabase: SyncDatabaseRef<Error = DatabaseError> {
+    fn maybe_as_full_db(&self) -> Option<&HashMap<ChainAddress, DbAccount>> {
         None
     }
 
@@ -41,9 +42,9 @@ pub trait MaybeFullDatabase: DatabaseRef<Error = DatabaseError> {
 
 impl<'a, T: 'a + MaybeFullDatabase + ?Sized> MaybeFullDatabase for &'a T
 where
-    &'a T: DatabaseRef<Error = DatabaseError>,
+    &'a T: SyncDatabaseRef<Error = DatabaseError>,
 {
-    fn maybe_as_full_db(&self) -> Option<&HashMap<Address, DbAccount>> {
+    fn maybe_as_full_db(&self) -> Option<&HashMap<ChainAddress, DbAccount>> {
         T::maybe_as_full_db(self)
     }
 
@@ -69,8 +70,8 @@ pub trait MaybeForkedDatabase {
 /// This bundles all required revm traits
 #[auto_impl::auto_impl(Box)]
 pub trait Db:
-    DatabaseRef<Error = DatabaseError>
-    + Database<Error = DatabaseError>
+    SyncDatabaseRef<Error = DatabaseError>
+    + SyncDatabase<Error = DatabaseError>
     + DatabaseCommit
     + MaybeFullDatabase
     + MaybeForkedDatabase
@@ -79,10 +80,10 @@ pub trait Db:
     + Sync
 {
     /// Inserts an account
-    fn insert_account(&mut self, address: Address, account: AccountInfo);
+    fn insert_account(&mut self, address: ChainAddress, account: AccountInfo);
 
     /// Sets the nonce of the given address
-    fn set_nonce(&mut self, address: Address, nonce: u64) -> DatabaseResult<()> {
+    fn set_nonce(&mut self, address: ChainAddress, nonce: u64) -> DatabaseResult<()> {
         let mut info = self.basic(address)?.unwrap_or_default();
         info.nonce = nonce;
         self.insert_account(address, info);
@@ -90,7 +91,7 @@ pub trait Db:
     }
 
     /// Sets the balance of the given address
-    fn set_balance(&mut self, address: Address, balance: U256) -> DatabaseResult<()> {
+    fn set_balance(&mut self, address: ChainAddress, balance: U256) -> DatabaseResult<()> {
         let mut info = self.basic(address)?.unwrap_or_default();
         info.balance = balance;
         self.insert_account(address, info);
@@ -98,7 +99,7 @@ pub trait Db:
     }
 
     /// Sets the balance of the given address
-    fn set_code(&mut self, address: Address, code: Bytes) -> DatabaseResult<()> {
+    fn set_code(&mut self, address: ChainAddress, code: Bytes) -> DatabaseResult<()> {
         let mut info = self.basic(address)?.unwrap_or_default();
         let code_hash = if code.as_ref().is_empty() {
             KECCAK_EMPTY
@@ -112,10 +113,10 @@ pub trait Db:
     }
 
     /// Sets the balance of the given address
-    fn set_storage_at(&mut self, address: Address, slot: U256, val: U256) -> DatabaseResult<()>;
+    fn set_storage_at(&mut self, address: ChainAddress, slot: U256, val: U256) -> DatabaseResult<()>;
 
     /// inserts a blockhash for the given number
-    fn insert_block_hash(&mut self, number: U256, hash: B256);
+    fn insert_block_hash(&mut self, chain_id: u64, number: U256, hash: B256);
 
     /// Write all chain data to serialized bytes buffer
     fn dump_state(
@@ -129,7 +130,7 @@ pub trait Db:
     /// Deserialize and add all chain data to the backend storage
     fn load_state(&mut self, state: SerializableState) -> DatabaseResult<bool> {
         for (addr, account) in state.accounts.into_iter() {
-            let old_account_nonce = DatabaseRef::basic_ref(self, addr)
+            let old_account_nonce = SyncDatabaseRef::basic_ref(self, addr)
                 .ok()
                 .and_then(|acc| acc.map(|acc| acc.nonce))
                 .unwrap_or_default();
@@ -167,7 +168,7 @@ pub trait Db:
     fn revert(&mut self, snapshot: U256, action: RevertSnapshotAction) -> bool;
 
     /// Returns the state root if possible to compute
-    fn maybe_state_root(&self) -> Option<B256> {
+    fn maybe_state_root(&self, chain_id: u64) -> Option<B256> {
         None
     }
 
@@ -179,17 +180,17 @@ pub trait Db:
 /// This is useful to create blocks without actually writing to the `Db`, but rather in the cache of
 /// the `CacheDB` see also
 /// [Backend::pending_block()](crate::eth::backend::mem::Backend::pending_block())
-impl<T: DatabaseRef<Error = DatabaseError> + Send + Sync + Clone + fmt::Debug> Db for CacheDB<T> {
-    fn insert_account(&mut self, address: Address, account: AccountInfo) {
+impl<T: SyncDatabaseRef<Error = DatabaseError> + Send + Sync + Clone + fmt::Debug> Db for CacheDB<T> {
+    fn insert_account(&mut self, address: ChainAddress, account: AccountInfo) {
         self.insert_account_info(address, account)
     }
 
-    fn set_storage_at(&mut self, address: Address, slot: U256, val: U256) -> DatabaseResult<()> {
+    fn set_storage_at(&mut self, address: ChainAddress, slot: U256, val: U256) -> DatabaseResult<()> {
         self.insert_account_storage(address, slot, val)
     }
 
-    fn insert_block_hash(&mut self, number: U256, hash: B256) {
-        self.block_hashes.insert(number, hash);
+    fn insert_block_hash(&mut self, chain_id: u64, number: U256, hash: B256) {
+        self.block_hashes.insert((chain_id, number), hash);
     }
 
     fn dump_state(
@@ -215,8 +216,8 @@ impl<T: DatabaseRef<Error = DatabaseError> + Send + Sync + Clone + fmt::Debug> D
     }
 }
 
-impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
-    fn maybe_as_full_db(&self) -> Option<&HashMap<Address, DbAccount>> {
+impl<T: SyncDatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
+    fn maybe_as_full_db(&self) -> Option<&HashMap<ChainAddress, DbAccount>> {
         Some(&self.accounts)
     }
 
@@ -259,7 +260,7 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
     }
 }
 
-impl<T: DatabaseRef<Error = DatabaseError>> MaybeForkedDatabase for CacheDB<T> {
+impl<T: SyncDatabaseRef<Error = DatabaseError>> MaybeForkedDatabase for CacheDB<T> {
     fn maybe_reset(&mut self, _url: Option<String>, _block_number: BlockId) -> Result<(), String> {
         Err("not supported".to_string())
     }
@@ -282,27 +283,27 @@ impl StateDb {
     }
 }
 
-impl DatabaseRef for StateDb {
+impl SyncDatabaseRef for StateDb {
     type Error = DatabaseError;
-    fn basic_ref(&self, address: Address) -> DatabaseResult<Option<AccountInfo>> {
+    fn basic_ref(&self, address: ChainAddress) -> DatabaseResult<Option<AccountInfo>> {
         self.0.basic_ref(address)
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> DatabaseResult<Bytecode> {
-        self.0.code_by_hash_ref(code_hash)
+    fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> DatabaseResult<Bytecode> {
+        self.0.code_by_hash_ref(chain_id, code_hash)
     }
 
-    fn storage_ref(&self, address: Address, index: U256) -> DatabaseResult<U256> {
+    fn storage_ref(&self, address: ChainAddress, index: U256) -> DatabaseResult<U256> {
         self.0.storage_ref(address, index)
     }
 
-    fn block_hash_ref(&self, number: u64) -> DatabaseResult<B256> {
-        self.0.block_hash_ref(number)
+    fn block_hash_ref(&self, chain_id: u64, number: u64) -> DatabaseResult<B256> {
+        self.0.block_hash_ref(chain_id, number)
     }
 }
 
 impl MaybeFullDatabase for StateDb {
-    fn maybe_as_full_db(&self) -> Option<&HashMap<Address, DbAccount>> {
+    fn maybe_as_full_db(&self) -> Option<&HashMap<ChainAddress, DbAccount>> {
         self.0.maybe_as_full_db()
     }
 
@@ -325,7 +326,7 @@ pub struct SerializableState {
     ///
     /// Note: This is an Option for backwards compatibility: <https://github.com/foundry-rs/foundry/issues/5460>
     pub block: Option<BlockEnv>,
-    pub accounts: BTreeMap<Address, SerializableAccountRecord>,
+    pub accounts: BTreeMap<ChainAddress, SerializableAccountRecord>,
     /// The best block number of the state, can be different from block number (Arbitrum chain).
     pub best_block_number: Option<U64>,
     #[serde(default)]

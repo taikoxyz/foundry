@@ -11,7 +11,7 @@ use crate::{
         fees::{INITIAL_BASE_FEE, INITIAL_GAS_PRICE},
         pool::transactions::{PoolTransaction, TransactionOrder},
     },
-    hardfork::{ChainHardfork, OptimismHardfork},
+    hardfork::{ChainHardfork},
     mem::{self, in_memory_db::MemDb},
     EthereumHardfork, FeeManager, PrecompileFactory,
 };
@@ -42,7 +42,7 @@ use foundry_evm::{
 use itertools::Itertools;
 use parking_lot::RwLock;
 use rand::thread_rng;
-use revm::primitives::BlobExcessGasAndPrice;
+use revm::primitives::{BlobExcessGasAndPrice, ChainAddress};
 use serde_json::{json, to_writer, Value};
 use std::{
     collections::HashMap,
@@ -482,9 +482,9 @@ impl NodeConfig {
         if let Some(hardfork) = self.hardfork {
             return hardfork;
         }
-        if self.enable_optimism {
-            return OptimismHardfork::default().into();
-        }
+        // if self.enable_optimism {
+        //     return OptimismHardfork::default().into();
+        // }
         EthereumHardfork::default().into()
     }
 
@@ -944,6 +944,8 @@ impl NodeConfig {
     pub(crate) async fn setup(&mut self) -> mem::Backend {
         // configure the revm environment
 
+        println!("ANVIL!!!");
+
         let mut cfg =
             CfgEnvWithHandlerCfg::new_with_spec_id(CfgEnv::default(), self.get_hardfork().into());
         cfg.chain_id = self.get_chain_id();
@@ -953,11 +955,16 @@ impl NodeConfig {
         // caller is a contract. So we disable the check by default.
         cfg.disable_eip3607 = true;
         cfg.disable_block_gas_limit = self.disable_block_gas_limit;
-        cfg.handler_cfg.is_optimism = self.enable_optimism;
+        //cfg.handler_cfg.is_optimism = self.enable_optimism;
+        cfg.xchain = true;
+        // TODO(Brecht)
+        cfg.parent_chain_id = Some(160010);
 
         if let Some(value) = self.memory_limit {
             cfg.memory_limit = value;
         }
+
+        let chain_id = self.get_chain_id().into();
 
         let env = revm::primitives::Env {
             cfg: cfg.cfg_env,
@@ -966,7 +973,7 @@ impl NodeConfig {
                 basefee: U256::from(self.get_base_fee()),
                 ..Default::default()
             },
-            tx: TxEnv { chain_id: self.get_chain_id().into(), ..Default::default() },
+            tx: TxEnv { chain_ids: Some(vec![chain_id]), ..Default::default() },
         };
         let mut env = EnvWithHandlerCfg::new(Box::new(env), cfg.handler_cfg);
 
@@ -994,7 +1001,7 @@ impl NodeConfig {
             if let Some(number) = genesis.number {
                 env.block.number = U256::from(number);
             }
-            env.block.coinbase = genesis.coinbase;
+            env.block.coinbase = ChainAddress(chain_id, genesis.coinbase);
         }
 
         let genesis = GenesisConfig {
@@ -1026,7 +1033,7 @@ impl NodeConfig {
         // if the option is not disabled and we are not forking.
         if !self.disable_default_create2_deployer && self.eth_rpc_url.is_none() {
             backend
-                .set_create2_deployer(DEFAULT_CREATE2_DEPLOYER)
+                .set_create2_deployer(ChainAddress(chain_id, DEFAULT_CREATE2_DEPLOYER))
                 .await
                 .expect("Failed to create default create2 deployer");
         }
@@ -1083,6 +1090,8 @@ impl NodeConfig {
                 .build()
                 .expect("Failed to establish provider to fork url"),
         );
+
+        println!("fork_choice: {:?}", self.fork_choice);
 
         let (fork_block_number, fork_chain_id, force_transactions) = if let Some(fork_choice) =
             &self.fork_choice
@@ -1212,7 +1221,7 @@ latest block number: {latest_block}"
             // need to update the dev signers and env with the chain id
             self.set_chain_id(Some(chain_id));
             env.cfg.chain_id = chain_id;
-            env.tx.chain_id = chain_id.into();
+            env.tx.chain_ids = Some(vec![chain_id.into()]);
             chain_id
         };
         let override_chain_id = self.chain_id;
@@ -1257,7 +1266,7 @@ latest block number: {latest_block}"
         let mut db = ForkedDatabase::new(backend, block_chain_db);
 
         // need to insert the forked block's hash
-        db.insert_block_hash(U256::from(config.block_number), config.block_hash);
+        db.insert_block_hash(chain_id, U256::from(config.block_number), config.block_hash);
 
         (db, config)
     }

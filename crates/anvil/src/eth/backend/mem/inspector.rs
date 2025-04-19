@@ -16,6 +16,7 @@ use foundry_evm::{
     traces::TracingInspectorConfig,
     InspectorExt,
 };
+use revm::{primitives::ChainAddress, SyncDatabase};
 
 /// The [`revm::Inspector`] used when transacting in the evm
 #[derive(Clone, Debug, Default)]
@@ -67,7 +68,7 @@ impl Inspector {
     }
 }
 
-impl<DB: Database> revm::Inspector<DB> for Inspector {
+impl<DB: SyncDatabase> revm::Inspector<DB> for Inspector {
     fn initialize_interp(&mut self, interp: &mut Interpreter, ecx: &mut EvmContext<DB>) {
         call_inspectors!([&mut self.tracer], |inspector| {
             inspector.initialize_interp(interp, ecx);
@@ -169,14 +170,14 @@ impl<DB: Database> revm::Inspector<DB> for Inspector {
     }
 
     #[inline]
-    fn selfdestruct(&mut self, contract: Address, target: Address, value: U256) {
+    fn selfdestruct(&mut self, contract: ChainAddress, target: ChainAddress, value: U256) {
         if let Some(tracer) = &mut self.tracer {
             revm::Inspector::<DB>::selfdestruct(tracer, contract, target, value);
         }
     }
 }
 
-impl<DB: Database> InspectorExt<DB> for Inspector {
+impl<DB: SyncDatabase> InspectorExt<DB> for Inspector {
     fn is_alphanet(&self) -> bool {
         self.alphanet
     }

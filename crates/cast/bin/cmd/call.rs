@@ -1,7 +1,7 @@
 use crate::tx::{CastTxBuilder, SenderKind};
 use alloy_primitives::{TxKind, U256};
 use alloy_rpc_types::{BlockId, BlockNumberOrTag};
-use cast::{traces::TraceKind, Cast};
+use cast::{revm::primitives::ChainAddress, traces::TraceKind, Cast};
 use clap::Parser;
 use eyre::Result;
 use foundry_cli::{
@@ -143,6 +143,9 @@ impl CallArgs {
         let sender = SenderKind::from_wallet_opts(eth.wallet).await?;
         let from = sender.address();
 
+        let chain_id = evm_opts.env.chain_id.unwrap();
+        let from = ChainAddress(chain_id, from);
+
         let code = if let Some(CallSubcommands::Create {
             code,
             sig: create_sig,
@@ -195,7 +198,7 @@ impl CallArgs {
                     TraceResult::try_from(deploy_result)?
                 }
                 TxKind::Call(to) => TraceResult::from_raw(
-                    executor.transact_raw(from, to, input, value)?,
+                    executor.transact_raw(from, ChainAddress(chain_id, to), input, value)?,
                     TraceKind::Execution,
                 ),
             };

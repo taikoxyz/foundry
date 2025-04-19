@@ -14,6 +14,7 @@ use foundry_evm_fuzz::{
 use foundry_evm_traces::SparsedTraceArena;
 use indicatif::ProgressBar;
 use proptest::test_runner::{TestCaseError, TestError, TestRunner};
+use revm::primitives::ChainAddress;
 use std::cell::RefCell;
 
 mod types;
@@ -49,7 +50,7 @@ pub struct FuzzedExecutor {
     /// The fuzzer
     runner: TestRunner,
     /// The account that calls tests
-    sender: Address,
+    sender: ChainAddress,
     /// The fuzz configuration
     config: FuzzConfig,
 }
@@ -59,7 +60,7 @@ impl FuzzedExecutor {
     pub fn new(
         executor: Executor,
         runner: TestRunner,
-        sender: Address,
+        sender: ChainAddress,
         config: FuzzConfig,
     ) -> Self {
         Self { executor, runner, sender, config }
@@ -74,7 +75,7 @@ impl FuzzedExecutor {
         &self,
         func: &Function,
         fuzz_fixtures: &FuzzFixtures,
-        address: Address,
+        address: ChainAddress,
         should_fail: bool,
         rd: &RevertDecoder,
         progress: Option<&ProgressBar>,
@@ -205,7 +206,7 @@ impl FuzzedExecutor {
     /// or a `CounterExampleOutcome`
     pub fn single_fuzz(
         &self,
-        address: Address,
+        address: ChainAddress,
         should_fail: bool,
         calldata: alloy_primitives::Bytes,
     ) -> Result<FuzzOutcome, TestCaseError> {

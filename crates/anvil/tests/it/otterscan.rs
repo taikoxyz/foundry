@@ -10,6 +10,7 @@ use alloy_rpc_types::{
 use alloy_serde::WithOtherFields;
 use alloy_sol_types::{sol, SolCall, SolError, SolValue};
 use anvil::{spawn, EthereumHardfork, NodeConfig};
+use revm::primitives::ChainAddress;
 use std::collections::VecDeque;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -171,7 +172,7 @@ async fn ots_has_code() {
 
     api.mine_one().await;
 
-    let contract_address = sender.create(0);
+    let contract_address = ChainAddress(api.chain_id(), sender.create(0));
 
     // no code in the address before deploying
     assert!(!api.ots_has_code(contract_address, BlockNumberOrTag::Number(1)).await.unwrap());

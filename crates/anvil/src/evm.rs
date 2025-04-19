@@ -13,7 +13,7 @@ pub trait PrecompileFactory: Send + Sync + Unpin + Debug {
 ///
 /// This will add an additional handler that extends the default precompiles with the given set of
 /// precompiles.
-pub fn inject_precompiles<DB: revm::Database, I>(
+pub fn inject_precompiles<DB: revm::SyncDatabase, I>(
     evm: &mut revm::Evm<'_, I, DB>,
     precompiles: Vec<(Address, Precompile)>,
 ) {

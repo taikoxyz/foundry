@@ -19,7 +19,7 @@ use foundry_cli::{
 use foundry_compilers::{artifacts::EvmVersion, info::ContractInfo};
 use foundry_config::{figment, impl_figment_convert, Config};
 use foundry_evm::{constants::DEFAULT_CREATE2_DEPLOYER, utils::configure_tx_env};
-use revm_primitives::AccountInfo;
+use revm_primitives::{AccountInfo, ChainAddress};
 use std::path::PathBuf;
 use yansi::Paint;
 
@@ -260,13 +260,15 @@ impl VerifyBytecodeArgs {
 
             configure_tx_env(&mut env, &gen_tx);
 
+            let chain_id = env.cfg.chain_id;
+
             // Seed deployer account with funds
             let account_info = AccountInfo {
                 balance: U256::from(100 * 10_u128.pow(18)),
                 nonce: 0,
                 ..Default::default()
             };
-            executor.backend_mut().insert_account_info(deployer, account_info);
+            executor.backend_mut().insert_account_info(ChainAddress(chain_id, deployer), account_info);
 
             let fork_address =
                 crate::utils::deploy_contract(&mut executor, &env, config.evm_spec_id(), &gen_tx)?;
@@ -275,8 +277,8 @@ impl VerifyBytecodeArgs {
             let (deployed_bytecode, onchain_runtime_code) = crate::utils::get_runtime_codes(
                 &mut executor,
                 &provider,
-                self.address,
-                fork_address,
+                ChainAddress(chain_id, self.address),
+                ChainAddress(chain_id, fork_address),
                 None,
             )
             .await?;
@@ -468,12 +470,14 @@ impl VerifyBytecodeArgs {
                 &transaction,
             )?;
 
+            let chain_id = env.cfg.chain_id;
+
             // State commited using deploy_with_env, now get the runtime bytecode from the db.
             let (fork_runtime_code, onchain_runtime_code) = crate::utils::get_runtime_codes(
                 &mut executor,
                 &provider,
-                self.address,
-                fork_address,
+                ChainAddress(chain_id, self.address),
+                ChainAddress(chain_id, fork_address),
                 Some(simulation_block),
             )
             .await?;

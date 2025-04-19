@@ -20,6 +20,7 @@ use foundry_evm::{
     opts::{Env, EvmOpts},
 };
 use foundry_test_utils::{fd_lock, init_tracing, rpc::next_rpc_endpoint};
+use revm_primitives::ChainAddress;
 use std::{
     env, fmt,
     io::Write,
@@ -116,17 +117,17 @@ impl ForgeTestProfile {
             .expect("Config loaded")
     }
 
-    pub fn evm_opts(&self) -> EvmOpts {
+    pub fn evm_opts(&self, chain_id: u64) -> EvmOpts {
         EvmOpts {
             env: Env {
                 gas_limit: u64::MAX,
                 chain_id: None,
-                tx_origin: CALLER,
+                tx_origin: ChainAddress(chain_id, CALLER),
                 block_number: 1,
                 block_timestamp: 1,
                 ..Default::default()
             },
-            sender: CALLER,
+            sender: ChainAddress(chain_id, CALLER),
             initial_balance: U256::MAX,
             ffi: true,
             verbosity: 3,
@@ -178,11 +179,13 @@ impl ForgeTestData {
     pub fn new(profile: ForgeTestProfile) -> Self {
         init_tracing();
 
+        let chain_id = 1;
+
         let mut project = profile.project();
         let output = get_compiled(&mut project);
         let test_opts = profile.test_opts(&output);
         let config = profile.config();
-        let evm_opts = profile.evm_opts();
+        let evm_opts = profile.evm_opts(chain_id);
 
         Self { project, output, test_opts, evm_opts, config, profile }
     }
@@ -223,7 +226,7 @@ impl ForgeTestData {
             opts.isolate = true;
         }
 
-        let sender = config.sender;
+        let sender = ChainAddress(config.chain.unwrap().id(), config.sender);
 
         let mut builder = self.base_runner();
         builder.config = Arc::new(config);

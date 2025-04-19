@@ -5,6 +5,7 @@ use alloy_primitives::{Address, B256, U256};
 use alloy_signer_local::PrivateKeySigner;
 use foundry_wallets::{multi_wallet::MultiWallet, WalletSigner};
 use parking_lot::Mutex;
+use revm::primitives::ChainAddress;
 use std::sync::Arc;
 
 impl Cheatcode for broadcast_0Call {
@@ -17,7 +18,7 @@ impl Cheatcode for broadcast_0Call {
 impl Cheatcode for broadcast_1Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { signer } = self;
-        broadcast(ccx, Some(signer), true)
+        broadcast(ccx, Some(&ChainAddress(ccx.cfg().chain_id, *signer)), true)
     }
 }
 
@@ -30,6 +31,7 @@ impl Cheatcode for broadcast_2Call {
 
 impl Cheatcode for startBroadcast_0Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
+        println!("startBroadcast_0Call");
         let Self {} = self;
         broadcast(ccx, None, false)
     }
@@ -37,13 +39,15 @@ impl Cheatcode for startBroadcast_0Call {
 
 impl Cheatcode for startBroadcast_1Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
+        println!("startBroadcast_1Call");
         let Self { signer } = self;
-        broadcast(ccx, Some(signer), false)
+        broadcast(ccx, Some(&ChainAddress(ccx.cfg().chain_id, *signer)), false)
     }
 }
 
 impl Cheatcode for startBroadcast_2Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
+        println!("startBroadcast_2Call");
         let Self { privateKey } = self;
         broadcast_key(ccx, privateKey, false)
     }
@@ -63,15 +67,17 @@ impl Cheatcode for stopBroadcastCall {
 #[derive(Clone, Debug, Default)]
 pub struct Broadcast {
     /// Address of the transaction origin
-    pub new_origin: Address,
+    pub new_origin: ChainAddress,
     /// Original caller
-    pub original_caller: Address,
+    pub original_caller: ChainAddress,
     /// Original `tx.origin`
-    pub original_origin: Address,
+    pub original_origin: ChainAddress,
     /// Depth of the broadcast
     pub depth: u64,
     /// Whether the prank stops by itself after the next call
     pub single_call: bool,
+    /// Chain to execute the transaction on
+    pub chain_id: u64,
 }
 
 /// Contains context for wallet management.
@@ -80,7 +86,7 @@ pub struct ScriptWalletsInner {
     /// All signers in scope of the script.
     pub multi_wallet: MultiWallet,
     /// Optional signer provided as `--sender` flag.
-    pub provided_sender: Option<Address>,
+    pub provided_sender: Option<ChainAddress>,
 }
 
 /// Clonable wrapper around [`ScriptWalletsInner`].
@@ -92,7 +98,7 @@ pub struct ScriptWallets {
 
 impl ScriptWallets {
     #[allow(missing_docs)]
-    pub fn new(multi_wallet: MultiWallet, provided_sender: Option<Address>) -> Self {
+    pub fn new(multi_wallet: MultiWallet, provided_sender: Option<ChainAddress>) -> Self {
         Self { inner: Arc::new(Mutex::new(ScriptWalletsInner { multi_wallet, provided_sender })) }
     }
 
@@ -125,9 +131,10 @@ impl ScriptWallets {
 /// Sets up broadcasting from a script using `new_origin` as the sender.
 fn broadcast<DB: DatabaseExt>(
     ccx: &mut CheatsCtxt<DB>,
-    new_origin: Option<&Address>,
+    new_origin: Option<&ChainAddress>,
     single_call: bool,
 ) -> Result {
+    println!("start broadcasting from {:?}! [{:?}]", new_origin, ccx.state.chain_id);
     ensure!(
         ccx.state.prank.is_none(),
         "you have an active prank; broadcasting and pranks are not compatible"
@@ -144,8 +151,8 @@ fn broadcast<DB: DatabaseExt>(
             } else {
                 let signers = script_wallets.multi_wallet.signers()?;
                 if signers.len() == 1 {
-                    let address = signers.keys().next().unwrap();
-                    new_origin = Some(*address);
+                    let address = ChainAddress(ccx.cfg().chain_id, *signers.keys().next().unwrap());
+                    new_origin = Some(address);
                 }
             }
         }
@@ -157,6 +164,7 @@ fn broadcast<DB: DatabaseExt>(
         original_origin: ccx.ecx.env.tx.caller,
         depth: ccx.ecx.journaled_state.depth(),
         single_call,
+        chain_id: ccx.state.chain_id,
     };
     debug!(target: "cheatcodes", ?broadcast, "started");
     ccx.state.broadcast = Some(broadcast);
@@ -172,7 +180,7 @@ fn broadcast_key<DB: DatabaseExt>(
     single_call: bool,
 ) -> Result {
     let wallet = super::crypto::parse_wallet(private_key)?;
-    let new_origin = wallet.address();
+    let new_origin = ChainAddress(ccx.cfg().chain_id, wallet.address());
 
     let result = broadcast(ccx, Some(&new_origin), single_call);
     if result.is_ok() {

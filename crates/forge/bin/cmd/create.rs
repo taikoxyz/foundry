@@ -7,7 +7,7 @@ use alloy_provider::{PendingTransactionError, Provider, ProviderBuilder};
 use alloy_rpc_types::{AnyTransactionReceipt, TransactionRequest};
 use alloy_serde::WithOtherFields;
 use alloy_signer::Signer;
-use alloy_transport::{Transport, TransportError};
+use alloy_transport::{RpcError, Transport, TransportError, TransportErrorKind};
 use clap::{Parser, ValueHint};
 use eyre::{Context, Result};
 use forge_verify::RetryArgs;
@@ -238,6 +238,13 @@ impl CreateArgs {
             panic!("no bytecode found in bin object for {}", self.contract.name)
         });
         let provider = Arc::new(provider);
+
+        let result: std::result::Result<bool, RpcError<TransportErrorKind>> = provider
+            .client()
+            .request("eth_setActiveChainId", (chain,))
+            .await;
+        assert!(result.unwrap(), "Couldn't switch to the expected chain");
+
         let factory = ContractFactory::new(abi.clone(), bin.clone(), provider.clone(), timeout);
 
         let is_args_empty = args.is_empty();

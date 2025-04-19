@@ -1,7 +1,7 @@
 use alloy_primitives::U256;
 use alloy_provider::Provider;
 use alloy_rpc_types::BlockTransactions;
-use cast::{revm::primitives::EnvWithHandlerCfg, traces::TraceKind};
+use cast::{revm::primitives::{ChainAddress, EnvWithHandlerCfg}, traces::TraceKind};
 use clap::Parser;
 use eyre::{Result, WrapErr};
 use foundry_cli::{
@@ -139,9 +139,11 @@ impl RunArgs {
 
         env.block.number = U256::from(tx_block_number);
 
+        let chain_id = env.cfg.chain_id;
+
         if let Some(block) = &block {
             env.block.timestamp = U256::from(block.header.timestamp);
-            env.block.coinbase = block.header.miner;
+            env.block.coinbase = ChainAddress(chain_id, block.header.miner);
             env.block.difficulty = block.header.difficulty;
             env.block.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
             env.block.basefee = U256::from(block.header.base_fee_per_gas.unwrap_or_default());

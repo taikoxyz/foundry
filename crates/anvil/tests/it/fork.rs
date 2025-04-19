@@ -20,6 +20,7 @@ use foundry_common::provider::get_http_provider;
 use foundry_config::Config;
 use foundry_test_utils::rpc::{self, next_http_rpc_endpoint, next_rpc_endpoint};
 use futures::StreamExt;
+use revm::primitives::ChainAddress;
 use std::{sync::Arc, thread::sleep, time::Duration};
 
 const BLOCK_NUMBER: u64 = 14_608_400u64;
@@ -75,7 +76,8 @@ async fn test_fork_eth_get_balance() {
     let provider = handle.http_provider();
     for _ in 0..10 {
         let addr = Address::random();
-        let balance = api.balance(addr, None).await.unwrap();
+        let chain_id = api.chain_id();
+        let balance = api.balance(ChainAddress(chain_id, addr), None).await.unwrap();
         let provider_balance = provider.get_balance(addr).await.unwrap();
         assert_eq!(balance, provider_balance)
     }
@@ -120,11 +122,12 @@ async fn test_fork_eth_get_code_after_mine() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fork_eth_get_code() {
     let (api, handle) = spawn(fork_config()).await;
+    let chain_id = api.chain_id();
     let provider = handle.http_provider();
     for _ in 0..10 {
-        let addr = Address::random();
+        let addr = ChainAddress(chain_id, Address::random());
         let code = api.get_code(addr, None).await.unwrap();
-        let provider_code = provider.get_code_at(addr).await.unwrap();
+        let provider_code = provider.get_code_at(addr.1).await.unwrap();
         assert_eq!(code, provider_code)
     }
 
@@ -136,12 +139,13 @@ async fn test_fork_eth_get_code() {
         "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45".parse().unwrap(),
     ];
     for address in addresses {
+        let address = ChainAddress(chain_id, address);
         let prev_code = api
             .get_code(address, Some(BlockNumberOrTag::Number(BLOCK_NUMBER - 10).into()))
             .await
             .unwrap();
         let code = api.get_code(address, None).await.unwrap();
-        let provider_code = provider.get_code_at(address).await.unwrap();
+        let provider_code = provider.get_code_at(address.1).await.unwrap();
         assert_eq!(code, prev_code);
         assert_eq!(code, provider_code);
         assert!(!code.as_ref().is_empty());
@@ -153,15 +157,17 @@ async fn test_fork_eth_get_nonce() {
     let (api, handle) = spawn(fork_config()).await;
     let provider = handle.http_provider();
 
+    let chain_id = api.chain_id();
+
     for _ in 0..10 {
         let addr = Address::random();
-        let api_nonce = api.transaction_count(addr, None).await.unwrap().to::<u64>();
+        let api_nonce = api.transaction_count(ChainAddress(chain_id, addr), None).await.unwrap().to::<u64>();
         let provider_nonce = provider.get_transaction_count(addr).await.unwrap();
         assert_eq!(api_nonce, provider_nonce);
     }
 
     let addr = Config::DEFAULT_SENDER;
-    let api_nonce = api.transaction_count(addr, None).await.unwrap().to::<u64>();
+    let api_nonce = api.transaction_count(ChainAddress(chain_id, addr), None).await.unwrap().to::<u64>();
     let provider_nonce = provider.get_transaction_count(addr).await.unwrap();
     assert_eq!(api_nonce, provider_nonce);
 }
@@ -394,12 +400,14 @@ async fn test_separate_states() {
     let (api, handle) = spawn(fork_config().with_fork_block_number(Some(14723772u64))).await;
     let provider = handle.http_provider();
 
+    let chain_id = api.chain_id();
+
     let addr: Address = "000000000000000000000000000000000000dEaD".parse().unwrap();
 
     let remote_balance = provider.get_balance(addr).await.unwrap();
     assert_eq!(remote_balance, U256::from(12556104082473169733500u128));
 
-    api.anvil_set_balance(addr, U256::from(1337u64)).await.unwrap();
+    api.anvil_set_balance(ChainAddress(chain_id, addr), U256::from(1337u64)).await.unwrap();
     let balance = provider.get_balance(addr).await.unwrap();
     assert_eq!(balance, U256::from(1337u64));
 
@@ -411,7 +419,7 @@ async fn test_separate_states() {
         .db()
         .accounts
         .read()
-        .get(&addr)
+        .get(&ChainAddress(chain_id, addr))
         .cloned()
         .unwrap();
 
@@ -444,7 +452,8 @@ async fn can_reset_properly() {
     let account = origin_handle.dev_accounts().next().unwrap();
     let origin_provider = origin_handle.http_provider();
     let origin_nonce = 1u64;
-    origin_api.anvil_set_nonce(account, U256::from(origin_nonce)).await.unwrap();
+    let chain_id = origin_api.chain_id();
+    origin_api.anvil_set_nonce(ChainAddress(chain_id, account), U256::from(origin_nonce)).await.unwrap();
 
     assert_eq!(origin_nonce, origin_provider.get_transaction_count(account).await.unwrap());
 
@@ -590,7 +599,7 @@ async fn test_fork_timestamp() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fork_set_empty_code() {
     let (api, _handle) = spawn(fork_config()).await;
-    let addr = "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984".parse().unwrap();
+    let addr = ChainAddress(api.chain_id(), "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984".parse().unwrap());
     let code = api.get_code(addr, None).await.unwrap();
     assert!(!code.as_ref().is_empty());
     api.anvil_set_code(addr, Vec::new().into()).await.unwrap();
@@ -608,7 +617,7 @@ async fn test_fork_can_send_tx() {
     let provider = handle.http_provider();
     // let provider = SignerMiddleware::new(provider, wallet);
 
-    api.anvil_set_balance(signer, U256::MAX).await.unwrap();
+    api.anvil_set_balance(ChainAddress(api.chain_id(), signer), U256::MAX).await.unwrap();
     api.anvil_impersonate_account(signer).await.unwrap(); // Added until WalletFiller for alloy-provider is fixed.
     let balance = provider.get_balance(signer).await.unwrap();
     assert_eq!(balance, U256::MAX);
@@ -638,7 +647,7 @@ async fn test_fork_nft_set_approve_all() {
     // create and fund a random wallet
     let wallet = PrivateKeySigner::random();
     let signer = wallet.address();
-    api.anvil_set_balance(signer, U256::from(1000e18)).await.unwrap();
+    api.anvil_set_balance(ChainAddress(api.chain_id(), signer), U256::from(1000e18)).await.unwrap();
 
     let provider = handle.http_provider();
 
@@ -666,7 +675,7 @@ async fn test_fork_nft_set_approve_all() {
     // transfer: impersonate real owner and transfer nft
     api.anvil_impersonate_account(real_owner._0).await.unwrap();
 
-    api.anvil_set_balance(real_owner._0, U256::from(10000e18 as u64)).await.unwrap();
+    api.anvil_set_balance(ChainAddress(api.chain_id(), real_owner._0), U256::from(10000e18 as u64)).await.unwrap();
 
     let call = nouns.transferFrom(real_owner._0, signer, token_id);
     let tx = TransactionRequest::default()
@@ -969,7 +978,7 @@ async fn can_impersonate_in_fork() {
     let val = U256::from(1337u64);
 
     // fund the impersonated account
-    api.anvil_set_balance(token_holder, U256::from(1e18)).await.unwrap();
+    api.anvil_set_balance(ChainAddress(api.chain_id(), token_holder), U256::from(1e18)).await.unwrap();
 
     let tx = TransactionRequest::default().from(token_holder).to(to).value(val);
     let tx = WithOtherFields::new(tx);
@@ -1162,7 +1171,7 @@ async fn test_arbitrum_fork_dev_balance() {
 
     let accounts: Vec<_> = handle.dev_wallets().collect();
     for acc in accounts {
-        let balance = api.balance(acc.address(), Some(Default::default())).await.unwrap();
+        let balance = api.balance(ChainAddress(api.chain_id(), acc.address()), Some(Default::default())).await.unwrap();
         assert_eq!(balance, U256::from(100000000000000000000u128));
     }
 }
@@ -1334,7 +1343,7 @@ async fn test_fork_query_at_fork_block() {
 
     let balance = provider.get_balance(address).await.unwrap();
     api.evm_mine(None).await.unwrap();
-    api.anvil_set_balance(address, balance + U256::from(1)).await.unwrap();
+    api.anvil_set_balance(ChainAddress(api.chain_id(), address), balance + U256::from(1)).await.unwrap();
 
     let balance_before =
         provider.get_balance(address).block_id(BlockId::number(number)).await.unwrap();

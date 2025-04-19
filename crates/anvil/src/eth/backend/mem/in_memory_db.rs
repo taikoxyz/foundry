@@ -18,18 +18,19 @@ use foundry_evm::{
 // reexport for convenience
 pub use foundry_evm::{backend::MemDb, revm::db::DatabaseRef};
 use foundry_evm::{backend::RevertSnapshotAction, revm::primitives::BlockEnv};
+use revm::{primitives::ChainAddress, SyncDatabaseRef};
 
 impl Db for MemDb {
-    fn insert_account(&mut self, address: Address, account: AccountInfo) {
+    fn insert_account(&mut self, address: ChainAddress, account: AccountInfo) {
         self.inner.insert_account_info(address, account)
     }
 
-    fn set_storage_at(&mut self, address: Address, slot: U256, val: U256) -> DatabaseResult<()> {
+    fn set_storage_at(&mut self, address: ChainAddress, slot: U256, val: U256) -> DatabaseResult<()> {
         self.inner.insert_account_storage(address, slot, val)
     }
 
-    fn insert_block_hash(&mut self, number: U256, hash: B256) {
-        self.inner.block_hashes.insert(number, hash);
+    fn insert_block_hash(&mut self, chain_id: u64, number: U256, hash: B256) {
+        self.inner.block_hashes.insert((chain_id, number), hash);
     }
 
     fn dump_state(
@@ -48,7 +49,7 @@ impl Db for MemDb {
                 let code = if let Some(code) = v.info.code {
                     code
                 } else {
-                    self.inner.code_by_hash_ref(v.info.code_hash)?
+                    self.inner.code_by_hash_ref(k.0, v.info.code_hash)?
                 };
                 Ok((
                     k,
@@ -92,8 +93,8 @@ impl Db for MemDb {
         }
     }
 
-    fn maybe_state_root(&self) -> Option<B256> {
-        Some(state_root(&self.inner.accounts))
+    fn maybe_state_root(&self, chain_id: u64) -> Option<B256> {
+        Some(state_root(chain_id, &self.inner.accounts))
     }
 
     fn current_state(&self) -> StateDb {
@@ -102,7 +103,7 @@ impl Db for MemDb {
 }
 
 impl MaybeFullDatabase for MemDb {
-    fn maybe_as_full_db(&self) -> Option<&HashMap<Address, DbAccount>> {
+    fn maybe_as_full_db(&self) -> Option<&HashMap<ChainAddress, DbAccount>> {
         Some(&self.inner.accounts)
     }
 
@@ -144,9 +145,11 @@ mod tests {
     // is dumped and reloaded
     #[test]
     fn test_dump_reload_cycle() {
-        let test_addr: Address =
-            Address::from_str("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266").unwrap();
-
+        let chain_id = 1;
+        let test_addr: ChainAddress = ChainAddress(
+            chain_id,
+            Address::from_str("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266").unwrap(),
+        );
         let mut dump_db = MemDb::default();
 
         let contract_code = Bytecode::new_raw(Bytes::from("fake contract code"));
@@ -174,7 +177,7 @@ mod tests {
         let loaded_account = load_db.basic_ref(test_addr).unwrap().unwrap();
 
         assert_eq!(loaded_account.balance, U256::from(123456));
-        assert_eq!(load_db.code_by_hash_ref(loaded_account.code_hash).unwrap(), contract_code);
+        assert_eq!(load_db.code_by_hash_ref(chain_id, loaded_account.code_hash).unwrap(), contract_code);
         assert_eq!(loaded_account.nonce, 1234);
         assert_eq!(load_db.storage_ref(test_addr, U256::from(1234567)).unwrap(), U256::from(1));
     }
@@ -183,10 +186,15 @@ mod tests {
     // accounts as well.
     #[test]
     fn test_load_state_merge() {
-        let test_addr: Address =
-            Address::from_str("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266").unwrap();
-        let test_addr2: Address =
-            Address::from_str("0x70997970c51812dc3a010c7d01b50e0d17dc79c8").unwrap();
+        let chain_id = 1;
+        let test_addr: ChainAddress = ChainAddress(
+            chain_id,
+            Address::from_str("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266").unwrap(),
+        );
+        let test_addr2: ChainAddress = ChainAddress(
+            chain_id,
+            Address::from_str("0x70997970c51812dc3a010c7d01b50e0d17dc79c8").unwrap(),
+        );
 
         let contract_code = Bytecode::new_raw(Bytes::from("fake contract code"));
 
@@ -238,7 +246,7 @@ mod tests {
         assert_eq!(loaded_account2.nonce, 1);
 
         assert_eq!(loaded_account.balance, U256::from(100100));
-        assert_eq!(db.code_by_hash_ref(loaded_account.code_hash).unwrap(), contract_code);
+        assert_eq!(db.code_by_hash_ref(chain_id, loaded_account.code_hash).unwrap(), contract_code);
         assert_eq!(loaded_account.nonce, 1234);
         assert_eq!(db.storage_ref(test_addr, U256::from(1234567)).unwrap(), U256::from(1));
         assert_eq!(db.storage_ref(test_addr, U256::from(1234568)).unwrap(), U256::from(5));

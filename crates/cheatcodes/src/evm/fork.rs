@@ -6,6 +6,7 @@ use alloy_rpc_types::Filter;
 use alloy_sol_types::SolValue;
 use foundry_common::provider::ProviderBuilder;
 use foundry_evm_core::fork::CreateFork;
+use revm::primitives::ChainAddress;
 
 impl Cheatcode for activeForkCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
@@ -166,7 +167,8 @@ impl Cheatcode for transact_1Call {
 impl Cheatcode for allowCheatcodesCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { account } = self;
-        ccx.ecx.db.allow_cheatcode_access(*account);
+        let chain_id = ccx.caller.0;
+        ccx.ecx.db.allow_cheatcode_access(ChainAddress(chain_id, *account));
         Ok(Default::default())
     }
 }
@@ -174,7 +176,8 @@ impl Cheatcode for allowCheatcodesCall {
 impl Cheatcode for makePersistent_0Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { account } = self;
-        ccx.ecx.db.add_persistent_account(*account);
+        let chain_id = ccx.caller.0;
+        ccx.ecx.db.add_persistent_account(ChainAddress(chain_id, *account));
         Ok(Default::default())
     }
 }
@@ -182,8 +185,9 @@ impl Cheatcode for makePersistent_0Call {
 impl Cheatcode for makePersistent_1Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { account0, account1 } = self;
-        ccx.ecx.db.add_persistent_account(*account0);
-        ccx.ecx.db.add_persistent_account(*account1);
+        let chain_id = ccx.caller.0;
+        ccx.ecx.db.add_persistent_account(ChainAddress(chain_id, *account0));
+        ccx.ecx.db.add_persistent_account(ChainAddress(chain_id, *account1));
         Ok(Default::default())
     }
 }
@@ -191,9 +195,10 @@ impl Cheatcode for makePersistent_1Call {
 impl Cheatcode for makePersistent_2Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { account0, account1, account2 } = self;
-        ccx.ecx.db.add_persistent_account(*account0);
-        ccx.ecx.db.add_persistent_account(*account1);
-        ccx.ecx.db.add_persistent_account(*account2);
+        let chain_id = ccx.caller.0;
+        ccx.ecx.db.add_persistent_account(ChainAddress(chain_id, *account0));
+        ccx.ecx.db.add_persistent_account(ChainAddress(chain_id, *account1));
+        ccx.ecx.db.add_persistent_account(ChainAddress(chain_id, *account2));
         Ok(Default::default())
     }
 }
@@ -201,8 +206,9 @@ impl Cheatcode for makePersistent_2Call {
 impl Cheatcode for makePersistent_3Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { accounts } = self;
+        let chain_id = ccx.caller.0;
         for account in accounts {
-            ccx.ecx.db.add_persistent_account(*account);
+            ccx.ecx.db.add_persistent_account(ChainAddress(chain_id, *account));
         }
         Ok(Default::default())
     }
@@ -211,7 +217,8 @@ impl Cheatcode for makePersistent_3Call {
 impl Cheatcode for revokePersistent_0Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { account } = self;
-        ccx.ecx.db.remove_persistent_account(account);
+        let chain_id = ccx.caller.0;
+        ccx.ecx.db.remove_persistent_account(&ChainAddress(chain_id, *account));
         Ok(Default::default())
     }
 }
@@ -219,8 +226,9 @@ impl Cheatcode for revokePersistent_0Call {
 impl Cheatcode for revokePersistent_1Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { accounts } = self;
+        let chain_id = ccx.caller.0;
         for account in accounts {
-            ccx.ecx.db.remove_persistent_account(account);
+            ccx.ecx.db.remove_persistent_account(&ChainAddress(chain_id, *account));
         }
         Ok(Default::default())
     }
@@ -229,7 +237,8 @@ impl Cheatcode for revokePersistent_1Call {
 impl Cheatcode for isPersistentCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { account } = self;
-        Ok(ccx.ecx.db.is_persistent(account).abi_encode())
+        let chain_id = ccx.caller.0;
+        Ok(ccx.ecx.db.is_persistent(&ChainAddress(chain_id, *account)).abi_encode())
     }
 }
 

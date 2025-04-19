@@ -36,6 +36,7 @@ foundry-linking.workspace = true
 
 ethers-contract-abigen = { workspace = true, features = ["providers"] }
 
+revm-primitives.workspace = true
 revm-inspectors.workspace = true
 
 comfy-table.workspace = true

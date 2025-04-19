@@ -1,5 +1,5 @@
 pub use crate::ic::*;
-use crate::{constants::DEFAULT_CREATE2_DEPLOYER, precompiles::ALPHANET_P256, InspectorExt};
+use crate::{constants::DEFAULT_CREATE2_DEPLOYER, InspectorExt};
 use alloy_json_abi::{Function, JsonAbi};
 use alloy_primitives::{Address, Selector, TxKind, U256};
 use alloy_provider::{
@@ -15,7 +15,7 @@ use revm::{
         return_ok, CallInputs, CallOutcome, CallScheme, CallValue, CreateInputs, CreateOutcome,
         Gas, InstructionResult, InterpreterResult,
     },
-    primitives::{CreateScheme, EVMError, HandlerCfg, SpecId, KECCAK_EMPTY},
+    primitives::{ChainAddress, CreateScheme, EVMError, HandlerCfg, SpecId, TransactTo, KECCAK_EMPTY},
     FrameOrResult, FrameResult,
 };
 use std::{cell::RefCell, rc::Rc, sync::Arc};
@@ -83,7 +83,7 @@ pub fn get_function<'a>(
 
 /// Configures the env for the transaction
 pub fn configure_tx_env(env: &mut revm::primitives::Env, tx: &Transaction) {
-    env.tx.caller = tx.from;
+    env.tx.caller = ChainAddress(tx.chain_id.unwrap(), tx.from);
     env.tx.gas_limit = tx.gas as u64;
     env.tx.gas_price = U256::from(tx.gas_price.unwrap_or_default());
     env.tx.gas_priority_fee = tx.max_priority_fee_per_gas.map(U256::from);
@@ -91,7 +91,10 @@ pub fn configure_tx_env(env: &mut revm::primitives::Env, tx: &Transaction) {
     env.tx.access_list = tx.access_list.clone().unwrap_or_default().0.into_iter().collect();
     env.tx.value = tx.value.to();
     env.tx.data = alloy_primitives::Bytes(tx.input.0.clone());
-    env.tx.transact_to = tx.to.map(TxKind::Call).unwrap_or(TxKind::Create)
+    env.tx.transact_to = convert_tx_kind(
+        tx.chain_id.unwrap(),
+        tx.to.map(TxKind::Call).unwrap_or(TxKind::Create)
+    );
 }
 
 /// Get the gas used, accounting for refunds
@@ -104,8 +107,8 @@ fn get_create2_factory_call_inputs(salt: U256, inputs: CreateInputs) -> CallInpu
     let calldata = [&salt.to_be_bytes::<32>()[..], &inputs.init_code[..]].concat();
     CallInputs {
         caller: inputs.caller,
-        bytecode_address: DEFAULT_CREATE2_DEPLOYER,
-        target_address: DEFAULT_CREATE2_DEPLOYER,
+        bytecode_address: ChainAddress(inputs.caller.0, DEFAULT_CREATE2_DEPLOYER),
+        target_address: ChainAddress(inputs.caller.0, DEFAULT_CREATE2_DEPLOYER),
         scheme: CallScheme::Call,
         value: CallValue::Transfer(inputs.value),
         input: calldata.into(),
@@ -123,7 +126,7 @@ fn get_create2_factory_call_inputs(salt: U256, inputs: CreateInputs) -> CallInpu
 /// hook by inserting decoded address directly into interpreter.
 ///
 /// Should be installed after [revm::inspector_handle_register] and before any other registers.
-pub fn create2_handler_register<DB: revm::Database, I: InspectorExt<DB>>(
+pub fn create2_handler_register<DB: revm::SyncDatabase, I: InspectorExt<DB>>(
     handler: &mut EvmHandler<'_, I, DB>,
 ) {
     let create2_overrides = Rc::<RefCell<Vec<_>>>::new(RefCell::new(Vec::new()));
@@ -142,7 +145,7 @@ pub fn create2_handler_register<DB: revm::Database, I: InspectorExt<DB>>(
             let gas_limit = inputs.gas_limit;
 
             // Generate call inputs for CREATE2 factory.
-            let mut call_inputs = get_create2_factory_call_inputs(salt, *inputs);
+            let mut call_inputs = get_create2_factory_call_inputs(salt, *inputs.clone());
 
             // Call inspector to change input or return outcome.
             let outcome = ctx.external.call(&mut ctx.evm, &mut call_inputs);
@@ -153,15 +156,17 @@ pub fn create2_handler_register<DB: revm::Database, I: InspectorExt<DB>>(
                 .push((ctx.evm.journaled_state.depth(), call_inputs.clone()));
 
             // Sanity check that CREATE2 deployer exists.
-            let code_hash = ctx.evm.load_account(DEFAULT_CREATE2_DEPLOYER)?.info.code_hash;
+            let code_hash = ctx.evm.load_account(ChainAddress(inputs.caller.0, DEFAULT_CREATE2_DEPLOYER))?.info.code_hash;
             if code_hash == KECCAK_EMPTY {
                 return Ok(FrameOrResult::Result(FrameResult::Call(CallOutcome {
                     result: InterpreterResult {
                         result: InstructionResult::Revert,
                         output: "missing CREATE2 deployer".into(),
                         gas: Gas::new(gas_limit),
+                        call_options: None,
                     },
                     memory_offset: 0..0,
+                    call_options: None,
                 })))
             }
 
@@ -201,6 +206,7 @@ pub fn create2_handler_register<DB: revm::Database, I: InspectorExt<DB>>(
                                 result: InstructionResult::Revert,
                                 output: "invalid CREATE2 factory output".into(),
                                 gas: Gas::new(call_inputs.gas_limit),
+                                call_options: None,
                             };
                         })
                         .ok(),
@@ -219,14 +225,14 @@ pub fn create2_handler_register<DB: revm::Database, I: InspectorExt<DB>>(
 }
 
 /// Adds Alphanet P256 precompile to the list of loaded precompiles.
-pub fn alphanet_handler_register<DB: revm::Database, I: InspectorExt<DB>>(
+pub fn alphanet_handler_register<DB: revm::SyncDatabase, I: InspectorExt<DB>>(
     handler: &mut EvmHandler<'_, I, DB>,
 ) {
     let prev = handler.pre_execution.load_precompiles.clone();
     handler.pre_execution.load_precompiles = Arc::new(move || {
         let mut loaded_precompiles = prev();
 
-        loaded_precompiles.extend([ALPHANET_P256]);
+        //loaded_precompiles.extend([ALPHANET_P256]);
 
         loaded_precompiles
     });
@@ -239,10 +245,12 @@ pub fn new_evm_with_inspector<'a, DB, I>(
     inspector: I,
 ) -> revm::Evm<'a, I, DB>
 where
-    DB: revm::Database,
+    DB: revm::SyncDatabase,
     I: InspectorExt<DB>,
 {
     let revm::primitives::EnvWithHandlerCfg { env, handler_cfg } = env;
+
+    // println!("env: {:?}", env);
 
     // NOTE: We could use `revm::Evm::builder()` here, but on the current patch it has some
     // performance issues.
@@ -276,7 +284,7 @@ pub fn new_evm_with_inspector_ref<'a, DB, I>(
     inspector: I,
 ) -> revm::Evm<'a, I, WrapDatabaseRef<DB>>
 where
-    DB: revm::DatabaseRef,
+    DB: revm::SyncDatabaseRef,
     I: InspectorExt<WrapDatabaseRef<DB>>,
 {
     new_evm_with_inspector(WrapDatabaseRef(db), env, inspector)
@@ -287,7 +295,7 @@ pub fn new_evm_with_existing_context<'a, DB, I>(
     inspector: I,
 ) -> revm::Evm<'a, I, DB>
 where
-    DB: revm::Database,
+    DB: revm::SyncDatabase,
     I: InspectorExt<DB>,
 {
     let handler_cfg = HandlerCfg::new(inner.spec_id());
@@ -302,6 +310,13 @@ where
     let context =
         revm::Context::new(revm::EvmContext { inner, precompiles: Default::default() }, inspector);
     revm::Evm::new(context, handler)
+}
+
+const fn convert_tx_kind(chain_id: u64, tx: TxKind) -> TransactTo {
+    match tx {
+        TxKind::Create => TransactTo::Create,
+        TxKind::Call(address) => TransactTo::Call(ChainAddress(chain_id, address)),
+    }
 }
 
 #[cfg(test)]

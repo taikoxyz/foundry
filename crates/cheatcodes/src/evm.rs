@@ -15,7 +15,7 @@ use foundry_evm_core::{
 };
 use rand::Rng;
 use revm::{
-    primitives::{Account, Bytecode, SpecId, KECCAK_EMPTY},
+    primitives::{Account, Bytecode, ChainAddress, SpecId, KECCAK_EMPTY},
     InnerEvmContext,
 };
 use std::{
@@ -56,7 +56,7 @@ impl RecordAccess {
 #[derive(Clone, Debug)]
 pub struct DealRecord {
     /// Target of the deal.
-    pub address: Address,
+    pub address: ChainAddress,
     /// The balance of the address before deal was applied
     pub old_balance: U256,
     /// Balance after deal was applied
@@ -74,21 +74,25 @@ impl Cheatcode for addrCall {
 impl Cheatcode for getNonce_0Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { account } = self;
-        get_nonce(ccx, account)
+        let chain_id = ccx.caller.0;
+        get_nonce(ccx, &ChainAddress(chain_id, *account))
     }
 }
 
 impl Cheatcode for getNonce_1Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { wallet } = self;
-        get_nonce(ccx, &wallet.addr)
+        let chain_id = ccx.caller.0;
+        get_nonce(ccx, &ChainAddress(chain_id, wallet.addr))
     }
 }
 
 impl Cheatcode for loadCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { target, slot } = *self;
-        ensure_not_precompile!(&target, ccx);
+        let chain_id = ccx.caller.0;
+        let target = ChainAddress(chain_id, target);
+        ensure_not_precompile!(&target.1, ccx);
         ccx.ecx.load_account(target)?;
         let mut val = ccx.ecx.sload(target, slot.into())?;
 
@@ -130,6 +134,11 @@ impl Cheatcode for loadAllocsCall {
             }
         };
 
+        let chain_id = ccx.caller.0;
+        let allocs = allocs.into_iter().map(|alloc| {
+            (ChainAddress(chain_id, alloc.0), alloc.1)
+        }).collect();
+
         // Then, load the allocs into the database.
         ccx.ecx
             .db
@@ -150,7 +159,7 @@ impl Cheatcode for dumpStateCall {
                 key == &CALLER ||
                 key == &HARDHAT_CONSOLE_ADDRESS ||
                 key == &TEST_CONTRACT_ADDRESS ||
-                key == &ccx.caller ||
+                key == &ccx.caller.1 ||
                 key == &ccx.state.config.evm_opts.sender ||
                 val.is_empty()
         };
@@ -160,7 +169,7 @@ impl Cheatcode for dumpStateCall {
             .journaled_state
             .state()
             .iter_mut()
-            .filter(|(key, val)| !skip(key, val))
+            .filter(|(key, val)| !skip(&key.1, val))
             .map(|(key, val)| {
                 (
                     key,
@@ -271,7 +280,8 @@ impl Cheatcode for chainIdCall {
 impl Cheatcode for coinbaseCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { newCoinbase } = self;
-        ccx.ecx.env.block.coinbase = *newCoinbase;
+        let chain_id = ccx.caller.0;
+        ccx.ecx.env.block.coinbase = ChainAddress(chain_id, *newCoinbase);
         Ok(Default::default())
     }
 }
@@ -409,9 +419,10 @@ impl Cheatcode for getBlobBaseFeeCall {
 impl Cheatcode for dealCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { account: address, newBalance: new_balance } = *self;
-        let account = journaled_account(ccx.ecx, address)?;
+        let chain_id = ccx.caller.0;
+        let account = journaled_account(ccx.ecx, ChainAddress(chain_id, address))?;
         let old_balance = std::mem::replace(&mut account.info.balance, new_balance);
-        let record = DealRecord { address, old_balance, new_balance };
+        let record = DealRecord { address: ChainAddress(chain_id, address), old_balance, new_balance };
         ccx.state.eth_deals.push(record);
         Ok(Default::default())
     }
@@ -421,9 +432,10 @@ impl Cheatcode for etchCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { target, newRuntimeBytecode } = self;
         ensure_not_precompile!(target, ccx);
-        ccx.ecx.load_account(*target)?;
+        let chain_id = ccx.caller.0;
+        ccx.ecx.load_account(ChainAddress(chain_id, *target))?;
         let bytecode = Bytecode::new_raw(Bytes::copy_from_slice(newRuntimeBytecode));
-        ccx.ecx.journaled_state.set_code(*target, bytecode);
+        ccx.ecx.journaled_state.set_code(ChainAddress(chain_id, *target), bytecode);
         Ok(Default::default())
     }
 }
@@ -431,7 +443,8 @@ impl Cheatcode for etchCall {
 impl Cheatcode for resetNonceCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { account } = self;
-        let account = journaled_account(ccx.ecx, *account)?;
+        let chain_id = ccx.caller.0;
+        let account = journaled_account(ccx.ecx, ChainAddress(chain_id, *account))?;
         // Per EIP-161, EOA nonces start at 0, but contract nonces
         // start at 1. Comparing by code_hash instead of code
         // to avoid hitting the case where account's code is None.
@@ -446,7 +459,8 @@ impl Cheatcode for resetNonceCall {
 impl Cheatcode for setNonceCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { account, newNonce } = *self;
-        let account = journaled_account(ccx.ecx, account)?;
+        let chain_id = ccx.caller.0;
+        let account = journaled_account(ccx.ecx, ChainAddress(chain_id, account))?;
         // nonce must increment only
         let current = account.info.nonce;
         ensure!(
@@ -462,7 +476,8 @@ impl Cheatcode for setNonceCall {
 impl Cheatcode for setNonceUnsafeCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { account, newNonce } = *self;
-        let account = journaled_account(ccx.ecx, account)?;
+        let chain_id = ccx.caller.0;
+        let account = journaled_account(ccx.ecx, ChainAddress(chain_id, account))?;
         account.info.nonce = newNonce;
         Ok(Default::default())
     }
@@ -472,9 +487,10 @@ impl Cheatcode for storeCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { target, slot, value } = *self;
         ensure_not_precompile!(&target, ccx);
+        let chain_id = ccx.caller.0;
         // ensure the account is touched
-        let _ = journaled_account(ccx.ecx, target)?;
-        ccx.ecx.sstore(target, slot.into(), value.into())?;
+        let _ = journaled_account(ccx.ecx, ChainAddress(chain_id, target))?;
+        ccx.ecx.sstore(ChainAddress(chain_id, target), slot.into(), value.into())?;
         Ok(Default::default())
     }
 }
@@ -482,7 +498,8 @@ impl Cheatcode for storeCall {
 impl Cheatcode for coolCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { target } = self;
-        if let Some(account) = ccx.ecx.journaled_state.state.get_mut(target) {
+        let chain_id = ccx.caller.0;
+        if let Some(account) = ccx.ecx.journaled_state.state.get_mut(&ChainAddress(chain_id, *target)) {
             account.unmark_touch();
             account.storage.clear();
         }
@@ -493,7 +510,7 @@ impl Cheatcode for coolCall {
 impl Cheatcode for readCallersCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self {} = self;
-        read_callers(ccx.state, &ccx.ecx.env.tx.caller)
+        read_callers(ccx.state, &ccx.ecx.env.tx.caller.1)
     }
 }
 
@@ -608,13 +625,14 @@ impl Cheatcode for setBlockhashCall {
             "block number must be less than or equal to the current block number"
         );
 
-        ccx.ecx.db.set_blockhash(blockNumber, blockHash);
+        let chain_id = ccx.caller.0;
+        ccx.ecx.db.set_blockhash(chain_id, blockNumber, blockHash);
 
         Ok(Default::default())
     }
 }
 
-pub(super) fn get_nonce<DB: DatabaseExt>(ccx: &mut CheatsCtxt<DB>, address: &Address) -> Result {
+pub(super) fn get_nonce<DB: DatabaseExt>(ccx: &mut CheatsCtxt<DB>, address: &ChainAddress) -> Result {
     let account = ccx.ecx.journaled_state.load_account(*address, &mut ccx.ecx.db)?;
     Ok(account.info.nonce.abi_encode())
 }
@@ -650,9 +668,9 @@ fn read_callers(state: &Cheatcodes, default_sender: &Address) -> Result {
     let mut new_origin = default_sender;
     if let Some(prank) = prank {
         mode = if prank.single_call { CallerMode::Prank } else { CallerMode::RecurrentPrank };
-        new_caller = &prank.new_caller;
+        new_caller = &prank.new_caller.1;
         if let Some(new) = &prank.new_origin {
-            new_origin = new;
+            new_origin = &new.1;
         }
     } else if let Some(broadcast) = broadcast {
         mode = if broadcast.single_call {
@@ -660,8 +678,8 @@ fn read_callers(state: &Cheatcodes, default_sender: &Address) -> Result {
         } else {
             CallerMode::RecurrentBroadcast
         };
-        new_caller = &broadcast.new_origin;
-        new_origin = &broadcast.new_origin;
+        new_caller = &broadcast.new_origin.1;
+        new_origin = &broadcast.new_origin.1;
     }
 
     Ok((mode, new_caller, new_origin).abi_encode_params())
@@ -670,7 +688,7 @@ fn read_callers(state: &Cheatcodes, default_sender: &Address) -> Result {
 /// Ensures the `Account` is loaded and touched.
 pub(super) fn journaled_account<DB: DatabaseExt>(
     ecx: &mut InnerEvmContext<DB>,
-    addr: Address,
+    addr: ChainAddress,
 ) -> Result<&mut Account> {
     ecx.load_account(addr)?;
     ecx.journaled_state.touch(&addr);

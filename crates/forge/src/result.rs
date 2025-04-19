@@ -13,6 +13,7 @@ use foundry_evm::{
     fuzz::{CounterExample, FuzzCase, FuzzFixtures, FuzzTestResult},
     traces::{CallTraceArena, CallTraceDecoder, TraceKind, Traces},
 };
+use revm_primitives::ChainAddress;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -687,7 +688,7 @@ impl TestKind {
 #[derive(Clone, Debug, Default)]
 pub struct TestSetup {
     /// The address at which the test contract was deployed
-    pub address: Address,
+    pub address: ChainAddress,
     /// The logs emitted during setup
     pub logs: Vec<Log>,
     /// Call traces of the setup
@@ -727,7 +728,7 @@ impl TestSetup {
     }
 
     pub fn success(
-        address: Address,
+        address: ChainAddress,
         logs: Vec<Log>,
         traces: Traces,
         labeled_addresses: HashMap<Address, String>,
@@ -744,7 +745,7 @@ impl TestSetup {
         reason: String,
     ) -> Self {
         Self {
-            address: Address::ZERO,
+            address: ChainAddress(0, Address::ZERO),
             logs,
             traces,
             labeled_addresses,

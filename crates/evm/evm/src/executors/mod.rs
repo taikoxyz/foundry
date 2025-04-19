@@ -28,9 +28,8 @@ use revm::{
     db::{DatabaseCommit, DatabaseRef},
     interpreter::{return_ok, InstructionResult},
     primitives::{
-        BlockEnv, Bytecode, Env, EnvWithHandlerCfg, ExecutionResult, Output, ResultAndState,
-        SpecId, TxEnv, TxKind,
-    },
+        BlockEnv, Bytecode, ChainAddress, Env, EnvWithHandlerCfg, ExecutionResult, Output, ResultAndState, SpecId, TransactTo, TxEnv, TxKind
+    }, SyncDatabaseRef,
 };
 use std::{borrow::Cow, collections::HashMap};
 
@@ -105,16 +104,20 @@ impl Executor {
     ) -> Self {
         // Need to create a non-empty contract on the cheatcodes address so `extcodesize` checks
         // do not fail.
-        backend.insert_account_info(
-            CHEATCODE_ADDRESS,
-            revm::primitives::AccountInfo {
-                code: Some(Bytecode::new_raw(Bytes::from_static(&[0]))),
-                // Also set the code hash manually so that it's not computed later.
-                // The code hash value does not matter, as long as it's not zero or `KECCAK_EMPTY`.
-                code_hash: CHEATCODE_CONTRACT_HASH,
-                ..Default::default()
-            },
-        );
+
+        // TODO(Brecht): Adding a copy per chain (hopefully), what can go wrong
+        for chain_id in 0..1000000 {
+            backend.insert_account_info(
+                ChainAddress(chain_id, CHEATCODE_ADDRESS),
+                revm::primitives::AccountInfo {
+                    code: Some(Bytecode::new_raw(Bytes::from_static(&[0]))),
+                    // Also set the code hash manually so that it's not computed later.
+                    // The code hash value does not matter, as long as it's not zero or `KECCAK_EMPTY`.
+                    code_hash: CHEATCODE_CONTRACT_HASH,
+                    ..Default::default()
+                },
+            );
+        }
 
         Self { backend, env, inspector, gas_limit, legacy_assertions }
     }
@@ -162,14 +165,15 @@ impl Executor {
     /// Creates the default CREATE2 Contract Deployer for local tests and scripts.
     pub fn deploy_create2_deployer(&mut self) -> eyre::Result<()> {
         trace!("deploying local create2 deployer");
+        let chain_id = self.env().cfg.chain_id;
         let create2_deployer_account = self
             .backend()
-            .basic_ref(DEFAULT_CREATE2_DEPLOYER)?
+            .basic_ref(ChainAddress(chain_id, DEFAULT_CREATE2_DEPLOYER))?
             .ok_or_else(|| BackendError::MissingAccount(DEFAULT_CREATE2_DEPLOYER))?;
 
         // If the deployer is not currently deployed, deploy the default one.
         if create2_deployer_account.code.map_or(true, |code| code.is_empty()) {
-            let creator = DEFAULT_CREATE2_DEPLOYER_DEPLOYER;
+            let creator = ChainAddress(chain_id, DEFAULT_CREATE2_DEPLOYER_DEPLOYER);
 
             // Probably 0, but just in case.
             let initial_balance = self.get_balance(creator)?;
@@ -185,7 +189,7 @@ impl Executor {
     }
 
     /// Set the balance of an account.
-    pub fn set_balance(&mut self, address: Address, amount: U256) -> BackendResult<()> {
+    pub fn set_balance(&mut self, address: ChainAddress, amount: U256) -> BackendResult<()> {
         trace!(?address, ?amount, "setting account balance");
         let mut account = self.backend().basic_ref(address)?.unwrap_or_default();
         account.balance = amount;
@@ -194,12 +198,12 @@ impl Executor {
     }
 
     /// Gets the balance of an account
-    pub fn get_balance(&self, address: Address) -> BackendResult<U256> {
+    pub fn get_balance(&self, address: ChainAddress) -> BackendResult<U256> {
         Ok(self.backend().basic_ref(address)?.map(|acc| acc.balance).unwrap_or_default())
     }
 
     /// Set the nonce of an account.
-    pub fn set_nonce(&mut self, address: Address, nonce: u64) -> BackendResult<()> {
+    pub fn set_nonce(&mut self, address: ChainAddress, nonce: u64) -> BackendResult<()> {
         let mut account = self.backend().basic_ref(address)?.unwrap_or_default();
         account.nonce = nonce;
         self.backend_mut().insert_account_info(address, account);
@@ -207,12 +211,12 @@ impl Executor {
     }
 
     /// Returns the nonce of an account.
-    pub fn get_nonce(&self, address: Address) -> BackendResult<u64> {
+    pub fn get_nonce(&self, address: ChainAddress) -> BackendResult<u64> {
         Ok(self.backend().basic_ref(address)?.map(|acc| acc.nonce).unwrap_or_default())
     }
 
     /// Returns `true` if the account has no code.
-    pub fn is_empty_code(&self, address: Address) -> BackendResult<bool> {
+    pub fn is_empty_code(&self, address: ChainAddress) -> BackendResult<bool> {
         Ok(self.backend().basic_ref(address)?.map(|acc| acc.is_empty_code_hash()).unwrap_or(true))
     }
 
@@ -240,12 +244,12 @@ impl Executor {
     /// modifications.
     pub fn deploy(
         &mut self,
-        from: Address,
+        from: ChainAddress,
         code: Bytes,
         value: U256,
         rd: Option<&RevertDecoder>,
     ) -> Result<DeployResult, EvmError> {
-        let env = self.build_test_env(from, TxKind::Create, code, value);
+        let env = self.build_test_env(from, TransactTo::Create, code, value);
         self.deploy_with_env(env, rd)
     }
 
@@ -262,11 +266,13 @@ impl Executor {
         rd: Option<&RevertDecoder>,
     ) -> Result<DeployResult, EvmError> {
         assert!(
-            matches!(env.tx.transact_to, TxKind::Create),
+            matches!(env.tx.transact_to, TransactTo::Create),
             "Expected create transaction, got {:?}",
             env.tx.transact_to
         );
         trace!(sender=%env.tx.caller, "deploying contract");
+
+        let chain_id = env.env.cfg.chain_id;
 
         let mut result = self.transact_with_env(env)?;
         result = result.into_result(rd)?;
@@ -276,7 +282,7 @@ impl Executor {
 
         // also mark this library as persistent, this will ensure that the state of the library is
         // persistent across fork swaps in forking mode
-        self.backend_mut().add_persistent_account(address);
+        self.backend_mut().add_persistent_account(ChainAddress(chain_id, address));
 
         debug!(%address, "deployed contract");
 
@@ -292,16 +298,21 @@ impl Executor {
     #[instrument(name = "setup", level = "debug", skip_all)]
     pub fn setup(
         &mut self,
-        from: Option<Address>,
-        to: Address,
+        from: Option<ChainAddress>,
+        to: ChainAddress,
         rd: Option<&RevertDecoder>,
     ) -> Result<RawCallResult, EvmError> {
+        println!("setting up contract {:?} {:?}", from, to);
+
         trace!(?from, ?to, "setting up contract");
 
-        let from = from.unwrap_or(CALLER);
+        let from = from.unwrap_or(ChainAddress(to.0, CALLER));
         self.backend_mut().set_test_contract(to).set_caller(from);
         let calldata = Bytes::from_static(&ITest::setUpCall::SELECTOR);
         let mut res = self.transact_raw(from, to, calldata, U256::ZERO)?;
+
+        // println!("res (contract): {:?}", res);
+
         res = res.into_result(rd)?;
 
         // record any changes made to the block's environment during setup
@@ -321,13 +332,14 @@ impl Executor {
     /// Performs a call to an account on the current state of the VM.
     pub fn call(
         &self,
-        from: Address,
-        to: Address,
+        from: ChainAddress,
+        to: ChainAddress,
         func: &Function,
         args: &[DynSolValue],
         value: U256,
         rd: Option<&RevertDecoder>,
     ) -> Result<CallResult, EvmError> {
+        println!("call");
         let calldata = Bytes::from(func.abi_encode_input(args)?);
         let result = self.call_raw(from, to, calldata, value)?;
         result.into_decoded_result(func, rd)
@@ -336,12 +348,13 @@ impl Executor {
     /// Performs a call to an account on the current state of the VM.
     pub fn call_sol<C: SolCall>(
         &self,
-        from: Address,
-        to: Address,
+        from: ChainAddress,
+        to: ChainAddress,
         args: &C,
         value: U256,
         rd: Option<&RevertDecoder>,
     ) -> Result<CallResult<C::Return>, EvmError> {
+        println!("call_sol");
         let calldata = Bytes::from(args.abi_encode());
         let mut raw = self.call_raw(from, to, calldata, value)?;
         raw = raw.into_result(rd)?;
@@ -351,13 +364,14 @@ impl Executor {
     /// Performs a call to an account on the current state of the VM.
     pub fn transact(
         &mut self,
-        from: Address,
-        to: Address,
+        from: ChainAddress,
+        to: ChainAddress,
         func: &Function,
         args: &[DynSolValue],
         value: U256,
         rd: Option<&RevertDecoder>,
     ) -> Result<CallResult, EvmError> {
+        println!("transact");
         let calldata = Bytes::from(func.abi_encode_input(args)?);
         let result = self.transact_raw(from, to, calldata, value)?;
         result.into_decoded_result(func, rd)
@@ -366,24 +380,26 @@ impl Executor {
     /// Performs a raw call to an account on the current state of the VM.
     pub fn call_raw(
         &self,
-        from: Address,
-        to: Address,
+        from: ChainAddress,
+        to: ChainAddress,
         calldata: Bytes,
         value: U256,
     ) -> eyre::Result<RawCallResult> {
-        let env = self.build_test_env(from, TxKind::Call(to), calldata, value);
+        println!("call_raw");
+        let env = self.build_test_env(from, TransactTo::Call(to), calldata, value);
         self.call_with_env(env)
     }
 
     /// Performs a raw call to an account on the current state of the VM.
     pub fn transact_raw(
         &mut self,
-        from: Address,
-        to: Address,
+        from: ChainAddress,
+        to: ChainAddress,
         calldata: Bytes,
         value: U256,
     ) -> eyre::Result<RawCallResult> {
-        let env = self.build_test_env(from, TxKind::Call(to), calldata, value);
+        println!("transact_raw");
+        let env = self.build_test_env(from, TransactTo::Call(to), calldata, value);
         self.transact_with_env(env)
     }
 
@@ -392,6 +408,7 @@ impl Executor {
     /// The state after the call is **not** persisted.
     #[instrument(name = "call", level = "debug", skip_all)]
     pub fn call_with_env(&self, mut env: EnvWithHandlerCfg) -> eyre::Result<RawCallResult> {
+        println!("call_with_env");
         let mut inspector = self.inspector().clone();
         let mut backend = CowBackend::new_borrowed(self.backend());
         let result = backend.inspect(&mut env, &mut inspector)?;
@@ -401,6 +418,7 @@ impl Executor {
     /// Execute the transaction configured in `env.tx`.
     #[instrument(name = "transact", level = "debug", skip_all)]
     pub fn transact_with_env(&mut self, mut env: EnvWithHandlerCfg) -> eyre::Result<RawCallResult> {
+        println!("transact_with_env");
         let mut inspector = self.inspector().clone();
         let backend = self.backend_mut();
         let result = backend.inspect(&mut env, &mut inspector)?;
@@ -443,7 +461,7 @@ impl Executor {
     /// internally when calling `failed()`.
     pub fn is_raw_call_mut_success(
         &self,
-        address: Address,
+        address: ChainAddress,
         call_result: &mut RawCallResult,
         should_fail: bool,
     ) -> bool {
@@ -460,7 +478,7 @@ impl Executor {
     /// This is the same as [`Self::is_success`], but intended for outcomes of [`Self::call_raw`].
     pub fn is_raw_call_success(
         &self,
-        address: Address,
+        address: ChainAddress,
         state_changeset: Cow<'_, StateChangeset>,
         call_result: &RawCallResult,
         should_fail: bool,
@@ -495,7 +513,7 @@ impl Executor {
     /// - forge-std: <https://github.com/foundry-rs/forge-std/blob/19891e6a0b5474b9ea6827ddb90bb9388f7acfc0/src/StdAssertions.sol#L38-L44>
     pub fn is_success(
         &self,
-        address: Address,
+        address: ChainAddress,
         reverted: bool,
         state_changeset: Cow<'_, StateChangeset>,
         should_fail: bool,
@@ -507,7 +525,7 @@ impl Executor {
     #[instrument(name = "is_success", level = "debug", skip_all)]
     fn is_success_raw(
         &self,
-        address: Address,
+        address: ChainAddress,
         reverted: bool,
         state_changeset: Cow<'_, StateChangeset>,
     ) -> bool {
@@ -522,14 +540,14 @@ impl Executor {
         }
 
         // Check the global failure slot.
-        if let Some(acc) = state_changeset.get(&CHEATCODE_ADDRESS) {
+        if let Some(acc) = state_changeset.get(&ChainAddress(address.0, CHEATCODE_ADDRESS)) {
             if let Some(failed_slot) = acc.storage.get(&GLOBAL_FAIL_SLOT) {
                 if !failed_slot.present_value().is_zero() {
                     return false;
                 }
             }
         }
-        if let Ok(failed_slot) = self.backend().storage_ref(CHEATCODE_ADDRESS, GLOBAL_FAIL_SLOT) {
+        if let Ok(failed_slot) = self.backend().storage_ref(ChainAddress(address.0, CHEATCODE_ADDRESS), GLOBAL_FAIL_SLOT) {
             if !failed_slot.is_zero() {
                 return false;
             }
@@ -546,7 +564,7 @@ impl Executor {
 
             // We only clone the test contract and cheatcode accounts,
             // that's all we need to evaluate success.
-            for address in [address, CHEATCODE_ADDRESS] {
+            for address in [address, ChainAddress(address.0, CHEATCODE_ADDRESS)] {
                 let Ok(acc) = self.backend().basic_ref(address) else { return false };
                 backend.insert_account_info(address, acc.unwrap_or_default());
             }
@@ -559,7 +577,7 @@ impl Executor {
 
             // Check if a DSTest assertion failed
             let executor = self.clone_with_backend(backend);
-            let call = executor.call_sol(CALLER, address, &ITest::failedCall {}, U256::ZERO, None);
+            let call = executor.call_sol(ChainAddress(address.0, CALLER), address, &ITest::failedCall {}, U256::ZERO, None);
             match call {
                 Ok(CallResult { raw: _, decoded_result: ITest::failedReturn { failed } }) => {
                     trace!(failed, "DSTest::failed()");
@@ -579,8 +597,8 @@ impl Executor {
     /// the cheatcode state inbetween calls.
     fn build_test_env(
         &self,
-        caller: Address,
-        transact_to: TxKind,
+        caller: ChainAddress,
+        transact_to: TransactTo,
         data: Bytes,
         value: U256,
     ) -> EnvWithHandlerCfg {
@@ -610,11 +628,11 @@ impl Executor {
         EnvWithHandlerCfg::new_with_spec_id(Box::new(env), self.spec_id())
     }
 
-    pub fn call_sol_default<C: SolCall>(&self, to: Address, args: &C) -> C::Return
+    pub fn call_sol_default<C: SolCall>(&self, to: ChainAddress, args: &C) -> C::Return
     where
         C::Return: Default,
     {
-        self.call_sol(CALLER, to, args, U256::ZERO, None)
+        self.call_sol(ChainAddress(to.0, CALLER), to, args, U256::ZERO, None)
             .map(|c| c.decoded_result)
             .inspect_err(|e| warn!(target: "forge::test", "failed calling {:?}: {e}", C::SIGNATURE))
             .unwrap_or_default()
@@ -848,11 +866,11 @@ fn convert_executed_result(
         ExecutionResult::Success { reason, gas_used, gas_refunded, output, logs, .. } => {
             (reason.into(), gas_refunded, gas_used, Some(output), logs)
         }
-        ExecutionResult::Revert { gas_used, output } => {
+        ExecutionResult::Revert { gas_used, output, gas_used_per_chain } => {
             // Need to fetch the unused gas
             (InstructionResult::Revert, 0_u64, gas_used, Some(Output::Call(output)), vec![])
         }
-        ExecutionResult::Halt { reason, gas_used } => {
+        ExecutionResult::Halt { reason, gas_used, gas_used_per_chain } => {
             (reason.into(), 0_u64, gas_used, None, vec![])
         }
     };

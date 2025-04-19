@@ -38,7 +38,7 @@ use foundry_compilers::{
 };
 use inflector::Inflector;
 use regex::Regex;
-use revm_primitives::{FixedBytes, SpecId};
+use revm_primitives::{ChainAddress, FixedBytes, SpecId};
 use semver::Version;
 use serde::{Deserialize, Serialize, Serializer};
 use std::{
@@ -278,7 +278,7 @@ pub struct Config {
     /// The address which will be executing all tests
     pub sender: Address,
     /// The tx.origin value during EVM execution
-    pub tx_origin: Address,
+    pub tx_origin: ChainAddress,
     /// the initial balance of each deployed test contract
     pub initial_balance: U256,
     /// the block.number value during EVM execution
@@ -300,7 +300,7 @@ pub struct Config {
     /// The base fee in a block.
     pub block_base_fee_per_gas: u64,
     /// The `block.coinbase` value during EVM execution.
-    pub block_coinbase: Address,
+    pub block_coinbase: ChainAddress,
     /// The `block.timestamp` value during EVM execution.
     pub block_timestamp: u64,
     /// The `block.difficulty` value during EVM execution.
@@ -585,6 +585,7 @@ impl Config {
     /// ```
     pub fn try_from<T: Provider>(provider: T) -> Result<Self, ExtractConfigError> {
         let figment = Figment::from(provider);
+        //println!("figment: {:?}", figment);
         let mut config = figment.extract::<Self>().map_err(ExtractConfigError::new)?;
         config.profile = figment.profile().clone();
         Ok(config)
@@ -2112,7 +2113,7 @@ impl Default for Config {
             ffi: false,
             prompt_timeout: 120,
             sender: Self::DEFAULT_SENDER,
-            tx_origin: Self::DEFAULT_SENDER,
+            tx_origin: ChainAddress(1, Self::DEFAULT_SENDER),
             initial_balance: U256::from((1u128 << 96) - 1),
             block_number: 1,
             fork_block_number: None,
@@ -2121,7 +2122,7 @@ impl Default for Config {
             code_size_limit: None,
             gas_price: None,
             block_base_fee_per_gas: 0,
-            block_coinbase: Address::ZERO,
+            block_coinbase: ChainAddress(0, Address::ZERO),
             block_timestamp: 1,
             block_difficulty: 0,
             block_prevrandao: Default::default(),

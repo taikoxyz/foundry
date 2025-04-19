@@ -79,6 +79,7 @@ use foundry_evm::{
 };
 use futures::channel::{mpsc::Receiver, oneshot};
 use parking_lot::RwLock;
+use revm::{primitives::ChainAddress, SyncDatabaseRef};
 use std::{
     collections::{HashMap, HashSet},
     future::Future,
@@ -156,15 +157,17 @@ impl EthApi {
 
     /// Executes the [EthRequest] and returns an RPC [ResponseResult].
     pub async fn execute(&self, request: EthRequest) -> ResponseResult {
+        println!("EthRequest execute");
+        let chain_id = self.chain_id();
         trace!(target: "rpc::api", "executing eth request");
         match request {
             EthRequest::Web3ClientVersion(()) => self.client_version().to_rpc_result(),
             EthRequest::Web3Sha3(content) => self.sha3(content).to_rpc_result(),
             EthRequest::EthGetAccount(addr, block) => {
-                self.get_account(addr, block).await.to_rpc_result()
+                self.get_account(ChainAddress(chain_id, addr), block).await.to_rpc_result()
             }
             EthRequest::EthGetBalance(addr, block) => {
-                self.balance(addr, block).await.to_rpc_result()
+                self.balance(ChainAddress(chain_id, addr), block).await.to_rpc_result()
             }
             EthRequest::EthGetTransactionByHash(hash) => {
                 self.transaction_by_hash(hash).await.to_rpc_result()
@@ -183,7 +186,7 @@ impl EthApi {
             EthRequest::EthAccounts(_) => self.accounts().to_rpc_result(),
             EthRequest::EthBlockNumber(_) => self.block_number().to_rpc_result(),
             EthRequest::EthGetStorageAt(addr, slot, block) => {
-                self.storage_at(addr, slot, block).await.to_rpc_result()
+                self.storage_at(ChainAddress(chain_id, addr), slot, block).await.to_rpc_result()
             }
             EthRequest::EthGetBlockByHash(hash, full) => {
                 if full {
@@ -200,7 +203,7 @@ impl EthApi {
                 }
             }
             EthRequest::EthGetTransactionCount(addr, block) => {
-                self.transaction_count(addr, block).await.to_rpc_result()
+                self.transaction_count(ChainAddress(chain_id, addr), block).await.to_rpc_result()
             }
             EthRequest::EthGetTransactionCountByHash(hash) => {
                 self.block_transaction_count_by_hash(hash).await.to_rpc_result()
@@ -215,10 +218,10 @@ impl EthApi {
                 self.block_uncles_count_by_number(num).await.to_rpc_result()
             }
             EthRequest::EthGetCodeAt(addr, block) => {
-                self.get_code(addr, block).await.to_rpc_result()
+                self.get_code(ChainAddress(chain_id, addr), block).await.to_rpc_result()
             }
             EthRequest::EthGetProof(addr, keys, block) => {
-                self.get_proof(addr, keys, block).await.to_rpc_result()
+                self.get_proof(ChainAddress(chain_id, addr), keys, block).await.to_rpc_result()
             }
             EthRequest::EthSign(addr, content) => self.sign(addr, content).await.to_rpc_result(),
             EthRequest::PersonalSign(content, addr) => {
@@ -331,18 +334,18 @@ impl EthApi {
                 self.anvil_reset(fork.and_then(|p| p.params)).await.to_rpc_result()
             }
             EthRequest::SetBalance(addr, val) => {
-                self.anvil_set_balance(addr, val).await.to_rpc_result()
+                self.anvil_set_balance(ChainAddress(chain_id, addr), val).await.to_rpc_result()
             }
             EthRequest::SetCode(addr, code) => {
-                self.anvil_set_code(addr, code).await.to_rpc_result()
+                self.anvil_set_code(ChainAddress(chain_id, addr), code).await.to_rpc_result()
             }
             EthRequest::SetNonce(addr, nonce) => {
-                self.anvil_set_nonce(addr, nonce).await.to_rpc_result()
+                self.anvil_set_nonce(ChainAddress(chain_id, addr), nonce).await.to_rpc_result()
             }
             EthRequest::SetStorageAt(addr, slot, val) => {
-                self.anvil_set_storage_at(addr, slot, val).await.to_rpc_result()
+                self.anvil_set_storage_at(ChainAddress(chain_id, addr), slot, val).await.to_rpc_result()
             }
-            EthRequest::SetCoinbase(addr) => self.anvil_set_coinbase(addr).await.to_rpc_result(),
+            EthRequest::SetCoinbase(addr) => self.anvil_set_coinbase(ChainAddress(chain_id, addr)).await.to_rpc_result(),
             EthRequest::SetChainId(id) => self.anvil_set_chain_id(id).await.to_rpc_result(),
             EthRequest::SetLogging(log) => self.anvil_set_logging(log).await.to_rpc_result(),
             EthRequest::SetMinGasPrice(gas) => {
@@ -414,7 +417,7 @@ impl EthApi {
             EthRequest::OtsGetInternalOperations(hash) => {
                 self.ots_get_internal_operations(hash).await.to_rpc_result()
             }
-            EthRequest::OtsHasCode(addr, num) => self.ots_has_code(addr, num).await.to_rpc_result(),
+            EthRequest::OtsHasCode(addr, num) => self.ots_has_code(ChainAddress(chain_id, addr), num).await.to_rpc_result(),
             EthRequest::OtsTraceTransaction(hash) => {
                 self.ots_trace_transaction(hash).await.to_rpc_result()
             }
@@ -443,7 +446,7 @@ impl EthApi {
                 self.ots_get_contract_creator(address).await.to_rpc_result()
             }
             EthRequest::RemovePoolTransactions(address) => {
-                self.anvil_remove_pool_transactions(address).await.to_rpc_result()
+                self.anvil_remove_pool_transactions(ChainAddress(chain_id, address)).await.to_rpc_result()
             }
             EthRequest::Reorg(reorg_options) => {
                 self.anvil_reorg(reorg_options).await.to_rpc_result()
@@ -542,7 +545,7 @@ impl EthApi {
     /// Returns the client coinbase address.
     ///
     /// Handler for ETH RPC call: `eth_coinbase`
-    pub fn author(&self) -> Result<Address> {
+    pub fn author(&self) -> Result<ChainAddress> {
         node_info!("eth_coinbase");
         Ok(self.backend.coinbase())
     }
@@ -653,7 +656,7 @@ impl EthApi {
     /// Returns balance of the given account.
     ///
     /// Handler for ETH RPC call: `eth_getBalance`
-    pub async fn balance(&self, address: Address, block_number: Option<BlockId>) -> Result<U256> {
+    pub async fn balance(&self, address: ChainAddress, block_number: Option<BlockId>) -> Result<U256> {
         node_info!("eth_getBalance");
         let block_request = self.block_request(block_number).await?;
 
@@ -661,7 +664,7 @@ impl EthApi {
         if let BlockRequest::Number(number) = block_request {
             if let Some(fork) = self.get_fork() {
                 if fork.predates_fork(number) {
-                    return Ok(fork.get_balance(address, number).await?)
+                    return Ok(fork.get_balance(address.1, number).await?)
                 }
             }
         }
@@ -674,7 +677,7 @@ impl EthApi {
     /// Handler for ETH RPC call: `eth_getAccount`
     pub async fn get_account(
         &self,
-        address: Address,
+        address: ChainAddress,
         block_number: Option<BlockId>,
     ) -> Result<Account> {
         node_info!("eth_getAccount");
@@ -697,7 +700,7 @@ impl EthApi {
     /// Handler for ETH RPC call: `eth_getStorageAt`
     pub async fn storage_at(
         &self,
-        address: Address,
+        address: ChainAddress,
         index: U256,
         block_number: Option<BlockId>,
     ) -> Result<B256> {
@@ -768,7 +771,7 @@ impl EthApi {
     /// Handler for ETH RPC call: `eth_getTransactionCount`
     pub async fn transaction_count(
         &self,
-        address: Address,
+        address: ChainAddress,
         block_number: Option<BlockId>,
     ) -> Result<U256> {
         node_info!("eth_getTransactionCount");
@@ -837,7 +840,7 @@ impl EthApi {
     /// Returns the code at given address at given time (block number).
     ///
     /// Handler for ETH RPC call: `eth_getCode`
-    pub async fn get_code(&self, address: Address, block_number: Option<BlockId>) -> Result<Bytes> {
+    pub async fn get_code(&self, address: ChainAddress, block_number: Option<BlockId>) -> Result<Bytes> {
         node_info!("eth_getCode");
         let block_request = self.block_request(block_number).await?;
         // check if the number predates the fork, if in fork mode
@@ -857,7 +860,7 @@ impl EthApi {
     /// Handler for ETH RPC call: `eth_getProof`
     pub async fn get_proof(
         &self,
-        address: Address,
+        address: ChainAddress,
         keys: Vec<B256>,
         block_number: Option<BlockId>,
     ) -> Result<EIP1186AccountProofResponse> {
@@ -937,7 +940,9 @@ impl EthApi {
             self.accounts()?.first().cloned().ok_or(BlockchainError::NoSignerAvailable)
         })?;
 
-        let (nonce, _) = self.request_nonce(&request, from).await?;
+        let chain_id = request.chain_id.unwrap();
+
+        let (nonce, _) = self.request_nonce(&request, ChainAddress(chain_id, from)).await?;
 
         if request.gas.is_none() {
             // estimate if not provided
@@ -961,10 +966,11 @@ impl EthApi {
     ) -> Result<TxHash> {
         node_info!("eth_sendTransaction");
 
+        let chain_id = request.chain_id.unwrap();
         let from = request.from.map(Ok).unwrap_or_else(|| {
             self.accounts()?.first().cloned().ok_or(BlockchainError::NoSignerAvailable)
         })?;
-        let (nonce, on_chain_nonce) = self.request_nonce(&request, from).await?;
+        let (nonce, on_chain_nonce) = self.request_nonce(&request, ChainAddress(chain_id, from)).await?;
 
         if request.gas.is_none() {
             // estimate if not provided
@@ -975,23 +981,25 @@ impl EthApi {
 
         let request = self.build_typed_tx_request(request, nonce)?;
 
+        let from = ChainAddress(chain_id, from);
+
         // if the sender is currently impersonated we need to "bypass" signing
-        let pending_transaction = if self.is_impersonated(from) {
+        let pending_transaction = if self.is_impersonated(from.1) {
             let bypass_signature = self.impersonated_signature(&request);
             let transaction = sign::build_typed_transaction(request, bypass_signature)?;
             self.ensure_typed_transaction_supported(&transaction)?;
             trace!(target : "node", ?from, "eth_sendTransaction: impersonating");
             PendingTransaction::with_impersonated(transaction, from)
         } else {
-            let transaction = self.sign_request(&from, request)?;
+            let transaction = self.sign_request(&from.1, request)?;
             self.ensure_typed_transaction_supported(&transaction)?;
             PendingTransaction::new(transaction)?
         };
         // pre-validate
         self.backend.validate_pool_transaction(&pending_transaction).await?;
 
-        let requires = required_marker(nonce, on_chain_nonce, from);
-        let provides = vec![to_marker(nonce, from)];
+        let requires = required_marker(nonce, on_chain_nonce, from.1);
+        let provides = vec![to_marker(nonce, from.1)];
         debug_assert!(requires != provides);
 
         self.add_pending_transaction(pending_transaction, requires, provides)
@@ -1020,12 +1028,12 @@ impl EthApi {
         let on_chain_nonce = self.backend.current_nonce(*pending_transaction.sender()).await?;
         let from = *pending_transaction.sender();
         let nonce = pending_transaction.transaction.nonce();
-        let requires = required_marker(nonce, on_chain_nonce, from);
+        let requires = required_marker(nonce, on_chain_nonce, from.1);
 
         let priority = self.transaction_priority(&pending_transaction.transaction);
         let pool_transaction = PoolTransaction {
             requires,
-            provides: vec![to_marker(nonce, *pending_transaction.sender())],
+            provides: vec![to_marker(nonce, pending_transaction.sender().1)],
             pending_transaction,
             priority,
         };
@@ -1180,7 +1188,7 @@ impl EthApi {
             );
             // we set the from field here explicitly to the set sender of the pending transaction,
             // in case the transaction is impersonated.
-            tx.from = from;
+            tx.from = from.1;
             tx
         });
         if tx.is_none() {
@@ -1749,7 +1757,7 @@ impl EthApi {
     /// Modifies the balance of an account.
     ///
     /// Handler for RPC call: `anvil_setBalance`
-    pub async fn anvil_set_balance(&self, address: Address, balance: U256) -> Result<()> {
+    pub async fn anvil_set_balance(&self, address: ChainAddress, balance: U256) -> Result<()> {
         node_info!("anvil_setBalance");
         self.backend.set_balance(address, balance).await?;
         Ok(())
@@ -1758,7 +1766,7 @@ impl EthApi {
     /// Sets the code of a contract.
     ///
     /// Handler for RPC call: `anvil_setCode`
-    pub async fn anvil_set_code(&self, address: Address, code: Bytes) -> Result<()> {
+    pub async fn anvil_set_code(&self, address: ChainAddress, code: Bytes) -> Result<()> {
         node_info!("anvil_setCode");
         self.backend.set_code(address, code).await?;
         Ok(())
@@ -1767,7 +1775,7 @@ impl EthApi {
     /// Sets the nonce of an address.
     ///
     /// Handler for RPC call: `anvil_setNonce`
-    pub async fn anvil_set_nonce(&self, address: Address, nonce: U256) -> Result<()> {
+    pub async fn anvil_set_nonce(&self, address: ChainAddress, nonce: U256) -> Result<()> {
         node_info!("anvil_setNonce");
         self.backend.set_nonce(address, nonce).await?;
         Ok(())
@@ -1778,7 +1786,7 @@ impl EthApi {
     /// Handler for RPC call: `anvil_setStorageAt`
     pub async fn anvil_set_storage_at(
         &self,
-        address: Address,
+        address: ChainAddress,
         slot: U256,
         val: B256,
     ) -> Result<bool> {
@@ -1829,7 +1837,7 @@ impl EthApi {
     /// Sets the coinbase address.
     ///
     /// Handler for RPC call: `anvil_setCoinbase`
-    pub async fn anvil_set_coinbase(&self, address: Address) -> Result<()> {
+    pub async fn anvil_set_coinbase(&self, address: ChainAddress) -> Result<()> {
         node_info!("anvil_setCoinbase");
         self.backend.set_coinbase(address);
         Ok(())
@@ -1921,7 +1929,7 @@ impl EthApi {
         })
     }
 
-    pub async fn anvil_remove_pool_transactions(&self, address: Address) -> Result<()> {
+    pub async fn anvil_remove_pool_transactions(&self, address: ChainAddress) -> Result<()> {
         node_info!("anvil_removePoolTransactions");
         self.pool.remove_transactions_by_address(address);
         Ok(())
@@ -2003,9 +2011,11 @@ impl EthApi {
                     self.accounts()?.first().cloned().ok_or(BlockchainError::NoSignerAvailable)
                 })?;
 
+                let chain_id = tx_req.chain_id.unwrap();
+
                 // Get the nonce at the common block
                 let curr_nonce = nonces.entry(from).or_insert(
-                    self.get_transaction_count(from, Some(common_block.header.number.into()))
+                    self.get_transaction_count(ChainAddress(chain_id, from), Some(common_block.header.number.into()))
                         .await?,
                 );
 
@@ -2027,7 +2037,7 @@ impl EthApi {
                     let bypass_signature = self.impersonated_signature(&typed);
                     let transaction = sign::build_typed_transaction(typed, bypass_signature)?;
                     self.ensure_typed_transaction_supported(&transaction)?;
-                    PendingTransaction::with_impersonated(transaction, from)
+                    PendingTransaction::with_impersonated(transaction, ChainAddress(chain_id, from))
                 } else {
                     let transaction = self.sign_request(&from, typed)?;
                     self.ensure_typed_transaction_supported(&transaction)?;
@@ -2251,7 +2261,8 @@ impl EthApi {
         // either use the impersonated account of the request's `from` field
         let from = request.from.ok_or(BlockchainError::NoSignerAvailable)?;
 
-        let (nonce, on_chain_nonce) = self.request_nonce(&request, from).await?;
+        let chain_id = request.chain_id.unwrap();
+        let (nonce, on_chain_nonce) = self.request_nonce(&request, ChainAddress(chain_id, from)).await?;
 
         let request = self.build_typed_tx_request(request, nonce)?;
 
@@ -2260,7 +2271,7 @@ impl EthApi {
 
         self.ensure_typed_transaction_supported(&transaction)?;
 
-        let pending_transaction = PendingTransaction::with_impersonated(transaction, from);
+        let pending_transaction = PendingTransaction::with_impersonated(transaction, ChainAddress(chain_id, from));
 
         // pre-validate
         self.backend.validate_pool_transaction(&pending_transaction).await?;
@@ -2297,7 +2308,7 @@ impl EthApi {
             let gas_price = tx.gas_price();
             let value = tx.value();
             let gas = tx.gas_limit();
-            TxpoolInspectSummary { to, value, gas, gas_price }
+            TxpoolInspectSummary { to: to.map(|a| a.1), value, gas, gas_price }
         }
 
         // Note: naming differs geth vs anvil:
@@ -2307,12 +2318,12 @@ impl EthApi {
         // not in sequence. The transaction nonce is an incrementing number for each transaction
         // with the same From address.
         for pending in self.pool.ready_transactions() {
-            let entry = inspect.pending.entry(*pending.pending_transaction.sender()).or_default();
+            let entry = inspect.pending.entry(pending.pending_transaction.sender().1).or_default();
             let key = pending.pending_transaction.nonce().to_string();
             entry.insert(key, convert(pending));
         }
         for queued in self.pool.pending_transactions() {
-            let entry = inspect.pending.entry(*queued.pending_transaction.sender()).or_default();
+            let entry = inspect.pending.entry(queued.pending_transaction.sender().1).or_default();
             let key = queued.pending_transaction.nonce().to_string();
             entry.insert(key, convert(queued));
         }
@@ -2340,17 +2351,17 @@ impl EthApi {
 
             // we set the from field here explicitly to the set sender of the pending transaction,
             // in case the transaction is impersonated.
-            tx.from = from;
+            tx.from = from.1;
             tx.inner
         }
 
         for pending in self.pool.ready_transactions() {
-            let entry = content.pending.entry(*pending.pending_transaction.sender()).or_default();
+            let entry = content.pending.entry(pending.pending_transaction.sender().1).or_default();
             let key = pending.pending_transaction.nonce().to_string();
             entry.insert(key, convert(pending));
         }
         for queued in self.pool.pending_transactions() {
-            let entry = content.pending.entry(*queued.pending_transaction.sender()).or_default();
+            let entry = content.pending.entry(queued.pending_transaction.sender().1).or_default();
             let key = queued.pending_transaction.nonce().to_string();
             entry.insert(key, convert(queued));
         }
@@ -2432,6 +2443,7 @@ impl EthApi {
             .with_database_at(Some(block_request), |mut state, block| {
                 if let Some(overrides) = overrides {
                     state = Box::new(state::apply_state_override(
+                        request.chain_id.unwrap(),
                         overrides.into_iter().collect(),
                         state,
                     )?);
@@ -2451,7 +2463,7 @@ impl EthApi {
         block_env: BlockEnv,
     ) -> Result<u128>
     where
-        D: DatabaseRef<Error = DatabaseError>,
+        D: SyncDatabaseRef<Error = DatabaseError>,
     {
         // If the request is a simple native token transfer we can optimize
         // We assume it's a transfer if we have no input data.
@@ -2464,7 +2476,8 @@ impl EthApi {
 
         if maybe_transfer {
             if let Some(to) = to {
-                if let Ok(target_code) = self.backend.get_code_with_state(&state, *to) {
+                let chain_id = block_env.coinbase.0;
+                if let Ok(target_code) = self.backend.get_code_with_state(&state, ChainAddress(chain_id, *to)) {
                     if target_code.as_ref().is_empty() {
                         return Ok(MIN_TRANSACTION_GAS);
                     }
@@ -2488,7 +2501,8 @@ impl EthApi {
         // If we have non-zero gas price, cap gas limit by sender balance
         if gas_price > 0 {
             if let Some(from) = request.from {
-                let mut available_funds = self.backend.get_balance_with_state(&state, from)?;
+                let chain_id = block_env.coinbase.0;
+                let mut available_funds = self.backend.get_balance_with_state(&state, ChainAddress(chain_id, from))?;
                 if let Some(value) = request.value {
                     if value > available_funds {
                         return Err(InvalidTransactionError::InsufficientFunds.into());
@@ -2779,7 +2793,7 @@ impl EthApi {
     /// Returns the nonce of the `address` depending on the `block_number`
     async fn get_transaction_count(
         &self,
-        address: Address,
+        address: ChainAddress,
         block_number: Option<BlockId>,
     ) -> Result<u64> {
         let block_request = self.block_request(block_number).await?;
@@ -2805,7 +2819,7 @@ impl EthApi {
     async fn request_nonce(
         &self,
         request: &TransactionRequest,
-        from: Address,
+        from: ChainAddress,
     ) -> Result<(u64, u64)> {
         let highest_nonce =
             self.get_transaction_count(from, Some(BlockId::Number(BlockNumber::Pending))).await?;
@@ -2831,8 +2845,8 @@ impl EthApi {
     }
 
     /// Returns the current state root
-    pub async fn state_root(&self) -> Option<B256> {
-        self.backend.get_db().read().await.maybe_state_root()
+    pub async fn state_root(&self, chain_id: u64) -> Option<B256> {
+        self.backend.get_db().read().await.maybe_state_root(chain_id)
     }
 
     /// additional validation against hardfork

@@ -10,7 +10,7 @@ use revm::{
     interpreter::{
         CallInputs, CallOutcome, Gas, InstructionResult, Interpreter, InterpreterResult,
     },
-    Database, EvmContext, Inspector,
+    Database, EvmContext, Inspector, SyncDatabase,
 };
 
 /// An inspector that collects logs during execution.
@@ -40,7 +40,7 @@ impl LogCollector {
     }
 }
 
-impl<DB: Database> Inspector<DB> for LogCollector {
+impl<DB: SyncDatabase> Inspector<DB> for LogCollector {
     fn log(&mut self, _interp: &mut Interpreter, _context: &mut EvmContext<DB>, log: &Log) {
         self.logs.push(log.clone());
     }
@@ -50,7 +50,7 @@ impl<DB: Database> Inspector<DB> for LogCollector {
         _context: &mut EvmContext<DB>,
         inputs: &mut CallInputs,
     ) -> Option<CallOutcome> {
-        if inputs.target_address == HARDHAT_CONSOLE_ADDRESS {
+        if inputs.target_address.1 == HARDHAT_CONSOLE_ADDRESS {
             let (res, out) = self.hardhat_log(inputs.input.to_vec());
             if res != InstructionResult::Continue {
                 return Some(CallOutcome {
@@ -58,8 +58,10 @@ impl<DB: Database> Inspector<DB> for LogCollector {
                         result: res,
                         output: out,
                         gas: Gas::new(inputs.gas_limit),
+                        call_options: None,
                     },
                     memory_offset: inputs.return_memory_offset.clone(),
+                    call_options: None,
                 })
             }
         }
@@ -68,7 +70,7 @@ impl<DB: Database> Inspector<DB> for LogCollector {
     }
 }
 
-impl<DB: Database> InspectorExt<DB> for LogCollector {
+impl<DB: SyncDatabase> InspectorExt<DB> for LogCollector {
     fn console_log(&mut self, input: String) {
         self.logs.push(Log::new_unchecked(
             HARDHAT_CONSOLE_ADDRESS,
