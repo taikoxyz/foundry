@@ -364,6 +364,10 @@ zip-extract = "=0.2.1"
 
 [patch.crates-io]
 revm = { git = "https://github.com/taikoxyz/revm-private.git", branch = "gwyneth" }
+revm-primitives = { git = "https://github.com/taikoxyz/revm-private.git", branch = "gwyneth" }
+revm-inspectors = { git = "https://github.com/taikoxyz/revm-inspectors.git", branch="v0.26.5-gwyneth"}
+foundry-fork-db = { git = "https://github.com/taikoxyz/foundry-fork-db.git", branch = "c08e79b-gwyneth" }
+alloy-primitives = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "gwyneth" }
 ## alloy-core
 # alloy-dyn-abi = { path = "../../alloy-rs/core/crates/dyn-abi" }
 # alloy-json-abi = { path = "../../alloy-rs/core/crates/json-abi" }
