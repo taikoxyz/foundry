@@ -149,10 +149,11 @@ impl DatabaseExt for CowBackend<'_> {
 
     fn create_fork_at_transaction(
         &mut self,
+        chain_id: u64,
         fork: CreateFork,
         transaction: B256,
     ) -> eyre::Result<LocalForkId> {
-        self.backend.to_mut().create_fork_at_transaction(fork, transaction)
+        self.backend.to_mut().create_fork_at_transaction(chain_id, fork, transaction)
     }
 
     fn select_fork(
@@ -285,8 +286,8 @@ impl DatabaseExt for CowBackend<'_> {
         self.backend.has_cheatcode_access(account)
     }
 
-    fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
-        self.backend.to_mut().set_blockhash(block_number, block_hash);
+    fn set_blockhash(&mut self, chain_id: u64, block_number: U256, block_hash: B256) {
+        self.backend.to_mut().set_blockhash(chain_id, block_number, block_hash);
     }
 }
 
@@ -297,16 +298,16 @@ impl DatabaseRef for CowBackend<'_> {
         DatabaseRef::basic_ref(self.backend.as_ref(), address)
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        DatabaseRef::code_by_hash_ref(self.backend.as_ref(), code_hash)
+    fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        DatabaseRef::code_by_hash_ref(self.backend.as_ref(), chain_id, code_hash)
     }
 
     fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
         DatabaseRef::storage_ref(self.backend.as_ref(), address, index)
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
-        DatabaseRef::block_hash_ref(self.backend.as_ref(), number)
+    fn block_hash_ref(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        DatabaseRef::block_hash_ref(self.backend.as_ref(), chain_id, number)
     }
 }
 
@@ -317,16 +318,16 @@ impl Database for CowBackend<'_> {
         DatabaseRef::basic_ref(self, address)
     }
 
-    fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        DatabaseRef::code_by_hash_ref(self, code_hash)
+    fn code_by_hash(&mut self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        DatabaseRef::code_by_hash_ref(self, chain_id, code_hash)
     }
 
     fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
         DatabaseRef::storage_ref(self, address, index)
     }
 
-    fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
-        DatabaseRef::block_hash_ref(self, number)
+    fn block_hash(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        DatabaseRef::block_hash_ref(self, chain_id, number)
     }
 }
 

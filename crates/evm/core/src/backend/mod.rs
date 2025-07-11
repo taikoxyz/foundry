@@ -132,12 +132,13 @@ pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit {
     /// This is basically `create_fork` + `select_fork`
     fn create_select_fork_at_transaction(
         &mut self,
+        chain_id: u64,
         fork: CreateFork,
         env: &mut EnvMut<'_>,
         journaled_state: &mut JournaledState,
         transaction: B256,
     ) -> eyre::Result<LocalForkId> {
-        let id = self.create_fork_at_transaction(fork, transaction)?;
+        let id = self.create_fork_at_transaction(chain_id, fork, transaction)?;
         self.select_fork(id, env, journaled_state)?;
         Ok(id)
     }
@@ -148,6 +149,7 @@ pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit {
     /// Creates a new fork but does _not_ select it
     fn create_fork_at_transaction(
         &mut self,
+        chain_id: u64,
         fork: CreateFork,
         transaction: B256,
     ) -> eyre::Result<LocalForkId>;
@@ -373,7 +375,7 @@ pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit {
     /// - Setting a blockhash for the current block (number == block.number) has no effect
     /// - Setting a blockhash for future blocks (number > block.number) has no effect
     /// - Setting a blockhash for blocks older than `block.number - 256` has no effect
-    fn set_blockhash(&mut self, block_number: U256, block_hash: B256);
+    fn set_blockhash(&mut self, chain_id: u64, block_number: U256, block_hash: B256);
 }
 
 struct _ObjectSafe(dyn DatabaseExt);
@@ -1010,6 +1012,7 @@ impl DatabaseExt for Backend {
 
     fn create_fork_at_transaction(
         &mut self,
+        chain_id: u64,
         fork: CreateFork,
         transaction: B256,
     ) -> eyre::Result<LocalForkId> {
@@ -1481,11 +1484,11 @@ impl DatabaseExt for Backend {
         self.inner.cheatcode_access_accounts.contains(account)
     }
 
-    fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
+    fn set_blockhash(&mut self, chain_id: u64, block_number: U256, block_hash: B256) {
         if let Some(db) = self.active_fork_db_mut() {
-            db.cache.block_hashes.insert(block_number.saturating_to(), block_hash);
+            db.cache.block_hashes.insert((chain_id, block_number), block_hash);
         } else {
-            self.mem_db.cache.block_hashes.insert(block_number.saturating_to(), block_hash);
+            self.mem_db.cache.block_hashes.insert((chain_id, block_number), block_hash);
         }
     }
 }
@@ -1501,11 +1504,11 @@ impl DatabaseRef for Backend {
         }
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+    fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
         if let Some(db) = self.active_fork_db() {
-            db.code_by_hash_ref(code_hash)
+            db.code_by_hash_ref(chain_id, code_hash)
         } else {
-            Ok(self.mem_db.code_by_hash_ref(code_hash)?)
+            Ok(self.mem_db.code_by_hash_ref(chain_id, code_hash)?)
         }
     }
 
@@ -1517,11 +1520,11 @@ impl DatabaseRef for Backend {
         }
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
+    fn block_hash_ref(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
         if let Some(db) = self.active_fork_db() {
-            db.block_hash_ref(number)
+            db.block_hash_ref(chain_id, number)
         } else {
-            Ok(self.mem_db.block_hash_ref(number)?)
+            Ok(self.mem_db.block_hash_ref(chain_id, number)?)
         }
     }
 }
@@ -1546,11 +1549,11 @@ impl Database for Backend {
         }
     }
 
-    fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+    fn code_by_hash(&mut self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
         if let Some(db) = self.active_fork_db_mut() {
-            Ok(db.code_by_hash(code_hash)?)
+            Ok(db.code_by_hash(chain_id, code_hash)?)
         } else {
-            Ok(self.mem_db.code_by_hash(code_hash)?)
+            Ok(self.mem_db.code_by_hash(chain_id, code_hash)?)
         }
     }
 
@@ -1562,11 +1565,11 @@ impl Database for Backend {
         }
     }
 
-    fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
+    fn block_hash(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
         if let Some(db) = self.active_fork_db_mut() {
-            Ok(db.block_hash(number)?)
+            Ok(db.block_hash(chain_id, number)?)
         } else {
-            Ok(self.mem_db.block_hash(number)?)
+            Ok(self.mem_db.block_hash(chain_id, number)?)
         }
     }
 }
@@ -1898,9 +1901,9 @@ fn merge_db_account_data<ExtDB: DatabaseRef>(
     let Some(acc) = active.cache.accounts.get(&addr) else { return };
 
     // port contract cache over
-    if let Some(code) = active.cache.contracts.get(&acc.info.code_hash) {
+    if let Some(code) = active.cache.contracts.get(&(addr.chain_id(), acc.info.code_hash)) {
         trace!("merging contract cache");
-        fork_db.cache.contracts.insert(acc.info.code_hash, code.clone());
+        fork_db.cache.contracts.insert((addr.chain_id(), acc.info.code_hash), code.clone());
     }
 
     // port account storage over
