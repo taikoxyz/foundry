@@ -149,11 +149,10 @@ impl DatabaseExt for CowBackend<'_> {
 
     fn create_fork_at_transaction(
         &mut self,
-        chain_id: u64,
         fork: CreateFork,
         transaction: B256,
     ) -> eyre::Result<LocalForkId> {
-        self.backend.to_mut().create_fork_at_transaction(chain_id, fork, transaction)
+        self.backend.to_mut().create_fork_at_transaction(fork, transaction)
     }
 
     fn select_fork(

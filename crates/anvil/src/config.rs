@@ -1349,7 +1349,7 @@ latest block number: {latest_block}"
         let mut db = ForkedDatabase::new(backend, block_chain_db);
 
         // need to insert the forked block's hash
-        db.insert_block_hash(U256::from(config.block_number), config.block_hash);
+        db.insert_block_hash(chain_id, U256::from(config.block_number), config.block_hash);
 
         Ok((db, config))
     }

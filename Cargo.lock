@@ -4555,12 +4555,13 @@ dependencies = [
 [[package]]
 name = "foundry-fork-db"
 version = "0.15.1"
-source = "git+https://github.com/taikoxyz/foundry-fork-db.git?branch=c08e79b-gwyneth#912e82632728de125cb234f3eca4feb14d7ff683"
+source = "git+https://github.com/taikoxyz/foundry-fork-db.git?branch=c08e79b-gwyneth#b2408a294c8efb5380da591f9245e8f9460012b7"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
  "alloy-provider",
  "alloy-rpc-types",
+ "alloy-transport",
  "eyre",
  "foldhash",
  "futures",
@@ -10633,9 +10634,9 @@ checksum = "271414315aff87387382ec3d271b52d7ae78726f5d44ac98b4f4030c91880486"
 
 [[package]]
 name = "winnow"
-version = "0.7.11"
+version = "0.7.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74c7b26e3480b707944fc872477815d29a8e429d2f93a1ce000f5fa84a15cbcd"
+checksum = "f3edebf492c8125044983378ecb5766203ad3b4c2f7a922bd7dd207f6d443e95"
 dependencies = [
  "memchr",
 ]

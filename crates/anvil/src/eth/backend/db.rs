@@ -133,7 +133,7 @@ pub trait Db:
     fn set_storage_at(&mut self, address: Address, slot: B256, val: B256) -> DatabaseResult<()>;
 
     /// inserts a blockhash for the given number
-    fn insert_block_hash(&mut self, number: U256, hash: B256);
+    fn insert_block_hash(&mut self, chain_id: u64, number: U256, hash: B256);
 
     /// Write all chain data to serialized bytes buffer
     fn dump_state(
@@ -214,8 +214,8 @@ impl<T: DatabaseRef<Error = DatabaseError> + Send + Sync + Clone + fmt::Debug> D
         self.insert_account_storage(address, slot.into(), val.into())
     }
 
-    fn insert_block_hash(&mut self, number: U256, hash: B256) {
-        self.cache.block_hashes.insert(number, hash);
+    fn insert_block_hash(&mut self, chain_id: u64, number: U256, hash: B256) {
+        self.cache.block_hashes.insert((chain_id, number), hash);
     }
 
     fn dump_state(
@@ -259,7 +259,7 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
         for (addr, mut acc) in db_accounts {
             account_storage.insert(addr, std::mem::take(&mut acc.storage));
             let mut info = acc.info;
-            info.code = self.cache.contracts.remove(&info.code_hash);
+            info.code = self.cache.contracts.remove(&(addr.chain_id(), info.code_hash));
             accounts.insert(addr, info);
         }
         let block_hashes = std::mem::take(&mut self.cache.block_hashes);
@@ -274,7 +274,7 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
         for (addr, acc) in db_accounts {
             account_storage.insert(addr, acc.storage.clone());
             let mut info = acc.info;
-            info.code = self.cache.contracts.get(&info.code_hash).cloned();
+            info.code = self.cache.contracts.get(&(addr.chain_id(), info.code_hash)).cloned();
             accounts.insert(addr, info);
         }
 
@@ -291,7 +291,7 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
 
         for (addr, mut acc) in accounts {
             if let Some(code) = acc.code.take() {
-                self.cache.contracts.insert(acc.code_hash, code);
+                self.cache.contracts.insert((addr.chain_id(), acc.code_hash), code);
             }
             self.cache.accounts.insert(
                 addr,
@@ -341,16 +341,16 @@ impl DatabaseRef for StateDb {
         self.0.basic_ref(address)
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> DatabaseResult<Bytecode> {
-        self.0.code_by_hash_ref(code_hash)
+    fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> DatabaseResult<Bytecode> {
+        self.0.code_by_hash_ref(chain_id, code_hash)
     }
 
     fn storage_ref(&self, address: Address, index: U256) -> DatabaseResult<U256> {
         self.0.storage_ref(address, index)
     }
 
-    fn block_hash_ref(&self, number: u64) -> DatabaseResult<B256> {
-        self.0.block_hash_ref(number)
+    fn block_hash_ref(&self, chain_id: u64, number: u64) -> DatabaseResult<B256> {
+        self.0.block_hash_ref(chain_id, number)
     }
 }
 

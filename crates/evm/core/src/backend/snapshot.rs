@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 pub struct StateSnapshot {
     pub accounts: AddressHashMap<AccountInfo>,
     pub storage: AddressHashMap<HashMap<U256, U256>>,
-    pub block_hashes: HashMap<U256, B256>,
+    pub block_hashes: HashMap<(u64, U256), B256>,
 }
 
 /// Represents a state snapshot taken during evm execution

@@ -1055,7 +1055,7 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for Cheatcodes {
 
         // Record gas for current frame.
         if self.gas_metering.paused {
-            self.gas_metering.paused_frames.push(interpreter.control.gas);
+            self.gas_metering.paused_frames.push(interpreter.control.gas.clone());
         }
 
         // `expectRevert`: track the max call depth during `expectRevert`
@@ -1288,7 +1288,7 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for Cheatcodes {
 
         // Record the gas usage of the call, this allows the `lastCallGas` cheatcode to
         // retrieve the gas usage of the last call.
-        let gas = outcome.result.gas;
+        let gas = &outcome.result.gas;
         self.gas_metering.last_call_gas = Some(crate::Vm::Gas {
             gasLimit: gas.limit(),
             gasTotalUsed: gas.spent(),
@@ -1815,12 +1815,12 @@ impl Cheatcodes {
             // Keep gas constant if paused.
             // Make sure we record the memory changes so that memory expansion is not paused.
             let memory = *interpreter.control.gas.memory();
-            interpreter.control.gas = *paused_gas;
+            interpreter.control.gas = paused_gas.clone();
             interpreter.control.gas.memory_mut().words_num = memory.words_num;
             interpreter.control.gas.memory_mut().expansion_cost = memory.expansion_cost;
         } else {
             // Record frame paused gas.
-            self.gas_metering.paused_frames.push(interpreter.control.gas);
+            self.gas_metering.paused_frames.push(interpreter.control.gas.clone());
         }
     }
 
@@ -2296,7 +2296,7 @@ fn disallowed_mem_write(
     interpreter.control.next_action = InterpreterAction::Return {
         result: InterpreterResult {
             output: Error::encode(revert_string),
-            gas: interpreter.control.gas,
+            gas: interpreter.control.gas.clone(),
             result: InstructionResult::Revert,
         },
     };

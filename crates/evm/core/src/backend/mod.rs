@@ -132,13 +132,12 @@ pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit {
     /// This is basically `create_fork` + `select_fork`
     fn create_select_fork_at_transaction(
         &mut self,
-        chain_id: u64,
         fork: CreateFork,
         env: &mut EnvMut<'_>,
         journaled_state: &mut JournaledState,
         transaction: B256,
     ) -> eyre::Result<LocalForkId> {
-        let id = self.create_fork_at_transaction(chain_id, fork, transaction)?;
+        let id = self.create_fork_at_transaction(fork, transaction)?;
         self.select_fork(id, env, journaled_state)?;
         Ok(id)
     }
@@ -149,7 +148,6 @@ pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit {
     /// Creates a new fork but does _not_ select it
     fn create_fork_at_transaction(
         &mut self,
-        chain_id: u64,
         fork: CreateFork,
         transaction: B256,
     ) -> eyre::Result<LocalForkId>;
@@ -843,22 +841,23 @@ impl Backend {
     /// Returns the block numbers required for replaying a transaction
     fn get_block_number_and_block_for_transaction(
         &self,
+        chain_id: u64,
         id: LocalForkId,
         transaction: B256,
     ) -> eyre::Result<(u64, AnyRpcBlock)> {
         let fork = self.inner.get_fork_by_id(id)?;
-        let tx = fork.db.db.get_transaction(transaction)?;
+        let tx = fork.db.db.get_transaction(chain_id, transaction)?;
 
         // get the block number we need to fork
         if let Some(tx_block) = tx.block_number {
-            let block = fork.db.db.get_full_block(tx_block)?;
+            let block = fork.db.db.get_full_block(chain_id, tx_block)?;
 
             // we need to subtract 1 here because we want the state before the transaction
             // was mined
             let fork_block = tx_block - 1;
             Ok((fork_block, block))
         } else {
-            let block = fork.db.db.get_full_block(BlockNumberOrTag::Latest)?;
+            let block = fork.db.db.get_full_block(chain_id, BlockNumberOrTag::Latest)?;
 
             let number = block.header.number;
 
@@ -882,7 +881,8 @@ impl Backend {
         let fork_id = self.ensure_fork_id(id)?.clone();
 
         let fork = self.inner.get_fork_by_id_mut(id)?;
-        let full_block = fork.db.db.get_full_block(env.evm_env.block_env.number)?;
+        let full_block =
+            fork.db.db.get_full_block(env.evm_env.chainid(), env.evm_env.block_env.number)?;
 
         for tx in full_block.inner.transactions.txns() {
             // System transactions such as on L2s don't contain any pricing info so we skip them
@@ -1012,7 +1012,6 @@ impl DatabaseExt for Backend {
 
     fn create_fork_at_transaction(
         &mut self,
-        chain_id: u64,
         fork: CreateFork,
         transaction: B256,
     ) -> eyre::Result<LocalForkId> {
@@ -1242,7 +1241,7 @@ impl DatabaseExt for Backend {
         let id = self.ensure_fork(id)?;
 
         let (fork_block, block) =
-            self.get_block_number_and_block_for_transaction(id, transaction)?;
+            self.get_block_number_and_block_for_transaction(env.cfg.chain_id, id, transaction)?;
 
         // roll the fork to the transaction's block or latest if it's pending
         self.roll_fork(Some(id), fork_block, env, journaled_state)?;
@@ -1272,7 +1271,7 @@ impl DatabaseExt for Backend {
 
         let tx = {
             let fork = self.inner.get_fork_by_id_mut(id)?;
-            fork.db.db.get_transaction(transaction)?
+            fork.db.db.get_transaction(env.tx.caller.chain_id(), transaction)?
         };
 
         // This is a bit ambiguous because the user wants to transact an arbitrary transaction in
@@ -1281,8 +1280,11 @@ impl DatabaseExt for Backend {
         // transaction in the block and then the transaction is transacted:
         // <https://github.com/foundry-rs/foundry/issues/6538>
         // So we modify the env to match the transaction's block.
-        let (_fork_block, block) =
-            self.get_block_number_and_block_for_transaction(id, transaction)?;
+        let (_fork_block, block) = self.get_block_number_and_block_for_transaction(
+            env.evm_env.chainid(),
+            id,
+            transaction,
+        )?;
         update_env_block(&mut env.as_env_mut(), &block);
 
         let fork = self.inner.get_fork_by_id_mut(id)?;
