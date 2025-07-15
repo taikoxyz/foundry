@@ -864,7 +864,9 @@ impl Cheatcode for setBlockhashCall {
             "block number must be less than or equal to the current block number"
         );
 
-        ccx.ecx.journaled_state.database.set_blockhash(blockNumber, blockHash);
+        let caller = ccx.caller;
+
+        ccx.ecx.journaled_state.database.set_blockhash(caller.chain_id(), blockNumber, blockHash);
 
         Ok(Default::default())
     }

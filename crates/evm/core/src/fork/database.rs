@@ -160,16 +160,16 @@ impl Database for ForkedDatabase {
         Database::basic(&mut self.cache_db, address)
     }
 
-    fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        Database::code_by_hash(&mut self.cache_db, code_hash)
+    fn code_by_hash(&mut self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        Database::code_by_hash(&mut self.cache_db, chain_id, code_hash)
     }
 
     fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
         Database::storage(&mut self.cache_db, address, index)
     }
 
-    fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
-        Database::block_hash(&mut self.cache_db, number)
+    fn block_hash(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        Database::block_hash(&mut self.cache_db, chain_id, number)
     }
 }
 
@@ -180,16 +180,16 @@ impl DatabaseRef for ForkedDatabase {
         self.cache_db.basic_ref(address)
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        self.cache_db.code_by_hash_ref(code_hash)
+    fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        self.cache_db.code_by_hash_ref(chain_id, code_hash)
     }
 
     fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
         DatabaseRef::storage_ref(&self.cache_db, address, index)
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
-        self.cache_db.block_hash_ref(number)
+    fn block_hash_ref(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        self.cache_db.block_hash_ref(chain_id, number)
     }
 }
 
@@ -239,8 +239,8 @@ impl DatabaseRef for ForkDbStateSnapshot {
         }
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        self.local.code_by_hash_ref(code_hash)
+    fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        self.local.code_by_hash_ref(chain_id, code_hash)
     }
 
     fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
@@ -259,9 +259,9 @@ impl DatabaseRef for ForkDbStateSnapshot {
         }
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
-        match self.state_snapshot.block_hashes.get(&U256::from(number)).copied() {
-            None => self.local.block_hash_ref(number),
+    fn block_hash_ref(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        match self.state_snapshot.block_hashes.get(&(chain_id, U256::from(number))).copied() {
+            None => self.local.block_hash_ref(chain_id, number),
             Some(block_hash) => Ok(block_hash),
         }
     }

@@ -29,8 +29,8 @@ impl Db for ForkedDatabase {
         self.database_mut().set_storage_at(address, slot, val)
     }
 
-    fn insert_block_hash(&mut self, number: U256, hash: B256) {
-        self.inner().block_hashes().write().insert(number, hash);
+    fn insert_block_hash(&mut self, chain_id: u64, number: U256, hash: B256) {
+        self.inner().block_hashes().write().insert((chain_id, number), hash);
     }
 
     fn dump_state(
@@ -52,7 +52,7 @@ impl Db for ForkedDatabase {
                 let code = if let Some(code) = v.info.code {
                     code
                 } else {
-                    db.code_by_hash(v.info.code_hash)?
+                    db.code_by_hash(k.chain_id(), v.info.code_hash)?
                 };
                 Ok((
                     k,

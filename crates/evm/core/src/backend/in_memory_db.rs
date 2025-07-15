@@ -38,16 +38,16 @@ impl DatabaseRef for MemDb {
         DatabaseRef::basic_ref(&self.inner, address)
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        DatabaseRef::code_by_hash_ref(&self.inner, code_hash)
+    fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        DatabaseRef::code_by_hash_ref(&self.inner, chain_id, code_hash)
     }
 
     fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
         DatabaseRef::storage_ref(&self.inner, address, index)
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
-        DatabaseRef::block_hash_ref(&self.inner, number)
+    fn block_hash_ref(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        DatabaseRef::block_hash_ref(&self.inner, chain_id, number)
     }
 }
 
@@ -59,16 +59,16 @@ impl Database for MemDb {
         Database::basic(&mut self.inner, address)
     }
 
-    fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        Database::code_by_hash(&mut self.inner, code_hash)
+    fn code_by_hash(&mut self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        Database::code_by_hash(&mut self.inner, chain_id, code_hash)
     }
 
     fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
         Database::storage(&mut self.inner, address, index)
     }
 
-    fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
-        Database::block_hash(&mut self.inner, number)
+    fn block_hash(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        Database::block_hash(&mut self.inner, chain_id, number)
     }
 }
 
@@ -106,15 +106,15 @@ impl DatabaseRef for EmptyDBWrapper {
         Ok(Some(AccountInfo::default()))
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        Ok(self.0.code_by_hash_ref(code_hash)?)
+    fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        Ok(self.0.code_by_hash_ref(chain_id, code_hash)?)
     }
     fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
         Ok(self.0.storage_ref(address, index)?)
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
-        Ok(self.0.block_hash_ref(number)?)
+    fn block_hash_ref(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        Ok(self.0.block_hash_ref(chain_id, number)?)
     }
 }
 

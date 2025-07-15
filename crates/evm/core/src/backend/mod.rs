@@ -373,7 +373,7 @@ pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit {
     /// - Setting a blockhash for the current block (number == block.number) has no effect
     /// - Setting a blockhash for future blocks (number > block.number) has no effect
     /// - Setting a blockhash for blocks older than `block.number - 256` has no effect
-    fn set_blockhash(&mut self, block_number: U256, block_hash: B256);
+    fn set_blockhash(&mut self, chain_id: u64, block_number: U256, block_hash: B256);
 }
 
 struct _ObjectSafe(dyn DatabaseExt);
@@ -841,22 +841,23 @@ impl Backend {
     /// Returns the block numbers required for replaying a transaction
     fn get_block_number_and_block_for_transaction(
         &self,
+        chain_id: u64,
         id: LocalForkId,
         transaction: B256,
     ) -> eyre::Result<(u64, AnyRpcBlock)> {
         let fork = self.inner.get_fork_by_id(id)?;
-        let tx = fork.db.db.get_transaction(transaction)?;
+        let tx = fork.db.db.get_transaction(chain_id, transaction)?;
 
         // get the block number we need to fork
         if let Some(tx_block) = tx.block_number {
-            let block = fork.db.db.get_full_block(tx_block)?;
+            let block = fork.db.db.get_full_block(chain_id, tx_block)?;
 
             // we need to subtract 1 here because we want the state before the transaction
             // was mined
             let fork_block = tx_block - 1;
             Ok((fork_block, block))
         } else {
-            let block = fork.db.db.get_full_block(BlockNumberOrTag::Latest)?;
+            let block = fork.db.db.get_full_block(chain_id, BlockNumberOrTag::Latest)?;
 
             let number = block.header.number;
 
@@ -880,7 +881,8 @@ impl Backend {
         let fork_id = self.ensure_fork_id(id)?.clone();
 
         let fork = self.inner.get_fork_by_id_mut(id)?;
-        let full_block = fork.db.db.get_full_block(env.evm_env.block_env.number)?;
+        let full_block =
+            fork.db.db.get_full_block(env.evm_env.chainid(), env.evm_env.block_env.number)?;
 
         for tx in full_block.inner.transactions.txns() {
             // System transactions such as on L2s don't contain any pricing info so we skip them
@@ -1239,7 +1241,7 @@ impl DatabaseExt for Backend {
         let id = self.ensure_fork(id)?;
 
         let (fork_block, block) =
-            self.get_block_number_and_block_for_transaction(id, transaction)?;
+            self.get_block_number_and_block_for_transaction(env.cfg.chain_id, id, transaction)?;
 
         // roll the fork to the transaction's block or latest if it's pending
         self.roll_fork(Some(id), fork_block, env, journaled_state)?;
@@ -1269,7 +1271,7 @@ impl DatabaseExt for Backend {
 
         let tx = {
             let fork = self.inner.get_fork_by_id_mut(id)?;
-            fork.db.db.get_transaction(transaction)?
+            fork.db.db.get_transaction(env.tx.caller.chain_id(), transaction)?
         };
 
         // This is a bit ambiguous because the user wants to transact an arbitrary transaction in
@@ -1278,8 +1280,11 @@ impl DatabaseExt for Backend {
         // transaction in the block and then the transaction is transacted:
         // <https://github.com/foundry-rs/foundry/issues/6538>
         // So we modify the env to match the transaction's block.
-        let (_fork_block, block) =
-            self.get_block_number_and_block_for_transaction(id, transaction)?;
+        let (_fork_block, block) = self.get_block_number_and_block_for_transaction(
+            env.evm_env.chainid(),
+            id,
+            transaction,
+        )?;
         update_env_block(&mut env.as_env_mut(), &block);
 
         let fork = self.inner.get_fork_by_id_mut(id)?;
@@ -1481,11 +1486,11 @@ impl DatabaseExt for Backend {
         self.inner.cheatcode_access_accounts.contains(account)
     }
 
-    fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
+    fn set_blockhash(&mut self, chain_id: u64, block_number: U256, block_hash: B256) {
         if let Some(db) = self.active_fork_db_mut() {
-            db.cache.block_hashes.insert(block_number.saturating_to(), block_hash);
+            db.cache.block_hashes.insert((chain_id, block_number), block_hash);
         } else {
-            self.mem_db.cache.block_hashes.insert(block_number.saturating_to(), block_hash);
+            self.mem_db.cache.block_hashes.insert((chain_id, block_number), block_hash);
         }
     }
 }
@@ -1501,11 +1506,11 @@ impl DatabaseRef for Backend {
         }
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+    fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
         if let Some(db) = self.active_fork_db() {
-            db.code_by_hash_ref(code_hash)
+            db.code_by_hash_ref(chain_id, code_hash)
         } else {
-            Ok(self.mem_db.code_by_hash_ref(code_hash)?)
+            Ok(self.mem_db.code_by_hash_ref(chain_id, code_hash)?)
         }
     }
 
@@ -1517,11 +1522,11 @@ impl DatabaseRef for Backend {
         }
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
+    fn block_hash_ref(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
         if let Some(db) = self.active_fork_db() {
-            db.block_hash_ref(number)
+            db.block_hash_ref(chain_id, number)
         } else {
-            Ok(self.mem_db.block_hash_ref(number)?)
+            Ok(self.mem_db.block_hash_ref(chain_id, number)?)
         }
     }
 }
@@ -1546,11 +1551,11 @@ impl Database for Backend {
         }
     }
 
-    fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+    fn code_by_hash(&mut self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
         if let Some(db) = self.active_fork_db_mut() {
-            Ok(db.code_by_hash(code_hash)?)
+            Ok(db.code_by_hash(chain_id, code_hash)?)
         } else {
-            Ok(self.mem_db.code_by_hash(code_hash)?)
+            Ok(self.mem_db.code_by_hash(chain_id, code_hash)?)
         }
     }
 
@@ -1562,11 +1567,11 @@ impl Database for Backend {
         }
     }
 
-    fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
+    fn block_hash(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
         if let Some(db) = self.active_fork_db_mut() {
-            Ok(db.block_hash(number)?)
+            Ok(db.block_hash(chain_id, number)?)
         } else {
-            Ok(self.mem_db.block_hash(number)?)
+            Ok(self.mem_db.block_hash(chain_id, number)?)
         }
     }
 }
@@ -1898,9 +1903,9 @@ fn merge_db_account_data<ExtDB: DatabaseRef>(
     let Some(acc) = active.cache.accounts.get(&addr) else { return };
 
     // port contract cache over
-    if let Some(code) = active.cache.contracts.get(&acc.info.code_hash) {
+    if let Some(code) = active.cache.contracts.get(&(addr.chain_id(), acc.info.code_hash)) {
         trace!("merging contract cache");
-        fork_db.cache.contracts.insert(acc.info.code_hash, code.clone());
+        fork_db.cache.contracts.insert((addr.chain_id(), acc.info.code_hash), code.clone());
     }
 
     // port account storage over

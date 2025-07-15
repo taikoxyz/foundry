@@ -263,7 +263,7 @@ op-alloy-flz = "0.13.1"
 
 ## revm
 revm = { version = "24.0.1", default-features = false }
-revm-inspectors = { version = "0.23.0", features = ["serde"] }
+revm-inspectors = { version = "0.24.0", features = ["serde"] }
 op-revm = { version = "5.0.1", default-features = false }
 
 ## alloy-evm
@@ -363,6 +363,12 @@ idna_adapter = "=1.1.0"
 zip-extract = "=0.2.1"
 
 [patch.crates-io]
+revm = { git = "https://github.com/taikoxyz/revm-private.git", branch = "dani/gwyneth-v5-no-prefix" }
+alloy-primitives = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
+revm-primitives = { git = "https://github.com/taikoxyz/revm-private.git", branch = "dani/gwyneth-v5-no-prefix" }
+revm-inspectors = { git = "https://github.com/taikoxyz/revm-inspectors.git", branch="v24.0.0-gwyneth"}
+foundry-fork-db = { git = "https://github.com/taikoxyz/foundry-fork-db.git", branch = "c08e79b-gwyneth" }
+#alloy-primitives = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "gwyneth" }
 ## alloy-core
 # alloy-dyn-abi = { path = "../../alloy-rs/core/crates/dyn-abi" }
 # alloy-json-abi = { path = "../../alloy-rs/core/crates/json-abi" }
@@ -405,7 +411,7 @@ zip-extract = "=0.2.1"
 
 ## revm
 # revm = { git = "https://github.com/bluealloy/revm.git", rev = "b5808253" }
-# op-revm = { git = "https://github.com/bluealloy/revm.git", rev = "b5808253" }
+op-revm = { git = "https://github.com/taikoxyz/revm-private.git", branch = "dani/gwyneth-v5-no-prefix" }
 # revm-inspectors = { git = "https://github.com/paradigmxyz/revm-inspectors.git", rev = "a625c04" }
 
 ## foundry

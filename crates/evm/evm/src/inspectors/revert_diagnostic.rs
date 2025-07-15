@@ -103,7 +103,7 @@ impl RevertDiagnostic {
             interp.control.next_action = InterpreterAction::Return {
                 result: InterpreterResult {
                     output: reason.to_string().abi_encode().into(),
-                    gas: interp.control.gas,
+                    gas: interp.control.gas.clone(),
                     result: InstructionResult::Revert,
                 },
             };
