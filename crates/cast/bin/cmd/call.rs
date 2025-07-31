@@ -183,7 +183,9 @@ impl CallArgs {
 
             // modify settings that usually set in eth_call
             env.cfg.disable_block_gas_limit = true;
-            env.block.gas_limit = U256::MAX;
+            for (_, block) in env.blocks.iter_mut() {
+                block.gas_limit = U256::MAX;
+            }
 
             let mut executor =
                 TracingExecutor::new(env, fork, evm_version, debug, decode_internal, alphanet);

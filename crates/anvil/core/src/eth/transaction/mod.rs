@@ -23,10 +23,10 @@ use bytes::BufMut;
 use foundry_evm::traces::CallTraceNode;
 use revm::{
     interpreter::InstructionResult,
-    primitives::{ChainAddress, TransactTo, TxEnv},
+    primitives::{BlockEnv, ChainAddress, TransactTo, TxEnv},
 };
 use serde::{Deserialize, Serialize};
-use std::ops::{Deref, Mul};
+use std::{collections::HashMap, ops::{Deref, Mul}};
 
 pub mod optimism;
 
@@ -477,19 +477,21 @@ impl PendingTransaction {
 
     /// Converts the [PendingTransaction] into the [TxEnv] context that [`revm`](foundry_evm)
     /// expects.
-    pub fn to_revm_tx_env(&self) -> TxEnv {
+    pub fn to_revm_tx_env(&self, blocks: &HashMap<u64, BlockEnv>) -> TxEnv {
         fn transact_to(chain_id: u64, kind: &TxKind) -> TransactTo {
             match kind {
                 TxKind::Call(c) => TransactTo::Call(ChainAddress(chain_id, *c)),
                 TxKind::Create => TransactTo::Create,
             }
         }
+        let chain_ids = Some(blocks.keys().cloned().collect());
 
         let caller = *self.sender();
         match &self.transaction.transaction {
             TypedTransaction::Legacy(tx) => {
                 let chain_id = tx.tx().chain_id.unwrap();
-                let chain_ids = Some(vec![chain_id]);
+                //let chain_ids = Some(vec![chain_id]);
+
                 let TxLegacy { nonce, gas_price, gas_limit, value, to, input, .. } = tx.tx();
                 TxEnv {
                     caller,
@@ -507,7 +509,7 @@ impl PendingTransaction {
             }
             TypedTransaction::EIP2930(tx) => {
                 let chain_id = tx.tx().chain_id;
-                let chain_ids = Some(vec![chain_id]);
+                //let chain_ids = Some(vec![chain_id]);
                 let TxEip2930 {
                     chain_id,
                     nonce,
@@ -535,7 +537,7 @@ impl PendingTransaction {
             }
             TypedTransaction::EIP1559(tx) => {
                 let chain_id = tx.tx().chain_id;
-                let chain_ids = Some(vec![chain_id]);
+                //let chain_ids = Some(vec![chain_id]);
                 let TxEip1559 {
                     chain_id,
                     nonce,
@@ -564,7 +566,7 @@ impl PendingTransaction {
             }
             TypedTransaction::EIP4844(tx) => {
                 let chain_id = tx.tx().tx().chain_id;
-                let chain_ids = Some(vec![chain_id]);
+                //let chain_ids = Some(vec![chain_id]);
                 let TxEip4844 {
                     chain_id,
                     nonce,
@@ -597,7 +599,7 @@ impl PendingTransaction {
             }
             TypedTransaction::EIP7702(tx) => {
                 let chain_id = tx.tx().chain_id;
-                let chain_ids = Some(vec![chain_id]);
+                //let chain_ids = Some(vec![chain_id]);
                 let TxEip7702 {
                     chain_id,
                     nonce,
@@ -627,7 +629,7 @@ impl PendingTransaction {
             }
             TypedTransaction::Deposit(tx) => {
                 let chain_id = tx.chain_id().unwrap();
-                let chain_ids = Some(vec![chain_id]);
+                //let chain_ids = Some(vec![chain_id]);
                 let DepositTransaction {
                     nonce,
                     source_hash,

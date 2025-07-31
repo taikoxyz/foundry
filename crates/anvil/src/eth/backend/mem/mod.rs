@@ -446,16 +446,17 @@ impl Backend {
                 } else {
                     let mut env = self.env.write();
                     env.cfg.chain_id = fork.chain_id();
-                    env.block = BlockEnv {
+                    let block_env: &mut BlockEnv = env.blocks.get_mut(&fork.chain_id()).unwrap();
+                    *block_env = BlockEnv {
                         number: U256::from(fork_block_number),
                         timestamp: U256::from(fork_block.header.timestamp),
                         gas_limit: U256::from(fork_block.header.gas_limit),
                         difficulty: fork_block.header.difficulty,
                         prevrandao: Some(fork_block.header.mix_hash.unwrap_or_default()),
                         // Keep previous `coinbase` and `basefee` value
-                        coinbase: env.block.coinbase,
-                        basefee: env.block.basefee,
-                        ..env.block.clone()
+                        coinbase: block_env.coinbase,
+                        basefee: block_env.basefee,
+                        ..block_env.clone()
                     };
 
                     // this is the base fee of the current block, but we need the base fee of
@@ -525,12 +526,14 @@ impl Backend {
     /// Sets the block number
     pub fn set_block_number(&self, number: U256) {
         let mut env = self.env.write();
-        env.block.number = number;
+        for (_, block) in env.blocks.iter_mut() {
+            block.number = number;
+        }
     }
 
     /// Returns the client coinbase address.
     pub fn coinbase(&self) -> ChainAddress {
-        self.env.read().block.coinbase
+        self.env.read().blocks.get(&self.chain_id().as_limbs()[0]).unwrap().coinbase
     }
 
     /// Returns the client coinbase address.
@@ -554,7 +557,7 @@ impl Backend {
 
     /// Sets the coinbase address
     pub fn set_coinbase(&self, address: ChainAddress) {
-        self.env.write().block.coinbase = address;
+        self.env.write().blocks.iter_mut().for_each(|(_, b)| b.coinbase = address);
     }
 
     /// Sets the nonce of the given address
@@ -657,12 +660,12 @@ impl Backend {
 
     /// Returns the block gas limit
     pub fn gas_limit(&self) -> u128 {
-        self.env.read().block.gas_limit.to()
+        self.env.read().min_gas_limit().to()
     }
 
     /// Sets the block gas limit
     pub fn set_gas_limit(&self, gas_limit: u128) {
-        self.env.write().block.gas_limit = U256::from(gas_limit);
+        self.env.write().blocks.iter_mut().for_each(|(_, b)| b.gas_limit = U256::from(gas_limit));
     }
 
     /// Returns the current base fee
@@ -740,18 +743,20 @@ impl Backend {
             self.time.reset(reset_time);
 
             let mut env = self.env.write();
-            env.block = BlockEnv {
-                number: U256::from(num),
-                timestamp: U256::from(block.header.timestamp),
-                difficulty: block.header.difficulty,
-                // ensures prevrandao is set
-                prevrandao: Some(block.header.mix_hash.unwrap_or_default()),
-                gas_limit: U256::from(block.header.gas_limit),
-                // Keep previous `coinbase` and `basefee` value
-                coinbase: env.block.coinbase,
-                basefee: env.block.basefee,
-                ..Default::default()
-            };
+            for (_, block_env) in env.blocks.iter_mut() {
+                *block_env = BlockEnv {
+                    number: U256::from(num),
+                    timestamp: U256::from(block.header.timestamp),
+                    difficulty: block.header.difficulty,
+                    // ensures prevrandao is set
+                    prevrandao: Some(block.header.mix_hash.unwrap_or_default()),
+                    gas_limit: U256::from(block.header.gas_limit),
+                    // Keep previous `coinbase` and `basefee` value
+                    coinbase: block_env.coinbase,
+                    basefee: block_env.basefee,
+                    ..Default::default()
+                };
+            }
         }
         Ok(self.db.write().await.revert(id, RevertSnapshotAction::RevertRemove))
     }
@@ -762,7 +767,7 @@ impl Backend {
 
     /// Get the current state.
     pub async fn serialized_state(&self) -> Result<SerializableState, BlockchainError> {
-        let at = self.env.read().block.clone();
+        let at = self.env.read().blocks.get(&self.env.read().cfg.chain_id).unwrap().clone();
         let best_number = self.blockchain.storage.read().best_number;
         let blocks = self.blockchain.storage.read().serialized_blocks();
         let transactions = self.blockchain.storage.read().serialized_transactions();
@@ -787,7 +792,7 @@ impl Backend {
     pub async fn load_state(&self, state: SerializableState) -> Result<bool, BlockchainError> {
         // reset the block env
         if let Some(block) = state.block.clone() {
-            self.env.write().block = block.clone();
+            *self.env.write().blocks.get_mut(&self.env.read().cfg.chain_id).unwrap() = block.clone();
 
             // Set the current best block number.
             // Defaults to block number for compatibility with existing state files.
@@ -830,10 +835,12 @@ impl Backend {
     /// Returns the environment for the next block
     fn next_env(&self) -> EnvWithHandlerCfg {
         let mut env = self.env.read().clone();
-        // increase block number for this block
-        env.block.number = env.block.number.saturating_add(U256::from(1));
-        env.block.basefee = U256::from(self.base_fee());
-        env.block.timestamp = U256::from(self.time.current_call_timestamp());
+        for (_, block) in env.blocks.iter_mut() {
+            // increase block number for this block
+            block.number = block.number.saturating_add(U256::from(1));
+            block.basefee = U256::from(self.base_fee());
+            block.timestamp = U256::from(self.time.current_call_timestamp());
+        }
         env
     }
 
@@ -864,7 +871,7 @@ impl Backend {
         BlockchainError,
     > {
         let mut env = self.next_env();
-        env.tx = tx.pending_transaction.to_revm_tx_env();
+        env.tx = tx.pending_transaction.to_revm_tx_env(&env.blocks);
 
         // if env.handler_cfg.is_optimism {
         //     env.tx.optimism.enveloped_tx =
@@ -921,7 +928,7 @@ impl Backend {
             db: &mut cache_db,
             validator: self,
             pending: pool_transactions.into_iter(),
-            block_env: env.block.clone(),
+            block_env: env.blocks.clone(),
             cfg_env,
             parent_hash: storage.best_hash,
             gas_used: 0,
@@ -961,19 +968,21 @@ impl Backend {
 
             let mut env = self.env.read().clone();
 
-            if env.block.basefee.is_zero() {
+            let chain_id = env.cfg.chain_id;
+
+            if env.blocks.get_mut(&chain_id).unwrap().basefee.is_zero() {
                 // this is an edge case because the evm fails if `tx.effective_gas_price < base_fee`
                 // 0 is only possible if it's manually set
                 env.cfg.disable_base_fee = true;
             }
 
             // increase block number for this block
-            env.block.number = env.block.number.saturating_add(U256::from(1));
-            env.block.basefee = U256::from(current_base_fee);
-            env.block.blob_excess_gas_and_price = current_excess_blob_gas_and_price;
+            env.blocks.get_mut(&chain_id).unwrap().number = env.blocks.get_mut(&chain_id).unwrap().number.saturating_add(U256::from(1));
+            env.blocks.get_mut(&chain_id).unwrap().basefee = U256::from(current_base_fee);
+            env.blocks.get_mut(&chain_id).unwrap().blob_excess_gas_and_price = current_excess_blob_gas_and_price;
 
             // pick a random value for prevrandao
-            env.block.prevrandao = Some(B256::random());
+            env.blocks.get_mut(&chain_id).unwrap().prevrandao = Some(B256::random());
 
             let best_hash = self.blockchain.storage.read().best_hash;
 
@@ -989,13 +998,13 @@ impl Backend {
                 // finally set the next block timestamp, this is done just before execution, because
                 // there can be concurrent requests that can delay acquiring the db lock and we want
                 // to ensure the timestamp is as close as possible to the actual execution.
-                env.block.timestamp = U256::from(self.time.next_timestamp());
+                env.blocks.get_mut(&chain_id).unwrap().timestamp = U256::from(self.time.next_timestamp());
 
                 let executor = TransactionExecutor {
                     db: &mut *db,
                     validator: self,
                     pending: pool_transactions.into_iter(),
-                    block_env: env.block.clone(),
+                    block_env: env.blocks.clone(),
                     cfg_env: CfgEnvWithHandlerCfg::new(env.cfg.clone(), env.handler_cfg),
                     parent_hash: best_hash,
                     gas_used: 0,
@@ -1081,7 +1090,7 @@ impl Backend {
             }
 
             // we intentionally set the difficulty to `0` for newer blocks
-            env.block.difficulty = U256::from(0);
+            env.blocks.get_mut(&chain_id).unwrap().difficulty = U256::from(0);
 
             // update env with new values
             *self.env.write() = env;
@@ -1186,7 +1195,8 @@ impl Backend {
 
         let gas_limit = gas.unwrap_or(block_env.gas_limit.to());
         let mut env = self.env.read().clone();
-        env.block = block_env;
+        let chain_id = env.cfg.chain_id;
+        *env.blocks.get_mut(&chain_id).unwrap() = block_env;
         // we want to disable this in eth_call, since this is common practice used by other node
         // impls and providers <https://github.com/foundry-rs/foundry/issues/4388>
         env.cfg.disable_block_gas_limit = true;
@@ -1216,7 +1226,7 @@ impl Backend {
             },
             value: value.unwrap_or_default(),
             data: input.into_input().unwrap_or_default(),
-            chain_ids: None,
+            chain_ids: Some(env.blocks.keys().cloned().collect()),
             // set nonce to None so that the correct nonce is chosen by the EVM
             nonce: None,
             access_list: access_list.unwrap_or_default().into(),
@@ -1225,7 +1235,7 @@ impl Backend {
             xcalls: None,
         };
 
-        if env.block.basefee.is_zero() {
+        if env.blocks.get(&env.cfg.chain_id).unwrap().basefee.is_zero() {
             // this is an edge case because the evm fails if `tx.effective_gas_price < base_fee`
             // 0 is only possible if it's manually set
             env.cfg.disable_base_fee = true;
@@ -1864,7 +1874,7 @@ impl Backend {
         };
         let block_number: U256 = U256::from(self.convert_block_number(block_number));
 
-        if block_number < self.env.read().block.number {
+        if block_number < self.env.read().blocks.get(&self.env.read().cfg.chain_id).unwrap().number {
             if let Some((block_hash, block)) = self
                 .block_by_number(BlockNumber::Number(block_number.to::<u64>()))
                 .await?
@@ -1887,13 +1897,13 @@ impl Backend {
 
             warn!(target: "backend", "Not historic state found for block={}", block_number);
             return Err(BlockchainError::BlockOutOfRange(
-                self.env.read().block.number.to::<u64>(),
+                self.env.read().blocks.get(&self.env.read().cfg.chain_id).unwrap().number.to::<u64>(),
                 block_number.to::<u64>(),
             ));
         }
 
         let db = self.db.read().await;
-        let block = self.env.read().block.clone();
+        let block = self.env.read().blocks.get(&self.env.read().cfg.chain_id).unwrap().clone();
         Ok(f(Box::new(&*db), block))
     }
 
@@ -2521,17 +2531,19 @@ impl Backend {
 
             // Set environment back to common block
             let mut env = self.env.write();
-            env.block = BlockEnv {
-                number: U256::from(common_block.header.number),
-                timestamp: U256::from(common_block.header.timestamp),
-                gas_limit: U256::from(common_block.header.gas_limit),
-                difficulty: common_block.header.difficulty,
-                prevrandao: Some(common_block.header.mix_hash),
-                coinbase: env.block.coinbase,
-                basefee: env.block.basefee,
-                ..env.block.clone()
-            };
-            self.time.reset(env.block.timestamp.to::<u64>());
+            for (_, block) in env.blocks.iter_mut() {
+                *block = BlockEnv {
+                    number: U256::from(common_block.header.number),
+                    timestamp: U256::from(common_block.header.timestamp),
+                    gas_limit: U256::from(common_block.header.gas_limit),
+                    difficulty: common_block.header.difficulty,
+                    prevrandao: Some(common_block.header.mix_hash),
+                    coinbase: block.coinbase,
+                    basefee: block.basefee,
+                    ..block.clone()
+                };
+                self.time.reset(block.timestamp.to::<u64>());
+            }
         }
 
         // Create the new reorged chain, filling the blocks with transactions if supplied
@@ -2610,8 +2622,10 @@ impl TransactionValidator for Backend {
             return Err(InvalidTransactionError::GasTooLow);
         }
 
+        let block = env.blocks.get(&env.cfg.chain_id).unwrap();
+
         // Check gas limit, iff block gas limit is set.
-        if !env.cfg.disable_block_gas_limit && tx.gas_limit() > env.block.gas_limit.to() {
+        if !env.cfg.disable_block_gas_limit && tx.gas_limit() > block.gas_limit.to() {
             warn!(target: "backend", "[{:?}] gas too high", tx.hash());
             return Err(InvalidTransactionError::GasTooHigh(ErrDetail {
                 detail: String::from("tx.gas_limit > env.block.gas_limit"),
@@ -2628,8 +2642,8 @@ impl TransactionValidator for Backend {
         }
 
         if (env.handler_cfg.spec_id as u8) >= (SpecId::LONDON as u8) {
-            if tx.gas_price() < env.block.basefee.to() && !is_deposit_tx {
-                warn!(target: "backend", "max fee per gas={}, too low, block basefee={}",tx.gas_price(),  env.block.basefee);
+            if tx.gas_price() < block.basefee.to() && !is_deposit_tx {
+                warn!(target: "backend", "max fee per gas={}, too low, block basefee={}",tx.gas_price(),  block.basefee);
                 return Err(InvalidTransactionError::FeeCapTooLow);
             }
 
@@ -2647,7 +2661,7 @@ impl TransactionValidator for Backend {
         if env.spec_id() >= SpecId::CANCUN && tx.transaction.is_eip4844() {
             // Light checks first: see if the blob fee cap is too low.
             if let Some(max_fee_per_blob_gas) = tx.essentials().max_fee_per_blob_gas {
-                if let Some(blob_gas_and_price) = &env.block.blob_excess_gas_and_price {
+                if let Some(blob_gas_and_price) = &block.blob_excess_gas_and_price {
                     if max_fee_per_blob_gas < blob_gas_and_price.blob_gasprice {
                         warn!(target: "backend", "max fee per blob gas={}, too low, block blob gas price={}", max_fee_per_blob_gas, blob_gas_and_price.blob_gasprice);
                         return Err(InvalidTransactionError::BlobFeeCapTooLow);

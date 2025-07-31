@@ -30,7 +30,7 @@ use foundry_evm::{
     traces::CallTraceNode,
 };
 use revm::primitives::{ChainAddress, MAX_BLOB_GAS_PER_BLOCK};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 /// Represents an executed transaction (transacted on the DB)
 #[derive(Debug)]
@@ -96,7 +96,7 @@ pub struct TransactionExecutor<'a, Db: ?Sized, Validator: TransactionValidator> 
     pub validator: Validator,
     /// all pending transactions
     pub pending: std::vec::IntoIter<Arc<PoolTransaction>>,
-    pub block_env: BlockEnv,
+    pub block_env: HashMap<u64, BlockEnv>,
     /// The configuration environment and spec id
     pub cfg_env: CfgEnvWithHandlerCfg,
     pub parent_hash: B256,
@@ -114,6 +114,9 @@ pub struct TransactionExecutor<'a, Db: ?Sized, Validator: TransactionValidator> 
 impl<'a, DB: Db + ?Sized, Validator: TransactionValidator> TransactionExecutor<'a, DB, Validator> {
     /// Executes all transactions and puts them in a new block with the provided `timestamp`
     pub fn execute(mut self) -> ExecutedTransactions {
+        let chain_id = self.cfg_env.chain_id;
+        let block_env = self.block_env.get(&chain_id).unwrap();
+
         let mut transactions = Vec::new();
         let mut transaction_infos = Vec::new();
         let mut receipts = Vec::new();
@@ -121,21 +124,20 @@ impl<'a, DB: Db + ?Sized, Validator: TransactionValidator> TransactionExecutor<'
         let mut cumulative_gas_used: u128 = 0;
         let mut invalid = Vec::new();
         let mut included = Vec::new();
-        let gas_limit = self.block_env.gas_limit.to::<u128>();
+        let gas_limit = block_env.gas_limit.to::<u128>();
         let parent_hash = self.parent_hash;
-        let block_number = self.block_env.number.to::<u64>();
-        let difficulty = self.block_env.difficulty;
-        let beneficiary = self.block_env.coinbase;
-        let timestamp = self.block_env.timestamp.to::<u64>();
+        let block_number = block_env.number.to::<u64>();
+        let difficulty = block_env.difficulty;
+        let beneficiary = block_env.coinbase;
+        let timestamp = block_env.timestamp.to::<u64>();
         let base_fee = if self.cfg_env.handler_cfg.spec_id.is_enabled_in(SpecId::LONDON) {
-            Some(self.block_env.basefee.to::<u128>())
+            Some(block_env.basefee.to::<u128>())
         } else {
             None
         };
-        let chain_id = self.cfg_env.chain_id;
 
         let is_cancun = self.cfg_env.handler_cfg.spec_id >= SpecId::CANCUN;
-        let excess_blob_gas = if is_cancun { self.block_env.get_blob_excess_gas() } else { None };
+        let excess_blob_gas = if is_cancun { block_env.get_blob_excess_gas() } else { None };
         let mut cumulative_blob_gas_used = if is_cancun { Some(0u128) } else { None };
 
         for tx in self.into_iter() {
@@ -238,7 +240,7 @@ impl<'a, DB: Db + ?Sized, Validator: TransactionValidator> TransactionExecutor<'
     }
 
     fn env_for(&self, tx: &PendingTransaction) -> EnvWithHandlerCfg {
-        let mut tx_env = tx.to_revm_tx_env();
+        let mut tx_env = tx.to_revm_tx_env(&self.block_env);
         // if self.cfg_env.handler_cfg.is_optimism {
         //     tx_env.optimism.enveloped_tx =
         //         Some(alloy_rlp::encode(&tx.transaction.transaction).into());
@@ -279,7 +281,7 @@ impl<'a, 'b, DB: Db + ?Sized, Validator: TransactionValidator> Iterator
 
         // check that we comply with the block's gas limit, if not disabled
         let max_gas = self.gas_used.saturating_add(env.tx.gas_limit as u128);
-        if !env.cfg.disable_block_gas_limit && max_gas > env.block.gas_limit.to::<u128>() {
+        if !env.cfg.disable_block_gas_limit && max_gas > env.min_gas_limit().to::<u128>() {
             return Some(TransactionExecutionOutcome::Exhausted(transaction))
         }
 

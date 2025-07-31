@@ -357,7 +357,7 @@ impl InspectorStack {
     /// Set variables from an environment for the relevant inspectors.
     #[inline]
     pub fn set_env(&mut self, env: &Env) {
-        self.set_block(&env.block);
+        self.set_block(&env.blocks.get(&env.cfg.chain_id).unwrap());
         self.set_gas_price(env.tx.gas_price);
     }
 
@@ -368,6 +368,7 @@ impl InspectorStack {
             cheatcodes.block = Some(block.clone());
         }
     }
+
 
     /// Sets the gas price for the relevant inspectors.
     #[inline]
@@ -548,7 +549,9 @@ impl<'a> InspectorStackRefMut<'a> {
 
         let cached_env = ecx.env.clone();
 
-        ecx.env.block.basefee = U256::ZERO;
+        for (_, block) in ecx.env.blocks.iter_mut() {
+            block.basefee = U256::ZERO;
+        }
         ecx.env.tx.caller = caller;
         ecx.env.tx.transact_to = transact_to;
         ecx.env.tx.data = input;
@@ -560,7 +563,7 @@ impl<'a> InspectorStackRefMut<'a> {
         // exceed block gas limit.
         if !ecx.env.cfg.disable_block_gas_limit {
             ecx.env.tx.gas_limit =
-                std::cmp::min(ecx.env.tx.gas_limit, ecx.env.block.gas_limit.to());
+                std::cmp::min(ecx.env.tx.gas_limit, ecx.env.min_gas_limit().to());
         }
         ecx.env.tx.gas_price = U256::ZERO;
 
@@ -590,7 +593,9 @@ impl<'a> InspectorStackRefMut<'a> {
         self.inner_context_data = None;
 
         ecx.env.tx = cached_env.tx;
-        ecx.env.block.basefee = cached_env.block.basefee;
+        for (chain_id, block) in ecx.env.blocks.iter_mut() {
+            block.basefee = cached_env.blocks.get(chain_id).unwrap().basefee;
+        }
 
         let mut gas = Gas::new(gas_limit);
 

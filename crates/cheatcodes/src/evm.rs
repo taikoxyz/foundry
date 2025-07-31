@@ -281,7 +281,7 @@ impl Cheatcode for coinbaseCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { newCoinbase } = self;
         let chain_id = ccx.caller.0;
-        ccx.ecx.env.block.coinbase = ChainAddress(chain_id, *newCoinbase);
+        ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().coinbase = ChainAddress(chain_id, *newCoinbase);
         Ok(Default::default())
     }
 }
@@ -294,7 +294,8 @@ impl Cheatcode for difficultyCall {
             "`difficulty` is not supported after the Paris hard fork, use `prevrandao` instead; \
              see EIP-4399: https://eips.ethereum.org/EIPS/eip-4399"
         );
-        ccx.ecx.env.block.difficulty = *newDifficulty;
+        let chain_id = ccx.caller.0;
+        ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().difficulty = *newDifficulty;
         Ok(Default::default())
     }
 }
@@ -302,7 +303,8 @@ impl Cheatcode for difficultyCall {
 impl Cheatcode for feeCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { newBasefee } = self;
-        ccx.ecx.env.block.basefee = *newBasefee;
+        let chain_id = ccx.caller.0;
+        ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().basefee = *newBasefee;
         Ok(Default::default())
     }
 }
@@ -315,7 +317,8 @@ impl Cheatcode for prevrandao_0Call {
             "`prevrandao` is not supported before the Paris hard fork, use `difficulty` instead; \
              see EIP-4399: https://eips.ethereum.org/EIPS/eip-4399"
         );
-        ccx.ecx.env.block.prevrandao = Some(*newPrevrandao);
+        let chain_id = ccx.caller.0;
+        ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().prevrandao = Some(*newPrevrandao);
         Ok(Default::default())
     }
 }
@@ -328,7 +331,8 @@ impl Cheatcode for prevrandao_1Call {
             "`prevrandao` is not supported before the Paris hard fork, use `difficulty` instead; \
              see EIP-4399: https://eips.ethereum.org/EIPS/eip-4399"
         );
-        ccx.ecx.env.block.prevrandao = Some((*newPrevrandao).into());
+        let chain_id = ccx.caller.0;
+        ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().prevrandao = Some((*newPrevrandao).into());
         Ok(Default::default())
     }
 }
@@ -361,7 +365,8 @@ impl Cheatcode for getBlobhashesCall {
 impl Cheatcode for rollCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { newHeight } = self;
-        ccx.ecx.env.block.number = *newHeight;
+        let chain_id = ccx.caller.0;
+        ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().number = *newHeight;
         Ok(Default::default())
     }
 }
@@ -369,7 +374,8 @@ impl Cheatcode for rollCall {
 impl Cheatcode for getBlockNumberCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self {} = self;
-        Ok(ccx.ecx.env.block.number.abi_encode())
+        let chain_id = ccx.caller.0;
+        Ok(ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().number.abi_encode())
     }
 }
 
@@ -384,7 +390,8 @@ impl Cheatcode for txGasPriceCall {
 impl Cheatcode for warpCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { newTimestamp } = self;
-        ccx.ecx.env.block.timestamp = *newTimestamp;
+        let chain_id = ccx.caller.0;
+        ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().timestamp = *newTimestamp;
         Ok(Default::default())
     }
 }
@@ -392,7 +399,8 @@ impl Cheatcode for warpCall {
 impl Cheatcode for getBlockTimestampCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self {} = self;
-        Ok(ccx.ecx.env.block.timestamp.abi_encode())
+        let chain_id = ccx.caller.0;
+        Ok(ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().timestamp.abi_encode())
     }
 }
 
@@ -404,7 +412,8 @@ impl Cheatcode for blobBaseFeeCall {
             "`blobBaseFee` is not supported before the Cancun hard fork; \
              see EIP-4844: https://eips.ethereum.org/EIPS/eip-4844"
         );
-        ccx.ecx.env.block.set_blob_excess_gas_and_price((*newBlobBaseFee).to());
+        let chain_id = ccx.caller.0;
+        ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().set_blob_excess_gas_and_price((*newBlobBaseFee).to());
         Ok(Default::default())
     }
 }
@@ -412,7 +421,8 @@ impl Cheatcode for blobBaseFeeCall {
 impl Cheatcode for getBlobBaseFeeCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self {} = self;
-        Ok(ccx.ecx.env.block.get_blob_excess_gas().unwrap_or(0).abi_encode())
+        let chain_id = ccx.caller.0;
+        Ok(ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().get_blob_excess_gas().unwrap_or(0).abi_encode())
     }
 }
 
@@ -620,12 +630,12 @@ impl Cheatcode for broadcastRawTransactionCall {
 impl Cheatcode for setBlockhashCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { blockNumber, blockHash } = *self;
+        let chain_id = ccx.caller.0;
         ensure!(
-            blockNumber <= ccx.ecx.env.block.number,
+            blockNumber <= ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().number,
             "block number must be less than or equal to the current block number"
         );
 
-        let chain_id = ccx.caller.0;
         ccx.ecx.db.set_blockhash(chain_id, blockNumber, blockHash);
 
         Ok(Default::default())

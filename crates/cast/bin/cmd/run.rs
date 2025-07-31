@@ -137,17 +137,20 @@ impl RunArgs {
 
         let mut evm_version = self.evm_version;
 
-        env.block.number = U256::from(tx_block_number);
+        {
+        let block_env = env.blocks.get_mut(&env.cfg.chain_id).unwrap();
+
+        block_env.number = U256::from(tx_block_number);
 
         let chain_id = env.cfg.chain_id;
 
         if let Some(block) = &block {
-            env.block.timestamp = U256::from(block.header.timestamp);
-            env.block.coinbase = ChainAddress(chain_id, block.header.miner);
-            env.block.difficulty = block.header.difficulty;
-            env.block.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
-            env.block.basefee = U256::from(block.header.base_fee_per_gas.unwrap_or_default());
-            env.block.gas_limit = U256::from(block.header.gas_limit);
+            block_env.timestamp = U256::from(block.header.timestamp);
+            block_env.coinbase = ChainAddress(chain_id, block.header.miner);
+            block_env.difficulty = block.header.difficulty;
+            block_env.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
+            block_env.basefee = U256::from(block.header.base_fee_per_gas.unwrap_or_default());
+            block_env.gas_limit = U256::from(block.header.gas_limit);
 
             // TODO: we need a smarter way to map the block to the corresponding evm_version for
             // commonly used chains
@@ -157,6 +160,7 @@ impl RunArgs {
                     evm_version = Some(EvmVersion::Cancun);
                 }
             }
+        }
         }
 
         let mut executor = TracingExecutor::new(
@@ -198,12 +202,14 @@ impl RunArgs {
 
                     configure_tx_env(&mut env, &tx.inner);
 
+                    let block_env = env.blocks.get(&env.cfg.chain_id).unwrap();
+
                     if let Some(to) = tx.to {
                         trace!(tx=?tx.hash,?to, "executing previous call transaction");
                         executor.transact_with_env(env.clone()).wrap_err_with(|| {
                             format!(
                                 "Failed to execute transaction: {:?} in block {}",
-                                tx.hash, env.block.number
+                                tx.hash, block_env.number
                             )
                         })?;
                     } else {
@@ -216,7 +222,7 @@ impl RunArgs {
                                     return Err(error).wrap_err_with(|| {
                                         format!(
                                             "Failed to deploy transaction: {:?} in block {}",
-                                            tx.hash, env.block.number
+                                            tx.hash, block_env.number
                                         )
                                     })
                                 }

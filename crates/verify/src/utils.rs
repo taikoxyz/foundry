@@ -345,12 +345,14 @@ pub async fn get_tracing_executor(
 }
 
 pub fn configure_env_block(env: &mut Env, block: &AnyNetworkBlock) {
-    env.block.timestamp = U256::from(block.header.timestamp);
-    env.block.coinbase = ChainAddress(env.cfg.chain_id, block.header.miner);
-    env.block.difficulty = block.header.difficulty;
-    env.block.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
-    env.block.basefee = U256::from(block.header.base_fee_per_gas.unwrap_or_default());
-    env.block.gas_limit = U256::from(block.header.gas_limit);
+    for (_, block_env) in env.blocks.iter_mut() {
+        block_env.timestamp = U256::from(block.header.timestamp);
+        block_env.coinbase = ChainAddress(env.cfg.chain_id, block.header.miner);
+        block_env.difficulty = block.header.difficulty;
+        block_env.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
+        block_env.basefee = U256::from(block.header.base_fee_per_gas.unwrap_or_default());
+        block_env.gas_limit = U256::from(block.header.gas_limit);
+    }
 }
 
 pub fn deploy_contract(

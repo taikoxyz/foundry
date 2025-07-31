@@ -471,6 +471,9 @@ pub struct Config {
     #[doc(hidden)]
     #[serde(skip)]
     pub _non_exhaustive: (),
+
+    /// All chain ids allowed while in foundry
+    pub chain_ids: Option<Vec<u64>>,
 }
 
 /// Mapping of fallback standalone sections. See [`FallbackProfileProvider`]
@@ -2175,6 +2178,7 @@ impl Default for Config {
             alphanet: false,
             transaction_timeout: 120,
             _non_exhaustive: (),
+            chain_ids: Some(vec![31337]),
         }
     }
 }

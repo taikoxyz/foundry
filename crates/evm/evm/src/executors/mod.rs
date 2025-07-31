@@ -106,7 +106,7 @@ impl Executor {
         // do not fail.
 
         // TODO(Brecht): Adding a copy per chain (hopefully), what can go wrong
-        for chain_id in 0..1000000 {
+        for &chain_id in env.blocks.keys() {
             backend.insert_account_info(
                 ChainAddress(chain_id, CHEATCODE_ADDRESS),
                 revm::primitives::AccountInfo {
@@ -316,7 +316,7 @@ impl Executor {
         res = res.into_result(rd)?;
 
         // record any changes made to the block's environment during setup
-        self.env_mut().block = res.env.block.clone();
+        self.env_mut().blocks = res.env.blocks.clone();
         // and also the chainid, which can be set manually
         self.env_mut().cfg.chain_id = res.env.cfg.chain_id;
 
@@ -602,16 +602,20 @@ impl Executor {
         data: Bytes,
         value: U256,
     ) -> EnvWithHandlerCfg {
+        let mut blocks = self.env().blocks.clone();
+        for (_, block) in blocks.iter_mut() {
+            block.basefee = U256::ZERO;
+            block.gas_limit = U256::from(self.gas_limit);
+        }
+
+        let chain_ids = Some(blocks.keys().cloned().collect());
+
         let env = Env {
             cfg: self.env().cfg.clone(),
             // We always set the gas price to 0 so we can execute the transaction regardless of
             // network conditions - the actual gas price is kept in `self.block` and is applied by
             // the cheatcode handler if it is enabled
-            block: BlockEnv {
-                basefee: U256::ZERO,
-                gas_limit: U256::from(self.gas_limit),
-                ..self.env().block.clone()
-            },
+            blocks: blocks.clone(),
             tx: TxEnv {
                 caller,
                 transact_to,
@@ -621,6 +625,7 @@ impl Executor {
                 gas_price: U256::ZERO,
                 gas_priority_fee: None,
                 gas_limit: self.gas_limit,
+                chain_ids,
                 ..self.env().tx.clone()
             },
         };

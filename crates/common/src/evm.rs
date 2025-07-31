@@ -150,6 +150,12 @@ pub struct EvmArgs {
     #[arg(long)]
     #[serde(skip)]
     pub alphanet: bool,
+
+
+    /// the supported chain ids
+    #[arg(long)]
+    #[serde(skip)]
+    pub chain_ids: Option<Vec<u64>>,
 }
 
 // Make this set of options a `figment::Provider` so that it can be merged into the `Config`

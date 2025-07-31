@@ -120,6 +120,7 @@ pub trait CheatcodesExecutor {
     ) -> Result<CreateOutcome, EVMError<DB::Error>> {
         self.with_evm(ccx, |evm| {
             evm.context.evm.inner.journaled_state.depth += 1;
+            let chain_id = inputs.caller.0;
 
             // Handle EOF bytecode
             let first_frame_or_result = if evm.handler.cfg.spec_id.is_enabled_in(SpecId::PRAGUE_EOF)
@@ -140,7 +141,7 @@ pub trait CheatcodesExecutor {
                 revm::FrameOrResult::Result(result) => result,
             };
 
-            evm.handler.execution().last_frame_return(&mut evm.context, &mut result)?;
+            evm.handler.execution().last_frame_return(&mut evm.context, &mut result, chain_id)?;
 
             let outcome = match result {
                 revm::FrameResult::Call(_) => unreachable!(),
@@ -1123,7 +1124,8 @@ impl<DB: DatabaseExt> Inspector<DB> for Cheatcodes {
         // When the first interpreter is initialized we've circumvented the balance and gas checks,
         // so we apply our actual block data with the correct fees and all.
         if let Some(block) = self.block.take() {
-            ecx.env.block = block;
+            let chain_id = ecx.env.cfg.chain_id;
+            *ecx.env.blocks.get_mut(&chain_id).unwrap() = block;
         }
         if let Some(gas_price) = self.gas_price.take() {
             ecx.env.tx.gas_price = gas_price;
@@ -2015,8 +2017,8 @@ fn check_if_fixed_gas_limit<DB: DatabaseExt>(
     // time of the call, which should be rather close to configured gas limit.
     // TODO: Find a way to reliably make this determination.
     // For example by generating it in the compilation or EVM simulation process
-    U256::from(ecx.env.tx.gas_limit) > ecx.env.block.gas_limit &&
-        U256::from(call_gas_limit) <= ecx.env.block.gas_limit
+    U256::from(ecx.env.tx.gas_limit) > ecx.env.blocks.get(&ecx.env.cfg.chain_id).unwrap().gas_limit &&
+        U256::from(call_gas_limit) <= ecx.env.blocks.get(&ecx.env.cfg.chain_id).unwrap().gas_limit
         // Transfers in forge scripts seem to be estimated at 2300 by revm leading to "Intrinsic
         // gas too low" failure when simulated on chain
         && call_gas_limit > 2300
