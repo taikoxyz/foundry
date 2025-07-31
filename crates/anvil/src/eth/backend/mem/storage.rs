@@ -236,14 +236,15 @@ impl BlockchainStorage {
     /// Creates a new storage with a genesis block
     pub fn new(env: &Env, base_fee: Option<u128>, timestamp: u64) -> Self {
         // create a dummy genesis block
+        let block = env.blocks.get(&env.cfg.chain_id).unwrap();
         let partial_header = PartialHeader {
             timestamp,
             base_fee,
-            gas_limit: env.block.gas_limit.to::<u128>(),
-            beneficiary: env.block.coinbase.1,
-            difficulty: env.block.difficulty,
-            blob_gas_used: env.block.blob_excess_gas_and_price.as_ref().map(|_| 0),
-            excess_blob_gas: env.block.get_blob_excess_gas().map(|v| v as u128),
+            gas_limit: block.gas_limit.to::<u128>(),
+            beneficiary: block.coinbase.1,
+            difficulty: block.difficulty,
+            blob_gas_used: block.blob_excess_gas_and_price.as_ref().map(|_| 0),
+            excess_blob_gas: block.get_blob_excess_gas().map(|v| v as u128),
             ..Default::default()
         };
         let block = Block::new::<MaybeImpersonatedTransaction>(partial_header, vec![], vec![]);

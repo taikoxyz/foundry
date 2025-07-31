@@ -39,7 +39,7 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
             NamedChain::Mainnet => {
                 // after merge difficulty is supplanted with prevrandao EIP-4399
                 if block_number >= 15_537_351u64 {
-                    env.block.difficulty = env.block.prevrandao.unwrap_or_default().into();
+                    env.blocks.get_mut(&env.cfg.chain_id).unwrap().difficulty = env.blocks.get(&env.cfg.chain_id).unwrap().prevrandao.unwrap_or_default().into();
                 }
 
                 return;
@@ -57,7 +57,7 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
                         serde_json::from_value::<U256>(l1_block_number).ok()
                     })
                 {
-                    env.block.number = l1_block_number;
+                    env.blocks.get_mut(&env.cfg.chain_id).unwrap().number = l1_block_number;
                 }
             }
             _ => {}
@@ -66,7 +66,7 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
 
     // if difficulty is `0` we assume it's past merge
     if block.header().difficulty().is_zero() {
-        env.block.difficulty = env.block.prevrandao.unwrap_or_default().into();
+        env.blocks.get_mut(&env.cfg.chain_id).unwrap().difficulty = env.blocks.get_mut(&env.cfg.chain_id).unwrap().prevrandao.unwrap_or_default().into();
     }
 }
 

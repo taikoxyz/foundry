@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::fork::environment;
 use crate::fork::CreateFork;
 use alloy_primitives::{Address, B256, U256};
@@ -66,6 +68,9 @@ pub struct EvmOpts {
 
     /// whether to enable Alphanet features.
     pub alphanet: bool,
+
+    /// the supported chain ids
+    pub chain_ids: Option<Vec<u64>>,
 }
 
 impl EvmOpts {
@@ -110,6 +115,7 @@ impl EvmOpts {
     /// Returns the `revm::Env` configured with only local settings
     pub fn local_evm_env(&self) -> revm::primitives::Env {
         println!("CORE!!!");
+        println!("chain_ids: {:?}", self.chain_ids);
 
         let mut cfg = CfgEnv::default();
         cfg.chain_id = self.env.chain_id.unwrap_or(foundry_common::DEV_CHAIN_ID);
@@ -124,8 +130,9 @@ impl EvmOpts {
         cfg.allow_mocking = true;
         cfg.parent_chain_id = Some(self.env.parent_chain_id.unwrap_or(cfg.chain_id));
 
-        revm::primitives::Env {
-            block: BlockEnv {
+        let mut blocks = HashMap::new();
+        for &chain_id in self.chain_ids.as_ref().unwrap().iter() {
+            blocks.insert(chain_id, BlockEnv {
                 number: U256::from(self.env.block_number),
                 coinbase: self.env.block_coinbase,
                 timestamp: U256::from(self.env.block_timestamp),
@@ -134,12 +141,17 @@ impl EvmOpts {
                 basefee: U256::from(self.env.block_base_fee_per_gas),
                 gas_limit: U256::from(self.gas_limit()),
                 ..Default::default()
-            },
+            });
+        }
+
+        revm::primitives::Env {
+            blocks,
             cfg: cfg.clone(),
             tx: TxEnv {
                 gas_price: U256::from(self.env.gas_price.unwrap_or_default()),
                 gas_limit: self.gas_limit(),
                 caller: ChainAddress(cfg.chain_id, self.sender),
+                chain_ids: self.chain_ids.clone(),
                 ..Default::default()
             },
         }

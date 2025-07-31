@@ -882,7 +882,7 @@ impl Backend {
         let env = self.env_with_handler_cfg(env);
         let fork = self.inner.get_fork_by_id_mut(id)?;
         let full_block =
-            fork.db.db.get_full_block(env.cfg.chain_id, env.block.number.to::<u64>())?;
+            fork.db.db.get_full_block(env.cfg.chain_id, env.blocks.get(&env.cfg.chain_id).unwrap().number.to::<u64>())?;
 
         for tx in full_block.transactions.clone().into_transactions() {
             // System transactions such as on L2s don't contain any pricing info so we skip them
@@ -1056,8 +1056,8 @@ impl DatabaseExt for Backend {
         if let Some(active_fork_id) = self.active_fork_id() {
             self.forks.update_block(
                 self.ensure_fork_id(active_fork_id).cloned()?,
-                env.block.number,
-                env.block.timestamp,
+                env.blocks.get(&env.cfg.chain_id).unwrap().number,
+                env.blocks.get(&env.cfg.chain_id).unwrap().timestamp,
             )?;
         }
 
@@ -1312,7 +1312,8 @@ impl DatabaseExt for Backend {
             tx.to.ok_or_else(|| eyre::eyre!("transact_from_tx: No `to` field found"))?,
         );
         // env.tx.chain_id = tx.chain_id;
-        env.tx.chain_ids = Some(vec![chain_id]);
+        let chain_ids = Some(env.blocks.keys().cloned().collect());
+        env.tx.chain_ids = chain_ids;
 
         self.commit(journaled_state.state.clone());
 
@@ -1856,10 +1857,11 @@ impl Default for BackendInner {
 
 /// This updates the currently used env with the fork's environment
 pub(crate) fn update_current_env_with_fork_env(current: &mut Env, fork: Env) {
-    current.block = fork.block;
+    current.blocks = fork.blocks;
     current.cfg = fork.cfg;
     // current.tx.chain_id = fork.tx.chain_id;
-    current.tx.chain_ids = None;
+    let chain_ids = Some(current.blocks.keys().cloned().collect());
+    current.tx.chain_ids = chain_ids;
 }
 
 /// Clones the data of the given `accounts` from the `active` database into the `fork_db`
@@ -1942,13 +1944,14 @@ fn is_contract_in_state(journaled_state: &JournaledState, acc: ChainAddress) -> 
 
 /// Updates the env's block with the block's data
 fn update_env_block<T>(env: &mut Env, block: &Block<T>) {
-    env.block.timestamp = U256::from(block.header.timestamp);
-    env.block.coinbase = ChainAddress(env.tx.chain_ids.clone().unwrap()[0], block.header.miner);
-    env.block.difficulty = block.header.difficulty;
-    env.block.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
-    env.block.basefee = U256::from(block.header.base_fee_per_gas.unwrap_or_default());
-    env.block.gas_limit = U256::from(block.header.gas_limit);
-    env.block.number = U256::from(block.header.number);
+    let block_env = env.blocks.get_mut(&env.cfg.chain_id).unwrap();
+    block_env.timestamp = U256::from(block.header.timestamp);
+    block_env.coinbase = ChainAddress(env.tx.chain_ids.clone().unwrap()[0], block.header.miner);
+    block_env.difficulty = block.header.difficulty;
+    block_env.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
+    block_env.basefee = U256::from(block.header.base_fee_per_gas.unwrap_or_default());
+    block_env.gas_limit = U256::from(block.header.gas_limit);
+    block_env.number = U256::from(block.header.number);
 }
 
 /// Executes the given transaction and commits state changes to the database _and_ the journaled
@@ -2079,7 +2082,7 @@ mod tests {
         drop(backend);
 
         let meta =
-            BlockchainDbMeta { cfg_env: env.cfg, block_env: env.block, hosts: Default::default() };
+            BlockchainDbMeta { cfg_env: env.cfg.clone(), block_env: env.blocks.get(&env.cfg.chain_id).unwrap().clone(), hosts: Default::default() };
 
         let db = BlockchainDb::new(
             meta,

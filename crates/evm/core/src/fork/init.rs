@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::utils::apply_chain_and_block_specific_env_changes;
 use alloy_primitives::{Address, U256};
 use alloy_provider::{
@@ -88,9 +90,14 @@ pub async fn environment<N: Network, T: Transport + Clone, P: Provider<T, N>>(
     cfg.allow_mocking = true;
     cfg.parent_chain_id = parent_chain_id;
 
-    let mut env = Env {
-        cfg: cfg.clone(),
-        block: BlockEnv {
+    //let chain_ids: Vec<u64> = Some(0..200_000).collect();
+    // TODO(Brecht): discover this through the RPC server
+    let chain_ids = Some(vec![160010u64, 167010, 167011]);
+    println!("chain_ids: {:?}", chain_ids);
+
+    let mut blocks = HashMap::new();
+    for &chain_id in chain_ids.as_ref().unwrap().iter() {
+        blocks.insert(chain_id, BlockEnv {
             number: U256::from(block.header().number()),
             timestamp: U256::from(block.header().timestamp()),
             coinbase: ChainAddress(cfg.chain_id, block.header().coinbase()),
@@ -99,11 +106,16 @@ pub async fn environment<N: Network, T: Transport + Clone, P: Provider<T, N>>(
             basefee: U256::from(block.header().base_fee_per_gas().unwrap_or_default()),
             gas_limit: U256::from(block.header().gas_limit()),
             ..Default::default()
-        },
+        });
+    }
+
+    let mut env = Env {
+        cfg: cfg.clone(),
+        blocks,
         tx: TxEnv {
             caller: origin,
             gas_price: U256::from(gas_price.unwrap_or(fork_gas_price)),
-            chain_ids: Some(vec![override_chain_id.unwrap_or(rpc_chain_id)]),
+            chain_ids,
             gas_limit: block.header().gas_limit() as u64,
             ..Default::default()
         },
