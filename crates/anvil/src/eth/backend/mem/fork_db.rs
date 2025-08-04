@@ -30,7 +30,8 @@ impl Db for ForkedDatabase {
     }
 
     fn insert_block_hash(&mut self, number: U256, hash: B256) {
-        self.inner().block_hashes().write().insert(number, hash);
+        let chain_id = 1u64; // Default chain_id for backward compatibility
+        self.inner().block_hashes().write().insert((chain_id, number), hash);
     }
 
     fn dump_state(

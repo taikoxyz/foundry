@@ -215,7 +215,8 @@ impl<T: DatabaseRef<Error = DatabaseError> + Send + Sync + Clone + fmt::Debug> D
     }
 
     fn insert_block_hash(&mut self, number: U256, hash: B256) {
-        self.cache.block_hashes.insert(number, hash);
+        let chain_id = 1u64; // Default chain_id for backward compatibility
+        self.cache.block_hashes.insert((chain_id, number), hash);
     }
 
     fn dump_state(
@@ -259,7 +260,8 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
         for (addr, mut acc) in db_accounts {
             account_storage.insert(addr, std::mem::take(&mut acc.storage));
             let mut info = acc.info;
-            info.code = self.cache.contracts.remove(&info.code_hash);
+            let chain_id = 1u64; // Default chain_id for backward compatibility
+            info.code = self.cache.contracts.remove(&(chain_id, info.code_hash));
             accounts.insert(addr, info);
         }
         let block_hashes = std::mem::take(&mut self.cache.block_hashes);
@@ -274,7 +276,8 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
         for (addr, acc) in db_accounts {
             account_storage.insert(addr, acc.storage.clone());
             let mut info = acc.info;
-            info.code = self.cache.contracts.get(&info.code_hash).cloned();
+            let chain_id = 1u64; // Default chain_id for backward compatibility
+            info.code = self.cache.contracts.get(&(chain_id, info.code_hash)).cloned();
             accounts.insert(addr, info);
         }
 
@@ -291,7 +294,8 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
 
         for (addr, mut acc) in accounts {
             if let Some(code) = acc.code.take() {
-                self.cache.contracts.insert(acc.code_hash, code);
+                let chain_id = 1u64; // Default chain_id for backward compatibility
+                self.cache.contracts.insert((chain_id, acc.code_hash), code);
             }
             self.cache.accounts.insert(
                 addr,

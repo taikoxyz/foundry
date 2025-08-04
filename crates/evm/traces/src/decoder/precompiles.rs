@@ -48,19 +48,16 @@ macro_rules! tri {
 
 pub(super) fn is_known_precompile(address: Address, _chain_id: u64) -> bool {
     address[..19].iter().all(|&x| x == 0)
-        && matches!(
-            address,
-            EC_RECOVER
-                | SHA_256
-                | RIPEMD_160
-                | IDENTITY
-                | MOD_EXP
-                | EC_ADD
-                | EC_MUL
-                | EC_PAIRING
-                | BLAKE_2F
-                | POINT_EVALUATION
-        )
+        && (address == EC_RECOVER
+            || address == SHA_256
+            || address == RIPEMD_160
+            || address == IDENTITY
+            || address == MOD_EXP
+            || address == EC_ADD
+            || address == EC_MUL
+            || address == EC_PAIRING
+            || address == BLAKE_2F
+            || address == POINT_EVALUATION)
 }
 
 /// Tries to decode a precompile call. Returns `Some` if successful.
@@ -71,27 +68,31 @@ pub(super) fn decode(trace: &CallTrace, _chain_id: u64) -> Option<DecodedCallTra
 
     let data = &trace.data;
 
-    let (signature, args) = match trace.address {
-        EC_RECOVER => {
-            let (sig, ecrecoverCall { hash, v, r, s }) = tri!(abi_decode_call(data));
-            (sig, vec![hash.to_string(), v.to_string(), r.to_string(), s.to_string()])
-        }
-        SHA_256 => (sha256Call::SIGNATURE, vec![data.to_string()]),
-        RIPEMD_160 => (ripemdCall::SIGNATURE, vec![data.to_string()]),
-        IDENTITY => (identityCall::SIGNATURE, vec![data.to_string()]),
-        MOD_EXP => (modexpCall::SIGNATURE, tri!(decode_modexp(data))),
-        EC_ADD => {
-            let (sig, ecaddCall { x1, y1, x2, y2 }) = tri!(abi_decode_call(data));
-            (sig, vec![x1.to_string(), y1.to_string(), x2.to_string(), y2.to_string()])
-        }
-        EC_MUL => {
-            let (sig, ecmulCall { x1, y1, s }) = tri!(abi_decode_call(data));
-            (sig, vec![x1.to_string(), y1.to_string(), s.to_string()])
-        }
-        EC_PAIRING => (ecpairingCall::SIGNATURE, tri!(decode_ecpairing(data))),
-        BLAKE_2F => (blake2fCall::SIGNATURE, tri!(decode_blake2f(data))),
-        POINT_EVALUATION => (pointEvaluationCall::SIGNATURE, tri!(decode_kzg(data))),
-        _ => return None,
+    let (signature, args) = if trace.address == EC_RECOVER {
+        let (sig, ecrecoverCall { hash, v, r, s }) = tri!(abi_decode_call(data));
+        (sig, vec![hash.to_string(), v.to_string(), r.to_string(), s.to_string()])
+    } else if trace.address == SHA_256 {
+        (sha256Call::SIGNATURE, vec![data.to_string()])
+    } else if trace.address == RIPEMD_160 {
+        (ripemdCall::SIGNATURE, vec![data.to_string()])
+    } else if trace.address == IDENTITY {
+        (identityCall::SIGNATURE, vec![data.to_string()])
+    } else if trace.address == MOD_EXP {
+        (modexpCall::SIGNATURE, tri!(decode_modexp(data)))
+    } else if trace.address == EC_ADD {
+        let (sig, ecaddCall { x1, y1, x2, y2 }) = tri!(abi_decode_call(data));
+        (sig, vec![x1.to_string(), y1.to_string(), x2.to_string(), y2.to_string()])
+    } else if trace.address == EC_MUL {
+        let (sig, ecmulCall { x1, y1, s }) = tri!(abi_decode_call(data));
+        (sig, vec![x1.to_string(), y1.to_string(), s.to_string()])
+    } else if trace.address == EC_PAIRING {
+        (ecpairingCall::SIGNATURE, tri!(decode_ecpairing(data)))
+    } else if trace.address == BLAKE_2F {
+        (blake2fCall::SIGNATURE, tri!(decode_blake2f(data)))
+    } else if trace.address == POINT_EVALUATION {
+        (pointEvaluationCall::SIGNATURE, tri!(decode_kzg(data)))
+    } else {
+        return None;
     };
 
     Some(DecodedCallTrace {

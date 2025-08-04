@@ -845,18 +845,24 @@ impl Backend {
         transaction: B256,
     ) -> eyre::Result<(u64, AnyRpcBlock)> {
         let fork = self.inner.get_fork_by_id(id)?;
-        let tx = fork.db.db.get_transaction(transaction)?;
+        // Get chain_id from the fork environment instead of SharedBackend
+        let fork_env = self
+            .forks
+            .get_env(self.inner.ensure_fork_id(id).cloned()?)?
+            .ok_or_else(|| eyre::eyre!("Fork environment not found for id {}", id))?;
+        let chain_id = fork_env.evm_env.cfg_env.chain_id;
+        let tx = fork.db.db.get_transaction(chain_id, transaction)?;
 
         // get the block number we need to fork
         if let Some(tx_block) = tx.block_number {
-            let block = fork.db.db.get_full_block(tx_block)?;
+            let block = fork.db.db.get_full_block(chain_id, tx_block)?;
 
             // we need to subtract 1 here because we want the state before the transaction
             // was mined
             let fork_block = tx_block - 1;
             Ok((fork_block, block))
         } else {
-            let block = fork.db.db.get_full_block(BlockNumberOrTag::Latest)?;
+            let block = fork.db.db.get_full_block(chain_id, BlockNumberOrTag::Latest)?;
 
             let number = block.header.number;
 
@@ -880,7 +886,8 @@ impl Backend {
         let fork_id = self.ensure_fork_id(id)?.clone();
 
         let fork = self.inner.get_fork_by_id_mut(id)?;
-        let full_block = fork.db.db.get_full_block(env.evm_env.block_env.number)?;
+        let chain_id = env.evm_env.cfg_env.chain_id; // Get chain_id from environment instead
+        let full_block = fork.db.db.get_full_block(chain_id, env.evm_env.block_env.number)?;
 
         for tx in full_block.inner.transactions.txns() {
             // System transactions such as on L2s don't contain any pricing info so we skip them
@@ -1268,8 +1275,16 @@ impl DatabaseExt for Backend {
         let fork_id = self.ensure_fork_id(id).cloned()?;
 
         let tx = {
+            // Get fork_id first before taking mutable reference
+            let fork_id = self.inner.ensure_fork_id(id).cloned()?;
             let fork = self.inner.get_fork_by_id_mut(id)?;
-            fork.db.db.get_transaction(transaction)?
+            // Get chain_id from the fork environment instead of SharedBackend
+            let fork_env = self
+                .forks
+                .get_env(fork_id)?
+                .ok_or_else(|| eyre::eyre!("Fork environment not found for id {}", id))?;
+            let chain_id = fork_env.evm_env.cfg_env.chain_id;
+            fork.db.db.get_transaction(chain_id, transaction)?
         };
 
         // This is a bit ambiguous because the user wants to transact an arbitrary transaction in
@@ -1482,10 +1497,25 @@ impl DatabaseExt for Backend {
     }
 
     fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
-        if let Some(db) = self.active_fork_db_mut() {
-            db.cache.block_hashes.insert(block_number.saturating_to(), block_hash);
+        // First, get the chain_id before borrowing the db mutably
+        let chain_id = if let Some(active_fork_id) = self.active_fork_id() {
+            // Clone the fork_id to avoid borrowing issues
+            let fork_id = self.inner.ensure_fork_id(active_fork_id).cloned().unwrap_or_default();
+            self.forks
+                .get_env(fork_id)
+                .ok()
+                .flatten()
+                .map(|env| env.evm_env.cfg_env.chain_id)
+                .unwrap_or(1) // Default to mainnet if not found
         } else {
-            self.mem_db.cache.block_hashes.insert(block_number.saturating_to(), block_hash);
+            1 // Default to mainnet
+        };
+
+        if let Some(db) = self.active_fork_db_mut() {
+            db.cache.block_hashes.insert((chain_id, block_number), block_hash);
+        } else {
+            // For in-memory DB, use chain_id 1 (mainnet) as default
+            self.mem_db.cache.block_hashes.insert((1, block_number), block_hash);
         }
     }
 }
@@ -1503,7 +1533,20 @@ impl DatabaseRef for Backend {
 
     fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
         if let Some(db) = self.active_fork_db() {
-            db.code_by_hash_ref(code_hash)
+            // Use x-method for fork database to get chain_id
+            let chain_id = if let Some(active_fork_id) = self.active_fork_id() {
+                let fork_id =
+                    self.inner.ensure_fork_id(active_fork_id).cloned().unwrap_or_default();
+                self.forks
+                    .get_env(fork_id)
+                    .ok()
+                    .flatten()
+                    .map(|env| env.evm_env.cfg_env.chain_id)
+                    .unwrap_or(1)
+            } else {
+                1
+            };
+            db.xcode_by_hash_ref(chain_id, code_hash)
         } else {
             Ok(self.mem_db.code_by_hash_ref(code_hash)?)
         }
@@ -1519,7 +1562,20 @@ impl DatabaseRef for Backend {
 
     fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
         if let Some(db) = self.active_fork_db() {
-            db.block_hash_ref(number)
+            // Use x-method for fork database to get chain_id
+            let chain_id = if let Some(active_fork_id) = self.active_fork_id() {
+                let fork_id =
+                    self.inner.ensure_fork_id(active_fork_id).cloned().unwrap_or_default();
+                self.forks
+                    .get_env(fork_id)
+                    .ok()
+                    .flatten()
+                    .map(|env| env.evm_env.cfg_env.chain_id)
+                    .unwrap_or(1)
+            } else {
+                1
+            };
+            db.xblock_hash_ref(chain_id, number)
         } else {
             Ok(self.mem_db.block_hash_ref(number)?)
         }
@@ -1547,8 +1603,22 @@ impl Database for Backend {
     }
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        // Get chain_id before accessing mutable database to avoid borrowing conflicts
+        let chain_id = if let Some(active_fork_id) = self.active_fork_id() {
+            let fork_id = self.inner.ensure_fork_id(active_fork_id).cloned().unwrap_or_default();
+            self.forks
+                .get_env(fork_id)
+                .ok()
+                .flatten()
+                .map(|env| env.evm_env.cfg_env.chain_id)
+                .unwrap_or(1)
+        } else {
+            1
+        };
+
         if let Some(db) = self.active_fork_db_mut() {
-            Ok(db.code_by_hash(code_hash)?)
+            // Use x-method for fork database with chain_id
+            Ok(db.xcode_by_hash(chain_id, code_hash)?)
         } else {
             Ok(self.mem_db.code_by_hash(code_hash)?)
         }
@@ -1563,8 +1633,22 @@ impl Database for Backend {
     }
 
     fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
+        // Get chain_id before accessing mutable database to avoid borrowing conflicts
+        let chain_id = if let Some(active_fork_id) = self.active_fork_id() {
+            let fork_id = self.inner.ensure_fork_id(active_fork_id).cloned().unwrap_or_default();
+            self.forks
+                .get_env(fork_id)
+                .ok()
+                .flatten()
+                .map(|env| env.evm_env.cfg_env.chain_id)
+                .unwrap_or(1)
+        } else {
+            1
+        };
+
         if let Some(db) = self.active_fork_db_mut() {
-            Ok(db.block_hash(number)?)
+            // Use x-method for fork database with chain_id
+            Ok(db.xblock_hash(chain_id, number)?)
         } else {
             Ok(self.mem_db.block_hash(number)?)
         }
@@ -1898,9 +1982,13 @@ fn merge_db_account_data<ExtDB: DatabaseRef>(
     let Some(acc) = active.cache.accounts.get(&addr) else { return };
 
     // port contract cache over
-    if let Some(code) = active.cache.contracts.get(&acc.info.code_hash) {
+    // Note: We need to determine the chain_id for the contract cache
+    // For now, we'll use a default of 1 (mainnet) for compatibility, but this
+    // could be enhanced to use proper chain_id context in the future
+    let chain_id = 1u64; // Default chain_id for backward compatibility
+    if let Some(code) = active.cache.contracts.get(&(chain_id, acc.info.code_hash)) {
         trace!("merging contract cache");
-        fork_db.cache.contracts.insert(acc.info.code_hash, code.clone());
+        fork_db.cache.contracts.insert((chain_id, acc.info.code_hash), code.clone());
     }
 
     // port account storage over

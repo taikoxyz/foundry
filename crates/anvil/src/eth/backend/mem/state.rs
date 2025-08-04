@@ -141,10 +141,11 @@ pub fn apply_block_overrides<DB>(
 
     if let Some(block_hashes) = block_hash {
         // override block hashes
+        let chain_id = 1u64; // Default chain_id for backward compatibility
         cache_db
             .cache
             .block_hashes
-            .extend(block_hashes.into_iter().map(|(num, hash)| (U256::from(num), hash)))
+            .extend(block_hashes.into_iter().map(|(num, hash)| ((chain_id, U256::from(num)), hash)))
     }
 
     if let Some(number) = number {
