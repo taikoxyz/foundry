@@ -30,7 +30,7 @@ use std::{
 
 /// The _unique_ identifier for a specific fork, this could be the name of the network a custom
 /// descriptive name.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct ForkId(pub String);
 
 impl ForkId {

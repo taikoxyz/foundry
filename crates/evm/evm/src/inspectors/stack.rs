@@ -702,7 +702,7 @@ impl InspectorStackRefMut<'_> {
         }
 
         let (result, address, output) = match res.result {
-            ExecutionResult::Success { reason, gas_used, gas_refunded, logs: _, output } => {
+            ExecutionResult::Success { reason, gas_used, gas_refunded, logs: _, output, .. } => {
                 gas.set_refund(gas_refunded as i64);
                 let _ = gas.record_cost(gas_used);
                 let address = match output {
@@ -711,11 +711,11 @@ impl InspectorStackRefMut<'_> {
                 };
                 (reason.into(), address, output.into_data())
             }
-            ExecutionResult::Halt { reason, gas_used } => {
+            ExecutionResult::Halt { reason, gas_used, .. } => {
                 let _ = gas.record_cost(gas_used);
                 (reason.into(), None, Bytes::new())
             }
-            ExecutionResult::Revert { gas_used, output } => {
+            ExecutionResult::Revert { gas_used, output, .. } => {
                 let _ = gas.record_cost(gas_used);
                 (InstructionResult::Revert, None, output)
             }

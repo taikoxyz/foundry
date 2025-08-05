@@ -260,7 +260,8 @@ impl DatabaseRef for ForkDbStateSnapshot {
     }
 
     fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
-        match self.state_snapshot.block_hashes.get(&U256::from(number)).copied() {
+        // Use chain_id 1 (mainnet) as default for compatibility
+        match self.state_snapshot.block_hashes.get(&(1u64, U256::from(number))).copied() {
             None => self.local.block_hash_ref(number),
             Some(block_hash) => Ok(block_hash),
         }

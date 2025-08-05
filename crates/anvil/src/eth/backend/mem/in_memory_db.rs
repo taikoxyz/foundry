@@ -30,7 +30,8 @@ impl Db for MemDb {
     }
 
     fn insert_block_hash(&mut self, number: U256, hash: B256) {
-        self.inner.cache.block_hashes.insert(number, hash);
+        let chain_id = 1u64; // Default chain_id for backward compatibility
+        self.inner.cache.block_hashes.insert((chain_id, number), hash);
     }
 
     fn dump_state(
