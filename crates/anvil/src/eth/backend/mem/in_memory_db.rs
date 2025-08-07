@@ -29,8 +29,8 @@ impl Db for MemDb {
         self.inner.insert_account_storage(address, slot.into(), val.into())
     }
 
-    fn insert_block_hash(&mut self, number: U256, hash: B256) {
-        self.inner.cache.block_hashes.insert(number, hash);
+    fn insert_block_hash(&mut self, number: U256, hash: B256, chain_id: u64) {
+        self.inner.cache.block_hashes.insert((chain_id, number), hash);
     }
 
     fn dump_state(

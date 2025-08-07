@@ -23,15 +23,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let sha_short = &sha[..10];
 
     // Set the version suffix and whether the version is a nightly build.
-    // if not on a tag: <BIN> 0.3.0-dev+ba03de0019.1737036656.debug
-    // if on a tag: <BIN> 0.3.0-stable+ba03de0019.1737036656.release
+    // if not on a tag: <BIN> 0.3.0-dev-gwyneth+ba03de0019.1737036656.debug
+    // if on a tag: <BIN> 0.3.0-stable-gwyneth+ba03de0019.1737036656.release
     let tag_name = env::var("TAG_NAME")
         .or_else(|_| env::var("CARGO_TAG_NAME"))
         .unwrap_or_else(|_| String::from("dev"));
     let (is_nightly, version_suffix) = if tag_name.contains("nightly") {
-        (true, "-nightly".to_string())
+        (true, "-nightly-gwyneth".to_string())
     } else {
-        (false, format!("-{tag_name}"))
+        (false, format!("-{tag_name}-gwyneth"))
     };
 
     // Whether the version is a nightly build.

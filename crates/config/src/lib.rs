@@ -538,6 +538,9 @@ pub struct Config {
     ///
     /// let config = Config { src: "other".into(), ..Default::default() };
     /// ```
+    /// All chain ids allowed while in foundry
+    pub chain_ids: Option<Vec<u64>>,
+
     #[doc(hidden)]
     #[serde(skip)]
     pub _non_exhaustive: (),
@@ -2437,6 +2440,7 @@ impl Default for Config {
             additional_compiler_profiles: Default::default(),
             compilation_restrictions: Default::default(),
             script_execution_protection: true,
+            chain_ids: Some(vec![31337]),
             _non_exhaustive: (),
         }
     }

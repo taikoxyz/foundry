@@ -4,7 +4,7 @@ use crate::{
     backend::{RevertStateSnapshotAction, StateSnapshot},
     state_snapshot::StateSnapshots,
 };
-use alloy_primitives::{Address, B256, U256, map::HashMap};
+use alloy_primitives::{Address, B256, U256, map::{AddressHashMap, HashMap}};
 use alloy_rpc_types::BlockId;
 use foundry_fork_db::{BlockchainDb, DatabaseError, SharedBackend};
 use parking_lot::Mutex;
@@ -95,11 +95,27 @@ impl ForkedDatabase {
 
     pub fn create_state_snapshot(&self) -> ForkDbStateSnapshot {
         let db = self.db.db();
-        let state_snapshot = StateSnapshot {
-            accounts: db.accounts.read().clone(),
-            storage: db.storage.read().clone(),
-            block_hashes: db.block_hashes.read().clone(),
-        };
+        
+        // Convert from chain-aware to non-chain-aware types
+        let accounts_lock = db.accounts.read();
+        let mut accounts = AddressHashMap::default();
+        for ((_, addr), info) in accounts_lock.iter() {
+            accounts.insert(*addr, info.clone());
+        }
+        
+        let storage_lock = db.storage.read();
+        let mut storage = AddressHashMap::default();
+        for ((_, addr), store) in storage_lock.iter() {
+            storage.insert(*addr, store.clone());
+        }
+        
+        let block_hashes_lock = db.block_hashes.read();
+        let mut block_hashes = HashMap::default();
+        for ((_, num), hash) in block_hashes_lock.iter() {
+            block_hashes.insert(*num, *hash);
+        }
+        
+        let state_snapshot = StateSnapshot { accounts, storage, block_hashes };
         ForkDbStateSnapshot { local: self.cache_db.clone(), state_snapshot }
     }
 
@@ -123,20 +139,35 @@ impl ForkedDatabase {
                 state_snapshot: StateSnapshot { accounts, storage, block_hashes },
             } = state_snapshot;
             let db = self.inner().db();
+            
+            // Convert back from non-chain-aware to chain-aware types
+            // We need a chain_id - addresses should have it built-in
             {
                 let mut accounts_lock = db.accounts.write();
                 accounts_lock.clear();
-                accounts_lock.extend(accounts);
+                for (addr, info) in accounts {
+                    let chain_id = addr.chain_id();
+                    accounts_lock.insert((chain_id, addr), info);
+                }
             }
             {
                 let mut storage_lock = db.storage.write();
                 storage_lock.clear();
-                storage_lock.extend(storage);
+                for (addr, store) in storage {
+                    let chain_id = addr.chain_id();
+                    storage_lock.insert((chain_id, addr), store);
+                }
             }
             {
                 let mut block_hashes_lock = db.block_hashes.write();
                 block_hashes_lock.clear();
-                block_hashes_lock.extend(block_hashes);
+                // For block hashes, we need to determine the chain_id
+                // Since this is a fork database, we should use the fork's chain_id
+                // Let's assume chain_id 1 for now (mainnet)
+                let chain_id = 1u64;
+                for (num, hash) in block_hashes {
+                    block_hashes_lock.insert((chain_id, num), hash);
+                }
             }
 
             self.cache_db = local;

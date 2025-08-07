@@ -373,7 +373,7 @@ pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit {
     /// - Setting a blockhash for the current block (number == block.number) has no effect
     /// - Setting a blockhash for future blocks (number > block.number) has no effect
     /// - Setting a blockhash for blocks older than `block.number - 256` has no effect
-    fn set_blockhash(&mut self, block_number: U256, block_hash: B256);
+    fn set_blockhash(&mut self, chain_id: u64, block_number: U256, block_hash: B256);
 }
 
 struct _ObjectSafe(dyn DatabaseExt);
@@ -630,10 +630,12 @@ impl Backend {
     /// When creating or switching forks, we update the AccountInfo of the contract
     pub(crate) fn update_fork_db(
         &self,
+        chain_id: u64,
         active_journaled_state: &mut JournaledState,
         target_fork: &mut Fork,
     ) {
         self.update_fork_db_contracts(
+            chain_id,
             self.inner.persistent_accounts.iter().copied(),
             active_journaled_state,
             target_fork,
@@ -643,14 +645,15 @@ impl Backend {
     /// Merges the state of all `accounts` from the currently active db into the given `fork`
     pub(crate) fn update_fork_db_contracts(
         &self,
+        chain_id: u64,
         accounts: impl IntoIterator<Item = Address>,
         active_journaled_state: &mut JournaledState,
         target_fork: &mut Fork,
     ) {
         if let Some(db) = self.active_fork_db() {
-            merge_account_data(accounts, db, active_journaled_state, target_fork)
+            merge_account_data(chain_id, accounts, db, active_journaled_state, target_fork)
         } else {
-            merge_account_data(accounts, &self.mem_db, active_journaled_state, target_fork)
+            merge_account_data(chain_id, accounts, &self.mem_db, active_journaled_state, target_fork)
         }
     }
 
@@ -845,18 +848,22 @@ impl Backend {
         transaction: B256,
     ) -> eyre::Result<(u64, AnyRpcBlock)> {
         let fork = self.inner.get_fork_by_id(id)?;
-        let tx = fork.db.db.get_transaction(transaction)?;
+        let fork_id = self.ensure_fork_id(id)?.clone();
+        let fork_env = self.forks.get_env(fork_id)?
+            .ok_or_else(|| eyre::eyre!("Fork environment not found"))?;
+        let chain_id = fork_env.evm_env.cfg_env.chain_id;
+        let tx = fork.db.db.get_transaction(chain_id, transaction)?;
 
         // get the block number we need to fork
         if let Some(tx_block) = tx.block_number {
-            let block = fork.db.db.get_full_block(tx_block)?;
+            let block = fork.db.db.get_full_block(chain_id, tx_block)?;
 
             // we need to subtract 1 here because we want the state before the transaction
             // was mined
             let fork_block = tx_block - 1;
             Ok((fork_block, block))
         } else {
-            let block = fork.db.db.get_full_block(BlockNumberOrTag::Latest)?;
+            let block = fork.db.db.get_full_block(chain_id, BlockNumberOrTag::Latest)?;
 
             let number = block.header.number;
 
@@ -880,7 +887,8 @@ impl Backend {
         let fork_id = self.ensure_fork_id(id)?.clone();
 
         let fork = self.inner.get_fork_by_id_mut(id)?;
-        let full_block = fork.db.db.get_full_block(env.evm_env.block_env.number)?;
+        let chain_id = env.evm_env.cfg_env.chain_id;
+        let full_block = fork.db.db.get_full_block(chain_id, env.evm_env.block_env.number)?;
 
         for tx in full_block.inner.transactions.txns() {
             // System transactions such as on L2s don't contain any pricing info so we skip them
@@ -1149,7 +1157,9 @@ impl DatabaseExt for Backend {
                 caller_account.into()
             });
 
-            self.update_fork_db(active_journaled_state, &mut fork);
+            // Get chain_id from the fork environment
+            let chain_id = fork_env.evm_env.cfg_env.chain_id;
+            self.update_fork_db(chain_id, active_journaled_state, &mut fork);
 
             // insert the fork back
             self.inner.set_fork(idx, fork);
@@ -1176,7 +1186,7 @@ impl DatabaseExt for Backend {
         let (fork_id, backend, fork_env) =
             self.forks.roll_fork(self.inner.ensure_fork_id(id).cloned()?, block_number)?;
         // this will update the local mapping
-        self.inner.roll_fork(id, fork_id, backend)?;
+        self.inner.roll_fork(id, fork_id, backend, fork_env.evm_env.cfg_env.chain_id)?;
 
         if let Some((active_id, active_idx)) = self.active_fork_ids {
             // the currently active fork is the targeted fork of this call
@@ -1266,10 +1276,13 @@ impl DatabaseExt for Backend {
         let persistent_accounts = self.inner.persistent_accounts.clone();
         let id = self.ensure_fork(maybe_id)?;
         let fork_id = self.ensure_fork_id(id).cloned()?;
+        let fork_env = self.forks.get_env(fork_id.clone())?
+            .ok_or_else(|| eyre::eyre!("Fork environment not found"))?;
+        let chain_id = fork_env.evm_env.cfg_env.chain_id;
 
         let tx = {
             let fork = self.inner.get_fork_by_id_mut(id)?;
-            fork.db.db.get_transaction(transaction)?
+            fork.db.db.get_transaction(chain_id, transaction)?
         };
 
         // This is a bit ambiguous because the user wants to transact an arbitrary transaction in
@@ -1481,11 +1494,11 @@ impl DatabaseExt for Backend {
         self.inner.cheatcode_access_accounts.contains(account)
     }
 
-    fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
+    fn set_blockhash(&mut self, chain_id: u64, block_number: U256, block_hash: B256) {
         if let Some(db) = self.active_fork_db_mut() {
-            db.cache.block_hashes.insert(block_number.saturating_to(), block_hash);
+            db.cache.block_hashes.insert((chain_id, block_number.saturating_to()), block_hash);
         } else {
-            self.mem_db.cache.block_hashes.insert(block_number.saturating_to(), block_hash);
+            self.mem_db.cache.block_hashes.insert((chain_id, block_number.saturating_to()), block_hash);
         }
     }
 }
@@ -1754,6 +1767,7 @@ impl BackendInner {
         id: LocalForkId,
         new_fork_id: ForkId,
         backend: SharedBackend,
+        chain_id: u64,
     ) -> eyre::Result<ForkLookupIndex> {
         let fork_id = self.ensure_fork_id(id)?;
         let idx = self.ensure_fork_index(fork_id)?;
@@ -1762,7 +1776,7 @@ impl BackendInner {
             // we initialize a _new_ `ForkDB` but keep the state of persistent accounts
             let mut new_db = ForkDB::new(backend);
             for addr in self.persistent_accounts.iter().copied() {
-                merge_db_account_data(addr, &active.db, &mut new_db);
+                merge_db_account_data(chain_id, addr, &active.db, &mut new_db);
             }
             active.db = new_db;
         }
@@ -1856,13 +1870,14 @@ pub(crate) fn update_current_env_with_fork_env(current: &mut EnvMut<'_>, fork: E
 /// Clones the data of the given `accounts` from the `active` database into the `fork_db`
 /// This includes the data held in storage (`CacheDB`) and kept in the `JournaledState`.
 pub(crate) fn merge_account_data<ExtDB: DatabaseRef>(
+    chain_id: u64,
     accounts: impl IntoIterator<Item = Address>,
     active: &CacheDB<ExtDB>,
     active_journaled_state: &mut JournaledState,
     target_fork: &mut Fork,
 ) {
     for addr in accounts.into_iter() {
-        merge_db_account_data(addr, active, &mut target_fork.db);
+        merge_db_account_data(chain_id, addr, active, &mut target_fork.db);
         merge_journaled_state_data(addr, active_journaled_state, &mut target_fork.journaled_state);
     }
 
@@ -1889,6 +1904,7 @@ fn merge_journaled_state_data(
 
 /// Clones the account data from the `active` db into the `ForkDB`
 fn merge_db_account_data<ExtDB: DatabaseRef>(
+    chain_id: u64,
     addr: Address,
     active: &CacheDB<ExtDB>,
     fork_db: &mut ForkDB,
@@ -1898,9 +1914,9 @@ fn merge_db_account_data<ExtDB: DatabaseRef>(
     let Some(acc) = active.cache.accounts.get(&addr) else { return };
 
     // port contract cache over
-    if let Some(code) = active.cache.contracts.get(&acc.info.code_hash) {
+    if let Some(code) = active.cache.contracts.get(&(chain_id, acc.info.code_hash)) {
         trace!("merging contract cache");
-        fork_db.cache.contracts.insert(acc.info.code_hash, code.clone());
+        fork_db.cache.contracts.insert((chain_id, acc.info.code_hash), code.clone());
     }
 
     // port account storage over

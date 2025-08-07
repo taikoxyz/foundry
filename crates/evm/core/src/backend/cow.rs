@@ -285,8 +285,8 @@ impl DatabaseExt for CowBackend<'_> {
         self.backend.has_cheatcode_access(account)
     }
 
-    fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
-        self.backend.to_mut().set_blockhash(block_number, block_hash);
+    fn set_blockhash(&mut self, chain_id: u64, block_number: U256, block_hash: B256) {
+        self.backend.to_mut().set_blockhash(chain_id, block_number, block_hash);
     }
 }
 

@@ -100,8 +100,8 @@ use revm::{
 use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 
-/// The client version: `anvil/v{major}.{minor}.{patch}`
-pub const CLIENT_VERSION: &str = concat!("anvil/v", env!("CARGO_PKG_VERSION"));
+/// The client version: `anvil/v{major}.{minor}.{patch}-gwyneth`
+pub const CLIENT_VERSION: &str = concat!("anvil/v", env!("CARGO_PKG_VERSION"), "-gwyneth");
 
 /// The entry point for executing eth api RPC call - The Eth RPC interface.
 ///
