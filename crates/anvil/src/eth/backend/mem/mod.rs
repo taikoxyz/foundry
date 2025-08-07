@@ -455,7 +455,7 @@ impl Backend {
 
             // insert the new genesis hash to the database so it's available for the next block in
             // the evm
-            db.insert_block_hash(U256::from(self.best_number()), self.best_hash());
+            db.insert_block_hash(U256::from(self.best_number()), self.best_hash(), self.env.read().evm_env.cfg_env.chain_id);
         }
 
         let db = self.db.write().await;
@@ -1189,10 +1189,10 @@ impl Backend {
             ExecutionResult::Success { reason, gas_used, logs, output, .. } => {
                 (reason.into(), gas_used, Some(output), Some(logs))
             }
-            ExecutionResult::Revert { gas_used, output } => {
+            ExecutionResult::Revert { gas_used, output, .. } => {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)), None)
             }
-            ExecutionResult::Halt { reason, gas_used } => {
+            ExecutionResult::Halt { reason, gas_used, .. } => {
                 let eth_reason = op_haltreason_to_instruction_result(reason);
                 (eth_reason, gas_used, None, None)
             }
@@ -1339,7 +1339,7 @@ impl Backend {
 
                 // we also need to update the new blockhash in the db itself
                 let block_hash = executed_tx.block.block.header.hash_slow();
-                db.insert_block_hash(U256::from(executed_tx.block.block.header.number), block_hash);
+                db.insert_block_hash(U256::from(executed_tx.block.block.header.number), block_hash, self.env.read().evm_env.cfg_env.chain_id);
 
                 (executed_tx, block_hash)
             };
@@ -1840,10 +1840,10 @@ impl Backend {
             ExecutionResult::Success { reason, gas_used, output, .. } => {
                 (reason.into(), gas_used, Some(output))
             }
-            ExecutionResult::Revert { gas_used, output } => {
+            ExecutionResult::Revert { gas_used, output, .. } => {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
             }
-            ExecutionResult::Halt { reason, gas_used } => {
+            ExecutionResult::Halt { reason, gas_used, .. } => {
                 (op_haltreason_to_instruction_result(reason), gas_used, None)
             }
         };
@@ -1935,10 +1935,10 @@ impl Backend {
                 ExecutionResult::Success { reason, gas_used, output, .. } => {
                     (reason.into(), gas_used, Some(output))
                 }
-                ExecutionResult::Revert { gas_used, output } => {
+                ExecutionResult::Revert { gas_used, output, .. } => {
                     (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
                 }
-                ExecutionResult::Halt { reason, gas_used } => {
+                ExecutionResult::Halt { reason, gas_used, .. } => {
                     (op_haltreason_to_instruction_result(reason), gas_used, None)
                 }
             };
@@ -1976,10 +1976,10 @@ impl Backend {
             ExecutionResult::Success { reason, gas_used, output, .. } => {
                 (reason.into(), gas_used, Some(output))
             }
-            ExecutionResult::Revert { gas_used, output } => {
+            ExecutionResult::Revert { gas_used, output, .. } => {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
             }
-            ExecutionResult::Halt { reason, gas_used } => {
+            ExecutionResult::Halt { reason, gas_used, .. } => {
                 (op_haltreason_to_instruction_result(reason), gas_used, None)
             }
         };

@@ -133,7 +133,7 @@ pub trait Db:
     fn set_storage_at(&mut self, address: Address, slot: B256, val: B256) -> DatabaseResult<()>;
 
     /// inserts a blockhash for the given number
-    fn insert_block_hash(&mut self, number: U256, hash: B256);
+    fn insert_block_hash(&mut self, number: U256, hash: B256, chain_id: u64);
 
     /// Write all chain data to serialized bytes buffer
     fn dump_state(
@@ -214,8 +214,8 @@ impl<T: DatabaseRef<Error = DatabaseError> + Send + Sync + Clone + fmt::Debug> D
         self.insert_account_storage(address, slot.into(), val.into())
     }
 
-    fn insert_block_hash(&mut self, number: U256, hash: B256) {
-        self.cache.block_hashes.insert(number, hash);
+    fn insert_block_hash(&mut self, number: U256, hash: B256, chain_id: u64) {
+        self.cache.block_hashes.insert((chain_id, number), hash);
     }
 
     fn dump_state(
@@ -259,10 +259,16 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
         for (addr, mut acc) in db_accounts {
             account_storage.insert(addr, std::mem::take(&mut acc.storage));
             let mut info = acc.info;
-            info.code = self.cache.contracts.remove(&info.code_hash);
+            // Use default chain_id of 1 for anvil
+            info.code = self.cache.contracts.remove(&(1u64, info.code_hash));
             accounts.insert(addr, info);
         }
-        let block_hashes = std::mem::take(&mut self.cache.block_hashes);
+        // Convert block_hashes from chain-aware to non-chain-aware
+        let chain_aware_hashes = std::mem::take(&mut self.cache.block_hashes);
+        let mut block_hashes = HashMap::default();
+        for ((_, num), hash) in chain_aware_hashes {
+            block_hashes.insert(num, hash);
+        }
         StateSnapshot { accounts, storage: account_storage, block_hashes }
     }
 
@@ -274,11 +280,16 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
         for (addr, acc) in db_accounts {
             account_storage.insert(addr, acc.storage.clone());
             let mut info = acc.info;
-            info.code = self.cache.contracts.get(&info.code_hash).cloned();
+            // Use default chain_id of 1 for anvil
+            info.code = self.cache.contracts.get(&(1u64, info.code_hash)).cloned();
             accounts.insert(addr, info);
         }
 
-        let block_hashes = self.cache.block_hashes.clone();
+        // Convert block_hashes from chain-aware to non-chain-aware
+        let mut block_hashes = HashMap::default();
+        for ((_, num), hash) in self.cache.block_hashes.iter() {
+            block_hashes.insert(*num, *hash);
+        }
         StateSnapshot { accounts, storage: account_storage, block_hashes }
     }
 
@@ -291,7 +302,8 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
 
         for (addr, mut acc) in accounts {
             if let Some(code) = acc.code.take() {
-                self.cache.contracts.insert(acc.code_hash, code);
+                // Use default chain_id of 1 for anvil
+                self.cache.contracts.insert((1u64, acc.code_hash), code);
             }
             self.cache.accounts.insert(
                 addr,
@@ -302,7 +314,11 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
                 },
             );
         }
-        self.cache.block_hashes = block_hashes;
+        // Convert block_hashes from non-chain-aware to chain-aware
+        self.cache.block_hashes.clear();
+        for (num, hash) in block_hashes {
+            self.cache.block_hashes.insert((1u64, num), hash);
+        }
     }
 }
 

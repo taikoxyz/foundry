@@ -144,7 +144,7 @@ pub fn apply_block_overrides<DB>(
         cache_db
             .cache
             .block_hashes
-            .extend(block_hashes.into_iter().map(|(num, hash)| (U256::from(num), hash)))
+            .extend(block_hashes.into_iter().map(|(num, hash)| ((1u64, U256::from(num)), hash)))
     }
 
     if let Some(number) = number {
