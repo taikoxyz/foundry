@@ -119,6 +119,8 @@ impl<'a> ContractRunner<'a> {
     fn _setup(&mut self, call_setup: bool) -> Result<TestSetup> {
         trace!(call_setup, "setting up");
 
+        println!("setting up ContractRunner");
+
         self.apply_contract_inline_config()?;
 
         // We max out their balance so that they can deploy and make calls.

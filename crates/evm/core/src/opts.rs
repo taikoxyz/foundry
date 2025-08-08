@@ -77,6 +77,9 @@ pub struct EvmOpts {
 
     /// The CREATE2 deployer's address.
     pub create2_deployer: Address,
+
+    /// the supported chain ids
+    pub chain_ids: Option<Vec<u64>>,
 }
 
 impl Default for EvmOpts {
@@ -101,6 +104,7 @@ impl Default for EvmOpts {
             disable_block_gas_limit: false,
             odyssey: false,
             create2_deployer: DEFAULT_CREATE2_DEPLOYER,
+            chain_ids: None,
         }
     }
 }
@@ -147,6 +151,9 @@ impl EvmOpts {
 
     /// Returns the `revm::Env` configured with only local settings
     pub fn local_evm_env(&self) -> crate::Env {
+        println!("CORE!!!");
+        println!("chain_ids: {:?}", self.chain_ids);
+        
         let cfg = configure_env(
             self.env.chain_id.unwrap_or(foundry_common::DEV_CHAIN_ID),
             self.memory_limit,

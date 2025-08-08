@@ -472,6 +472,8 @@ pub struct Cheatcodes {
 
     /// The current program counter.
     pub pc: usize,
+    /// The current chain id.
+    pub chain_id: u64,
     /// Breakpoints supplied by the `breakpoint` cheatcode.
     /// `char -> (address, pc)`
     pub breakpoints: Breakpoints,
@@ -540,6 +542,7 @@ impl Cheatcodes {
             gas_snapshots: Default::default(),
             mapping_slots: Default::default(),
             pc: Default::default(),
+            chain_id: Default::default(),
             breakpoints: Default::default(),
             intercept_next_create_call: Default::default(),
             test_runner: Default::default(),
@@ -579,6 +582,7 @@ impl Cheatcodes {
         call: &CallInputs,
         executor: &mut dyn CheatcodesExecutor,
     ) -> Result {
+        println!("apply_cheatcode");
         // decode the cheatcode call
         let decoded = Vm::VmCalls::abi_decode(&call.input.bytes(ecx)).map_err(|e| {
             if let alloy_sol_types::Error::UnknownSelector { name: _, selector } = e {
@@ -611,6 +615,7 @@ impl Cheatcodes {
     /// There may be cheatcodes in the constructor of the new contract, in order to allow them
     /// automatically we need to determine the new address.
     fn allow_cheatcodes_on_create(&self, ecx: Ecx, caller: Address, created_address: Address) {
+        println!("allow_cheatcodes_on_create: {:?}, {:?}", caller, created_address);
         if ecx.journaled_state.depth <= 1
             || ecx.journaled_state.database.has_cheatcode_access(&caller)
         {
@@ -667,6 +672,9 @@ impl Cheatcodes {
         executor: &mut impl CheatcodesExecutor,
     ) -> Option<CallOutcome> {
         let gas = Gas::new(call.gas_limit);
+
+        println!("[{:?}] call_with_executor: {:?}", call, self.chain_id);
+
         let curr_depth = ecx.journaled_state.depth();
 
         // At the root call to test function or script `run()`/`setUp()` functions, we are
@@ -780,6 +788,9 @@ impl Cheatcodes {
         // Apply our prank
         if let Some(prank) = &self.get_prank(curr_depth) {
             // Apply delegate call, `call.caller`` will not equal `prank.prank_caller`
+
+            println!("Applying prank: {:?} -> {:?}", call.caller, prank.new_caller);
+
             if prank.delegate_call
                 && curr_depth == prank.depth
                 && let CallScheme::DelegateCall | CallScheme::ExtDelegateCall = call.scheme
@@ -895,6 +906,8 @@ impl Cheatcodes {
                         }
                         tx_req.authorization_list = Some(active_delegations);
                     }
+
+                    println!("call_with_executor:: Broadcasting from {:?} (nonce: {})", broadcast.new_origin, account.info.nonce);
 
                     self.broadcastable_transactions.push_back(BroadcastableTransaction {
                         rpc: ecx.journaled_state.database.active_fork_url(),
@@ -1606,6 +1619,8 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for Cheatcodes {
             if curr_depth == broadcast.depth {
                 input.set_caller(broadcast.new_origin);
                 let is_fixed_gas_limit = check_if_fixed_gas_limit(&ecx, input.gas_limit());
+
+                println!("Broadcasting from {:?}[{:?}]", broadcast.new_origin, broadcast.chain_id);
 
                 let account = &ecx.journaled_state.inner.state()[&broadcast.new_origin];
                 self.broadcastable_transactions.push_back(BroadcastableTransaction {

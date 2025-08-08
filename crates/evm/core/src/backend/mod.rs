@@ -588,6 +588,7 @@ impl Backend {
     /// This will also grant cheatcode access to the test account
     pub fn set_test_contract(&mut self, acc: Address) -> &mut Self {
         trace!(?acc, "setting test account");
+        println!("set_test_contract: {:?}", acc);
         self.add_persistent_account(acc);
         self.allow_cheatcode_access(acc);
         self
@@ -596,6 +597,7 @@ impl Backend {
     /// Sets the caller address
     pub fn set_caller(&mut self, acc: Address) -> &mut Self {
         trace!(?acc, "setting caller account");
+        println!("set_caller: {:?}", acc);
         self.inner.caller = Some(acc);
         self.allow_cheatcode_access(acc);
         self
@@ -774,6 +776,9 @@ impl Backend {
         env: &mut Env,
         inspector: &mut I,
     ) -> eyre::Result<ResultAndState> {
+        println!("backend::inspect");
+        //println!("env pre: {:?}", env);
+
         self.initialize(env);
         let mut evm = crate::evm::new_evm_with_inspector(self, env.to_owned(), inspector);
 
@@ -1552,6 +1557,7 @@ impl DatabaseCommit for Backend {
 impl Database for Backend {
     type Error = DatabaseError;
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+        println!("Backend::basic: {:?}", address);
         if let Some(db) = self.active_fork_db_mut() {
             Ok(db.basic(address)?)
         } else {
@@ -1826,6 +1832,7 @@ impl BackendInner {
 
     /// Returns a new, empty, `JournaledState` with set precompiles
     pub fn new_journaled_state(&self) -> JournaledState {
+        println!("new_journaled_state");
         let mut journal = {
             let mut journal_inner = JournalInner::new();
             journal_inner.set_spec_id(self.spec_id);

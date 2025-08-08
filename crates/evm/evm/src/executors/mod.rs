@@ -498,6 +498,7 @@ impl Executor {
     /// Execute the transaction configured in `env.tx`.
     #[instrument(name = "transact", level = "debug", skip_all)]
     pub fn transact_with_env(&mut self, mut env: Env) -> eyre::Result<RawCallResult> {
+        println!("transact_with_env");
         let mut inspector = self.inspector().clone();
         let backend = self.backend_mut();
         let result = backend.inspect(&mut env, &mut inspector)?;

@@ -285,6 +285,8 @@ pub struct Broadcast {
     pub depth: usize,
     /// Whether the prank stops by itself after the next call
     pub single_call: bool,
+    /// Chain to execute the transaction on
+    pub chain_id: u64,
 }
 
 /// Contains context for wallet management.
@@ -380,6 +382,7 @@ fn broadcast(ccx: &mut CheatsCtxt, new_origin: Option<&Address>, single_call: bo
         original_origin: ccx.ecx.tx.caller,
         depth,
         single_call,
+        chain_id: ccx.state.chain_id,
     };
     debug!(target: "cheatcodes", ?broadcast, "started");
     ccx.state.broadcast = Some(broadcast);
