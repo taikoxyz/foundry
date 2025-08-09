@@ -335,7 +335,6 @@ impl TestArgs {
         let env = evm_opts.evm_env().await?;
 
         let chain_id = env.evm_env.chainid();
-        evm_opts.sender.set_chain_id(chain_id);
         println!("executing tests on chain id {}", chain_id);
 
         // Enable internal tracing for more informative flamegraph.
@@ -359,7 +358,7 @@ impl TestArgs {
             .set_decode_internal(decode_internal)
             .initial_balance(evm_opts.initial_balance)
             .evm_spec(config.evm_spec_id())
-            .sender(evm_opts.sender)
+            .sender(evm_opts.sender.on_chain(chain_id))
             .with_fork(evm_opts.get_fork(&config, env.clone()))
             .enable_isolation(evm_opts.isolate)
             .odyssey(evm_opts.odyssey)

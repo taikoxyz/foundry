@@ -49,8 +49,7 @@ impl CommonCreateInput for &mut CreateInputs {
             .get(&self.caller)
             .map(|acc| acc.info.nonce)
             .unwrap_or_default();
-        let mut created_address = self.created_address(old_nonce);
-        created_address.set_chain_id(self.caller.chain_id());
+        let created_address = self.created_address(old_nonce).on_chain(self.caller.chain_id());
         cheatcodes.allow_cheatcodes_on_create(ecx, self.caller, created_address);
         created_address
     }

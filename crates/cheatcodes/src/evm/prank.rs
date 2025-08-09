@@ -56,6 +56,7 @@ impl Prank {
 impl Cheatcode for prank_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { msgSender } = self;
+        let msgSender = &msgSender.on_chain(ccx.state.chain_id);
         prank(ccx, msgSender, None, true, false)
     }
 }
@@ -63,13 +64,16 @@ impl Cheatcode for prank_0Call {
 impl Cheatcode for startPrank_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { msgSender } = self;
+        let msgSender = &msgSender.on_chain(ccx.state.chain_id);
         prank(ccx, msgSender, None, false, false)
     }
 }
 
 impl Cheatcode for prank_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
-        let Self { msgSender, txOrigin } = self;
+        let Self {  msgSender, txOrigin } = self;
+        let msgSender = &msgSender.on_chain(ccx.state.chain_id);
+        let txOrigin = &txOrigin.on_chain(ccx.state.chain_id);
         prank(ccx, msgSender, Some(txOrigin), true, false)
     }
 }
@@ -77,6 +81,8 @@ impl Cheatcode for prank_1Call {
 impl Cheatcode for startPrank_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { msgSender, txOrigin } = self;
+        let msgSender = &msgSender.on_chain(ccx.state.chain_id);
+        let txOrigin = &txOrigin.on_chain(ccx.state.chain_id);
         prank(ccx, msgSender, Some(txOrigin), false, false)
     }
 }
@@ -84,6 +90,7 @@ impl Cheatcode for startPrank_1Call {
 impl Cheatcode for prank_2Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { msgSender, delegateCall } = self;
+        let msgSender = &msgSender.on_chain(ccx.state.chain_id);
         prank(ccx, msgSender, None, true, *delegateCall)
     }
 }
@@ -91,6 +98,7 @@ impl Cheatcode for prank_2Call {
 impl Cheatcode for startPrank_2Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { msgSender, delegateCall } = self;
+        let msgSender = &msgSender.on_chain(ccx.state.chain_id);
         prank(ccx, msgSender, None, false, *delegateCall)
     }
 }
@@ -98,6 +106,8 @@ impl Cheatcode for startPrank_2Call {
 impl Cheatcode for prank_3Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { msgSender, txOrigin, delegateCall } = self;
+        let msgSender = &msgSender.on_chain(ccx.state.chain_id);
+        let txOrigin = &txOrigin.on_chain(ccx.state.chain_id);
         prank(ccx, msgSender, Some(txOrigin), true, *delegateCall)
     }
 }
@@ -105,6 +115,8 @@ impl Cheatcode for prank_3Call {
 impl Cheatcode for startPrank_3Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { msgSender, txOrigin, delegateCall } = self;
+        let msgSender = &msgSender.on_chain(ccx.state.chain_id);
+        let txOrigin = &txOrigin.on_chain(ccx.state.chain_id);
         prank(ccx, msgSender, Some(txOrigin), false, *delegateCall)
     }
 }

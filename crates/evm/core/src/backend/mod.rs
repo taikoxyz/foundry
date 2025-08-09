@@ -759,7 +759,7 @@ impl Backend {
         self.set_caller(env.tx.caller);
         self.set_spec_id(env.evm_env.cfg_env.spec);
 
-        let mut test_contract = match env.tx.kind {
+        let test_contract = match env.tx.kind {
             TxKind::Call(to) => to,
             TxKind::Create => {
                 let nonce = self
@@ -768,8 +768,7 @@ impl Backend {
                     .unwrap_or_default();
                 env.tx.caller.create(nonce)
             }
-        };
-        test_contract.set_chain_id(env.tx.caller.chain_id());
+        }.on_chain(env.tx.caller.chain_id());
         self.set_test_contract(test_contract);
     }
 
@@ -1580,11 +1579,14 @@ impl Database for Backend {
     }
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        if let Some(db) = self.active_fork_db_mut() {
+        println!("Backend::code_by_hash: {:?}", code_hash);
+        let res = if let Some(db) = self.active_fork_db_mut() {
             Ok(db.code_by_hash(code_hash)?)
         } else {
             Ok(self.mem_db.code_by_hash(code_hash)?)
-        }
+        };
+        println!("code: {:?}", res);
+        res
     }
 
     fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {

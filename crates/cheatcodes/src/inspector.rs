@@ -788,9 +788,6 @@ impl Cheatcodes {
         // Apply our prank
         if let Some(prank) = &self.get_prank(curr_depth) {
             // Apply delegate call, `call.caller`` will not equal `prank.prank_caller`
-
-            println!("Applying prank: {:?} -> {:?}", call.caller, prank.new_caller);
-
             if prank.delegate_call
                 && curr_depth == prank.depth
                 && let CallScheme::DelegateCall | CallScheme::ExtDelegateCall = call.scheme
@@ -804,6 +801,8 @@ impl Cheatcodes {
 
             if curr_depth >= prank.depth && call.caller == prank.prank_caller {
                 let mut prank_applied = false;
+
+                println!("Applying prank: {:?} -> {:?}", call.caller, prank.new_caller);
 
                 // At the target depth we set `msg.sender`
                 if curr_depth == prank.depth {
@@ -829,6 +828,10 @@ impl Cheatcodes {
 
         // Apply our broadcast
         if let Some(broadcast) = &self.broadcast {
+
+            let mut broadcast = broadcast.clone();
+            broadcast.new_origin = broadcast.new_origin.on_chain(broadcast.chain_id);
+
             // We only apply a broadcast *to a specific depth*.
             //
             // We do this because any subsequent contract calls *must* exist on chain and
@@ -838,6 +841,8 @@ impl Cheatcodes {
                 // We are simulating the caller as being an EOA, so *both* must be set to the
                 // broadcast.origin.
                 ecx.tx.caller = broadcast.new_origin;
+
+                println!("broadcast.new_origin: {:?}", broadcast.new_origin);
 
                 call.caller = broadcast.new_origin;
                 // Add a `legacy` transaction to the VecDeque. We use a legacy transaction here
@@ -941,7 +946,8 @@ impl Cheatcodes {
             // nonce, a non-zero KECCAK_EMPTY codehash, or non-empty code
             let initialized;
             let old_balance;
-            if let Ok(acc) = ecx.journaled_state.load_account(call.target_address) {
+            let target_address = call.target_address.on_chain(ecx.cfg.chain_id);
+            if let Ok(acc) = ecx.journaled_state.load_account(target_address) {
                 initialized = acc.info.exists();
                 old_balance = acc.info.balance;
             } else {
@@ -1080,6 +1086,7 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for Cheatcodes {
     #[inline]
     fn step(&mut self, interpreter: &mut Interpreter, ecx: Ecx) {
         self.pc = interpreter.bytecode.pc();
+        self.chain_id = interpreter.chain_id;
 
         // `pauseGasMetering`: pause / resume interpreter gas.
         if self.gas_metering.paused {
@@ -1961,7 +1968,7 @@ impl Cheatcodes {
 
                 // get previous balance and initialized status of the target account
                 let target = try_or_return!(interpreter.stack.peek(0));
-                let target = Address::from_word(B256::from(target));
+                let target = Address::from_word(B256::from(target)).on_chain(ecx.cfg.chain_id);
                 let (initialized, old_balance) = ecx
                     .journaled_state
                     .load_account(target)
@@ -2070,7 +2077,7 @@ impl Cheatcodes {
                     _ => unreachable!(),
                 };
                 let address =
-                    Address::from_word(B256::from(try_or_return!(interpreter.stack.peek(0))));
+                    Address::from_word(B256::from(try_or_return!(interpreter.stack.peek(0)))).on_chain(ecx.cfg.chain_id);
                 let initialized;
                 let balance;
                 if let Ok(acc) = ecx.journaled_state.load_account(address) {

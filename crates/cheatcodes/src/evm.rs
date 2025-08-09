@@ -169,6 +169,7 @@ impl Cheatcode for addrCall {
 impl Cheatcode for getNonce_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account } = self;
+        let account = &account.on_chain(ccx.state.chain_id);
         get_nonce(ccx, account)
     }
 }
@@ -176,13 +177,15 @@ impl Cheatcode for getNonce_0Call {
 impl Cheatcode for getNonce_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { wallet } = self;
-        get_nonce(ccx, &wallet.addr)
+        let addr = wallet.addr.on_chain(ccx.caller.chain_id());
+        get_nonce(ccx, &addr)
     }
 }
 
 impl Cheatcode for loadCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { target, slot } = *self;
+        let target = target.on_chain(ccx.caller.chain_id());
         ensure_not_precompile!(&target, ccx);
         ccx.ecx.journaled_state.load_account(target)?;
         let mut val = ccx.ecx.journaled_state.sload(target, slot.into())?;
@@ -233,6 +236,11 @@ impl Cheatcode for loadAllocsCall {
                 genesis.alloc
             }
         };
+
+        let chain_id = ccx.caller.chain_id();
+        let allocs = allocs.into_iter().map(|alloc| {
+            (alloc.0.on_chain(chain_id), alloc.1)
+        }).collect();
 
         // Then, load the allocs into the database.
         let (db, journal, _) = ccx.ecx.as_db_env_and_journal();
@@ -374,7 +382,8 @@ impl Cheatcode for chainIdCall {
 impl Cheatcode for coinbaseCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { newCoinbase } = self;
-        ccx.ecx.block.beneficiary = *newCoinbase;
+        let newCoinbase = newCoinbase.on_chain(ccx.state.chain_id);
+        ccx.ecx.block.beneficiary = newCoinbase;
         Ok(Default::default())
     }
 }
@@ -387,6 +396,7 @@ impl Cheatcode for difficultyCall {
             "`difficulty` is not supported after the Paris hard fork, use `prevrandao` instead; \
              see EIP-4399: https://eips.ethereum.org/EIPS/eip-4399"
         );
+        // XXX FIXME YSG
         ccx.ecx.block.difficulty = *newDifficulty;
         Ok(Default::default())
     }
@@ -396,6 +406,7 @@ impl Cheatcode for feeCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { newBasefee } = self;
         ensure!(*newBasefee <= U256::from(u64::MAX), "base fee must be less than 2^64 - 1");
+        // XXX FIXME YSG
         ccx.ecx.block.basefee = newBasefee.saturating_to();
         Ok(Default::default())
     }
@@ -409,6 +420,7 @@ impl Cheatcode for prevrandao_0Call {
             "`prevrandao` is not supported before the Paris hard fork, use `difficulty` instead; \
              see EIP-4399: https://eips.ethereum.org/EIPS/eip-4399"
         );
+        // XXX FIXME YSG
         ccx.ecx.block.prevrandao = Some(*newPrevrandao);
         Ok(Default::default())
     }
@@ -422,6 +434,7 @@ impl Cheatcode for prevrandao_1Call {
             "`prevrandao` is not supported before the Paris hard fork, use `difficulty` instead; \
              see EIP-4399: https://eips.ethereum.org/EIPS/eip-4399"
         );
+        // XXX FIXME YSG
         ccx.ecx.block.prevrandao = Some((*newPrevrandao).into());
         Ok(Default::default())
     }
@@ -456,6 +469,7 @@ impl Cheatcode for rollCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { newHeight } = self;
         ensure!(*newHeight <= U256::from(u64::MAX), "block height must be less than 2^64 - 1");
+        // XXX FIXME YSG
         ccx.ecx.block.number = newHeight.saturating_to();
         Ok(Default::default())
     }
@@ -464,6 +478,7 @@ impl Cheatcode for rollCall {
 impl Cheatcode for getBlockNumberCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self {} = self;
+        // XXX FIXME YSG
         Ok(ccx.ecx.block.number.abi_encode())
     }
 }
@@ -481,6 +496,7 @@ impl Cheatcode for warpCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { newTimestamp } = self;
         ensure!(*newTimestamp <= U256::from(u64::MAX), "timestamp must be less than 2^64 - 1");
+        // XXX FIXME YSG
         ccx.ecx.block.timestamp = newTimestamp.saturating_to();
         Ok(Default::default())
     }
@@ -489,6 +505,7 @@ impl Cheatcode for warpCall {
 impl Cheatcode for getBlockTimestampCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self {} = self;
+        // XXX FIXME YSG
         Ok(ccx.ecx.block.timestamp.abi_encode())
     }
 }
@@ -502,6 +519,7 @@ impl Cheatcode for blobBaseFeeCall {
              see EIP-4844: https://eips.ethereum.org/EIPS/eip-4844"
         );
         let is_prague = ccx.ecx.cfg.spec >= SpecId::PRAGUE;
+        // XXX FIXME YSG
         ccx.ecx.block.set_blob_excess_gas_and_price((*newBlobBaseFee).to(), is_prague);
         Ok(Default::default())
     }
@@ -510,6 +528,7 @@ impl Cheatcode for blobBaseFeeCall {
 impl Cheatcode for getBlobBaseFeeCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self {} = self;
+        // XXX FIXME YSG
         Ok(ccx.ecx.block.blob_excess_gas().unwrap_or(0).abi_encode())
     }
 }
@@ -517,7 +536,9 @@ impl Cheatcode for getBlobBaseFeeCall {
 impl Cheatcode for dealCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account: address, newBalance: new_balance } = *self;
-        let account = journaled_account(ccx.ecx, address)?;
+        let chain_id = ccx.caller.chain_id();
+        let address = address.on_chain(chain_id);
+        let account = journaled_account(ccx.ecx, address.clone())?;
         let old_balance = std::mem::replace(&mut account.info.balance, new_balance);
         let record = DealRecord { address, old_balance, new_balance };
         ccx.state.eth_deals.push(record);
@@ -529,10 +550,12 @@ impl Cheatcode for etchCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { target, newRuntimeBytecode } = self;
         ensure_not_precompile!(target, ccx);
-        ccx.ecx.journaled_state.load_account(*target)?;
+        let chain_id = ccx.caller.chain_id();
+        let target = target.on_chain(chain_id);
+        ccx.ecx.journaled_state.load_account(target.clone())?;
         let bytecode = Bytecode::new_raw_checked(Bytes::copy_from_slice(newRuntimeBytecode))
             .map_err(|e| fmt_err!("failed to create bytecode: {e}"))?;
-        ccx.ecx.journaled_state.set_code(*target, bytecode);
+        ccx.ecx.journaled_state.set_code(target, bytecode);
         Ok(Default::default())
     }
 }
@@ -540,7 +563,9 @@ impl Cheatcode for etchCall {
 impl Cheatcode for resetNonceCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account } = self;
-        let account = journaled_account(ccx.ecx, *account)?;
+        let chain_id = ccx.caller.chain_id();
+        let account = account.on_chain(chain_id);
+        let account = journaled_account(ccx.ecx, account)?;
         // Per EIP-161, EOA nonces start at 0, but contract nonces
         // start at 1. Comparing by code_hash instead of code
         // to avoid hitting the case where account's code is None.
@@ -555,6 +580,8 @@ impl Cheatcode for resetNonceCall {
 impl Cheatcode for setNonceCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account, newNonce } = *self;
+        let chain_id = ccx.caller.chain_id();
+        let account = account.on_chain(chain_id);
         let account = journaled_account(ccx.ecx, account)?;
         // nonce must increment only
         let current = account.info.nonce;
@@ -571,6 +598,8 @@ impl Cheatcode for setNonceCall {
 impl Cheatcode for setNonceUnsafeCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account, newNonce } = *self;
+        let chain_id = ccx.caller.chain_id();
+        let account = account.on_chain(chain_id);
         let account = journaled_account(ccx.ecx, account)?;
         account.info.nonce = newNonce;
         Ok(Default::default())
@@ -580,6 +609,8 @@ impl Cheatcode for setNonceUnsafeCall {
 impl Cheatcode for storeCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { target, slot, value } = *self;
+        let chain_id = ccx.caller.chain_id();
+        let target = target.on_chain(chain_id);
         ensure_not_precompile!(&target, ccx);
         // ensure the account is touched
         let _ = journaled_account(ccx.ecx, target)?;
@@ -591,6 +622,8 @@ impl Cheatcode for storeCall {
 impl Cheatcode for coolCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { target } = self;
+        let chain_id = ccx.caller.chain_id();
+        let target = &target.on_chain(chain_id);
         if let Some(account) = ccx.ecx.journaled_state.state.get_mut(target) {
             account.unmark_touch();
             account.storage.values_mut().for_each(|slot| slot.mark_cold());
@@ -628,6 +661,8 @@ impl Cheatcode for noAccessListCall {
 impl Cheatcode for warmSlotCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { target, slot } = *self;
+        let chain_id = ccx.caller.chain_id();
+        let target = target.on_chain(chain_id);
         set_cold_slot(ccx, target, slot.into(), false);
         Ok(Default::default())
     }
@@ -636,6 +671,8 @@ impl Cheatcode for warmSlotCall {
 impl Cheatcode for coolSlotCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { target, slot } = *self;
+        let chain_id = ccx.caller.chain_id();
+        let target = target.on_chain(chain_id);
         set_cold_slot(ccx, target, slot.into(), true);
         Ok(Default::default())
     }
@@ -863,7 +900,7 @@ impl Cheatcode for setBlockhashCall {
             blockNumber <= U256::from(ccx.ecx.block.number),
             "block number must be less than or equal to the current block number"
         );
-
+        // XXX FIXME YSG
         ccx.ecx.journaled_state.database.set_blockhash(ccx.ecx.cfg.chain_id, blockNumber, blockHash);
 
         Ok(Default::default())
