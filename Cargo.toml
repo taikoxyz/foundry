@@ -242,7 +242,7 @@ alloy-op-hardforks = { version = "0.2.6", default-features = false }
 ## alloy-core
 alloy-dyn-abi = "1.2.1"
 alloy-json-abi = "1.2.1"
-alloy-primitives = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth", features = [
+alloy-primitives = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "song/v1.2.1-gwyneth-fix", features = [
     "getrandom",
     "rand",
     "map-fxhash",
@@ -364,15 +364,15 @@ zip-extract = "=0.2.1"
 
 [patch.crates-io]
 # Use alloy-core v1.2.1-gwyneth branch
-alloy-primitives = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-alloy-dyn-abi = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-alloy-json-abi = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-alloy-sol-types = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-alloy-sol-macro = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-alloy-sol-macro-expander = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-alloy-sol-macro-input = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-alloy-sol-type-parser = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-syn-solidity = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
+alloy-primitives = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "song/v1.2.1-gwyneth-fix" }
+alloy-dyn-abi = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "song/v1.2.1-gwyneth-fix" }
+alloy-json-abi = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "song/v1.2.1-gwyneth-fix" }
+alloy-sol-types = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "song/v1.2.1-gwyneth-fix" }
+alloy-sol-macro = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "song/v1.2.1-gwyneth-fix" }
+alloy-sol-macro-expander = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "song/v1.2.1-gwyneth-fix" }
+alloy-sol-macro-input = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "song/v1.2.1-gwyneth-fix" }
+alloy-sol-type-parser = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "song/v1.2.1-gwyneth-fix" }
+syn-solidity = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "song/v1.2.1-gwyneth-fix" }
 
 # Use patched solar-interface to fix compilation bug
 solar-interface = { path = "/tmp/solar-interface-patched" }

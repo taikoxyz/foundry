@@ -335,6 +335,7 @@ impl TestArgs {
         let env = evm_opts.evm_env().await?;
 
         let chain_id = env.evm_env.chainid();
+        evm_opts.sender.set_chain_id(chain_id);
         println!("executing tests on chain id {}", chain_id);
 
         // Enable internal tracing for more informative flamegraph.

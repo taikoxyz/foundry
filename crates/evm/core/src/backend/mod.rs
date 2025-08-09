@@ -655,7 +655,13 @@ impl Backend {
         if let Some(db) = self.active_fork_db() {
             merge_account_data(chain_id, accounts, db, active_journaled_state, target_fork)
         } else {
-            merge_account_data(chain_id, accounts, &self.mem_db, active_journaled_state, target_fork)
+            merge_account_data(
+                chain_id,
+                accounts,
+                &self.mem_db,
+                active_journaled_state,
+                target_fork,
+            )
         }
     }
 
@@ -753,7 +759,7 @@ impl Backend {
         self.set_caller(env.tx.caller);
         self.set_spec_id(env.evm_env.cfg_env.spec);
 
-        let test_contract = match env.tx.kind {
+        let mut test_contract = match env.tx.kind {
             TxKind::Call(to) => to,
             TxKind::Create => {
                 let nonce = self
@@ -763,6 +769,7 @@ impl Backend {
                 env.tx.caller.create(nonce)
             }
         };
+        test_contract.set_chain_id(env.tx.caller.chain_id());
         self.set_test_contract(test_contract);
     }
 
@@ -854,7 +861,9 @@ impl Backend {
     ) -> eyre::Result<(u64, AnyRpcBlock)> {
         let fork = self.inner.get_fork_by_id(id)?;
         let fork_id = self.ensure_fork_id(id)?.clone();
-        let fork_env = self.forks.get_env(fork_id)?
+        let fork_env = self
+            .forks
+            .get_env(fork_id)?
             .ok_or_else(|| eyre::eyre!("Fork environment not found"))?;
         let chain_id = fork_env.evm_env.cfg_env.chain_id;
         let tx = fork.db.db.get_transaction(chain_id, transaction)?;
@@ -1281,7 +1290,9 @@ impl DatabaseExt for Backend {
         let persistent_accounts = self.inner.persistent_accounts.clone();
         let id = self.ensure_fork(maybe_id)?;
         let fork_id = self.ensure_fork_id(id).cloned()?;
-        let fork_env = self.forks.get_env(fork_id.clone())?
+        let fork_env = self
+            .forks
+            .get_env(fork_id.clone())?
             .ok_or_else(|| eyre::eyre!("Fork environment not found"))?;
         let chain_id = fork_env.evm_env.cfg_env.chain_id;
 
@@ -1503,7 +1514,10 @@ impl DatabaseExt for Backend {
         if let Some(db) = self.active_fork_db_mut() {
             db.cache.block_hashes.insert((chain_id, block_number.saturating_to()), block_hash);
         } else {
-            self.mem_db.cache.block_hashes.insert((chain_id, block_number.saturating_to()), block_hash);
+            self.mem_db
+                .cache
+                .block_hashes
+                .insert((chain_id, block_number.saturating_to()), block_hash);
         }
     }
 }
