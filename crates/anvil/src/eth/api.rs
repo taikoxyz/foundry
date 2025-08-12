@@ -1034,7 +1034,7 @@ impl EthApi {
         let from = request.from.map(Ok).unwrap_or_else(|| {
             self.accounts()?.first().copied().ok_or(BlockchainError::NoSignerAvailable)
         })?;
-        let (nonce, on_chain_nonce) = self.request_nonce(&request, from).await?;
+        let (nonce, with_chain_id_nonce) = self.request_nonce(&request, from).await?;
 
         if request.gas.is_none() {
             // estimate if not provided
@@ -1061,7 +1061,7 @@ impl EthApi {
         // pre-validate
         self.backend.validate_pool_transaction(&pending_transaction).await?;
 
-        let requires = required_marker(nonce, on_chain_nonce, from);
+        let requires = required_marker(nonce, with_chain_id_nonce, from);
         let provides = vec![to_marker(nonce, from)];
         debug_assert!(requires != provides);
 
@@ -1135,10 +1135,10 @@ impl EthApi {
         // pre-validate
         self.backend.validate_pool_transaction(&pending_transaction).await?;
 
-        let on_chain_nonce = self.backend.current_nonce(*pending_transaction.sender()).await?;
+        let with_chain_id_nonce = self.backend.current_nonce(*pending_transaction.sender()).await?;
         let from = *pending_transaction.sender();
         let nonce = pending_transaction.transaction.nonce();
-        let requires = required_marker(nonce, on_chain_nonce, from);
+        let requires = required_marker(nonce, with_chain_id_nonce, from);
 
         let priority = self.transaction_priority(&pending_transaction.transaction);
         let pool_transaction = PoolTransaction {
@@ -2604,7 +2604,7 @@ impl EthApi {
         // either use the impersonated account of the request's `from` field
         let from = request.from.ok_or(BlockchainError::NoSignerAvailable)?;
 
-        let (nonce, on_chain_nonce) = self.request_nonce(&request, from).await?;
+        let (nonce, with_chain_id_nonce) = self.request_nonce(&request, from).await?;
 
         let request = self.build_typed_tx_request(request, nonce)?;
 
@@ -2618,7 +2618,7 @@ impl EthApi {
         // pre-validate
         self.backend.validate_pool_transaction(&pending_transaction).await?;
 
-        let requires = required_marker(nonce, on_chain_nonce, from);
+        let requires = required_marker(nonce, with_chain_id_nonce, from);
         let provides = vec![to_marker(nonce, from)];
 
         self.add_pending_transaction(pending_transaction, requires, provides)
@@ -3393,12 +3393,12 @@ impl EthApi {
     }
 }
 
-fn required_marker(provided_nonce: u64, on_chain_nonce: u64, from: Address) -> Vec<TxMarker> {
-    if provided_nonce == on_chain_nonce {
+fn required_marker(provided_nonce: u64, with_chain_id_nonce: u64, from: Address) -> Vec<TxMarker> {
+    if provided_nonce == with_chain_id_nonce {
         return Vec::new();
     }
     let prev_nonce = provided_nonce.saturating_sub(1);
-    if on_chain_nonce <= prev_nonce { vec![to_marker(prev_nonce, from)] } else { Vec::new() }
+    if with_chain_id_nonce <= prev_nonce { vec![to_marker(prev_nonce, from)] } else { Vec::new() }
 }
 
 fn convert_transact_out(out: &Option<Output>) -> Bytes {

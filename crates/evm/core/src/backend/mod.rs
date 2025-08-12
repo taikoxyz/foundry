@@ -12,7 +12,7 @@ use alloy_consensus::Typed2718;
 use alloy_evm::Evm;
 use alloy_genesis::GenesisAccount;
 use alloy_network::{AnyRpcBlock, AnyTxEnvelope, TransactionResponse};
-use alloy_primitives::{Address, B256, TxKind, U256, keccak256, uint};
+use alloy_primitives::{Address, B256, DEFAULT_CHAIN_ID, TxKind, U256, keccak256, uint};
 use alloy_rpc_types::{BlockNumberOrTag, Transaction, TransactionRequest};
 use eyre::Context;
 use foundry_common::{SYSTEM_TRANSACTION_TYPE, is_known_system_sender};
@@ -768,7 +768,8 @@ impl Backend {
                     .unwrap_or_default();
                 env.tx.caller.create(nonce)
             }
-        }.on_chain(env.tx.caller.chain_id());
+        }
+        .with_chain_id(env.tx.caller.chain_id());
         self.set_test_contract(test_contract);
     }
 
@@ -791,6 +792,7 @@ impl Backend {
         let res = evm.transact(env.tx.clone()).wrap_err("EVM error")?;
 
         *env = evm.as_env_mut().to_owned();
+        println!("finished transact");
 
         Ok(res)
     }
@@ -1571,6 +1573,9 @@ impl Database for Backend {
     type Error = DatabaseError;
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         println!("Backend::basic: {:?}", address);
+        if address.chain_id() == DEFAULT_CHAIN_ID {
+            panic!("Attempted to access account with chain id 1");
+        }
         if let Some(db) = self.active_fork_db_mut() {
             Ok(db.basic(address)?)
         } else {

@@ -98,6 +98,7 @@ opener = "0.7"
 # soldeer
 soldeer-commands.workspace = true
 quick-junit = "0.5.1"
+backtrace = "0.3.65"
 
 [dev-dependencies]
 alloy-hardforks.workspace = true

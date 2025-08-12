@@ -220,8 +220,8 @@ async fn can_impersonate_gnosis_safe() {
     // fund the impersonated account
     api.anvil_set_balance(safe, balance).await.unwrap();
 
-    let on_chain_balance = provider.get_balance(safe).await.unwrap();
-    assert_eq!(on_chain_balance, balance);
+    let with_chain_id_balance = provider.get_balance(safe).await.unwrap();
+    assert_eq!(with_chain_id_balance, balance);
 
     api.anvil_stop_impersonating_account(safe).await.unwrap();
 

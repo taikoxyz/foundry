@@ -358,7 +358,7 @@ impl TestArgs {
             .set_decode_internal(decode_internal)
             .initial_balance(evm_opts.initial_balance)
             .evm_spec(config.evm_spec_id())
-            .sender(evm_opts.sender.on_chain(chain_id))
+            .sender(evm_opts.sender.with_chain_id(chain_id))
             .with_fork(evm_opts.get_fork(&config, env.clone()))
             .enable_isolation(evm_opts.isolate)
             .odyssey(evm_opts.odyssey)

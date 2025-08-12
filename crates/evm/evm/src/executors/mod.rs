@@ -349,6 +349,8 @@ impl Executor {
         );
         trace!(sender=%env.tx.caller, "deploying contract");
 
+        let chain_id = env.evm_env.cfg_env().chain_id;
+
         let mut result = self.transact_with_env(env)?;
         result = result.into_result(rd)?;
         let Some(Output::Create(_, Some(address))) = result.out else {
@@ -357,7 +359,7 @@ impl Executor {
 
         // also mark this library as persistent, this will ensure that the state of the library is
         // persistent across fork swaps in forking mode
-        self.backend_mut().add_persistent_account(address);
+        self.backend_mut().add_persistent_account(address.with_chain_id(chain_id));
 
         debug!(%address, "deployed contract");
 

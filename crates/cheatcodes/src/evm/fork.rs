@@ -133,7 +133,7 @@ impl Cheatcode for allowCheatcodesCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account } = self;
         let chain_id = ccx.caller.chain_id();
-        let account = account.on_chain(chain_id);
+        let account = account.with_chain_id(chain_id);
         ccx.ecx.journaled_state.database.allow_cheatcode_access(account);
         Ok(Default::default())
     }
@@ -151,8 +151,8 @@ impl Cheatcode for makePersistent_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account0, account1 } = self;
         let chain_id = ccx.caller.chain_id();
-        let account0 = account0.on_chain(chain_id);
-        let account1 = account1.on_chain(chain_id);
+        let account0 = account0.with_chain_id(chain_id);
+        let account1 = account1.with_chain_id(chain_id);
         ccx.ecx.journaled_state.database.add_persistent_account(account0);
         ccx.ecx.journaled_state.database.add_persistent_account(account1);
         Ok(Default::default())
@@ -163,9 +163,9 @@ impl Cheatcode for makePersistent_2Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account0, account1, account2 } = self;
         let chain_id = ccx.caller.chain_id();
-        let account0 = account0.on_chain(chain_id);
-        let account1 = account1.on_chain(chain_id);
-        let account2 = account2.on_chain(chain_id);
+        let account0 = account0.with_chain_id(chain_id);
+        let account1 = account1.with_chain_id(chain_id);
+        let account2 = account2.with_chain_id(chain_id);
         ccx.ecx.journaled_state.database.add_persistent_account(account0);
         ccx.ecx.journaled_state.database.add_persistent_account(account1);
         ccx.ecx.journaled_state.database.add_persistent_account(account2);
@@ -178,7 +178,7 @@ impl Cheatcode for makePersistent_3Call {
         let Self { accounts } = self;
         let chain_id = ccx.caller.chain_id();
         for account in accounts {
-            let account = account.on_chain(chain_id);
+            let account = account.with_chain_id(chain_id);
             ccx.ecx.journaled_state.database.add_persistent_account(account);
         }
         Ok(Default::default())
@@ -189,7 +189,7 @@ impl Cheatcode for revokePersistent_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account } = self;
         let chain_id = ccx.caller.chain_id();
-        let account = &account.on_chain(chain_id);
+        let account = &account.with_chain_id(chain_id);
         ccx.ecx.journaled_state.database.remove_persistent_account(account);
         Ok(Default::default())
     }
@@ -200,7 +200,7 @@ impl Cheatcode for revokePersistent_1Call {
         let Self { accounts } = self;
         let chain_id = ccx.caller.chain_id();
         for account in accounts {
-            let account = &account.on_chain(chain_id);
+            let account = &account.with_chain_id(chain_id);
             ccx.ecx.journaled_state.database.remove_persistent_account(account);
         }
         Ok(Default::default())
@@ -211,7 +211,7 @@ impl Cheatcode for isPersistentCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account } = self;
         let chain_id = ccx.caller.chain_id();
-        let account = &account.on_chain(chain_id);
+        let account = &account.with_chain_id(chain_id);
         Ok(ccx.ecx.journaled_state.database.is_persistent(account).abi_encode())
     }
 }

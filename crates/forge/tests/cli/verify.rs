@@ -159,7 +159,7 @@ fn deploy_contract(
 }
 
 #[expect(clippy::disallowed_macros)]
-fn verify_on_chain(info: Option<EnvExternalities>, prj: TestProject, mut cmd: TestCommand) {
+fn verify_with_chain_id(info: Option<EnvExternalities>, prj: TestProject, mut cmd: TestCommand) {
     // only execute if keys present
     if let Some(info) = info {
         println!("verifying on {}", info.chain);
@@ -232,7 +232,7 @@ fn guess_constructor_args(info: Option<EnvExternalities>, prj: TestProject, mut 
 
 #[expect(clippy::disallowed_macros)]
 /// Executes create --verify on the given chain
-fn create_verify_on_chain(info: Option<EnvExternalities>, prj: TestProject, mut cmd: TestCommand) {
+fn create_verify_with_chain_id(info: Option<EnvExternalities>, prj: TestProject, mut cmd: TestCommand) {
     // only execute if keys present
     if let Some(info) = info {
         println!("verifying on {}", info.chain);
@@ -253,18 +253,18 @@ fn create_verify_on_chain(info: Option<EnvExternalities>, prj: TestProject, mut 
 
 // tests `create && contract-verify && verify-check` on Fantom testnet if correct env vars are set
 forgetest!(can_verify_random_contract_fantom_testnet, |prj, cmd| {
-    verify_on_chain(EnvExternalities::ftm_testnet(), prj, cmd);
+    verify_with_chain_id(EnvExternalities::ftm_testnet(), prj, cmd);
 });
 
 // tests `create && contract-verify && verify-check` on Optimism kovan if correct env vars are set
 forgetest!(can_verify_random_contract_optimism_kovan, |prj, cmd| {
-    verify_on_chain(EnvExternalities::optimism_kovan(), prj, cmd);
+    verify_with_chain_id(EnvExternalities::optimism_kovan(), prj, cmd);
 });
 
 // tests `create && contract-verify && verify-check` on Sepolia testnet if correct env vars are set
 forgetest!(can_verify_random_contract_sepolia, |prj, cmd| {
     // Implicitly tests `--verifier etherscan` on Sepolia testnet
-    verify_on_chain(EnvExternalities::sepolia_etherscan(), prj, cmd);
+    verify_with_chain_id(EnvExternalities::sepolia_etherscan(), prj, cmd);
 });
 
 // tests `create --verify on Sepolia testnet if correct env vars are set
@@ -273,12 +273,12 @@ forgetest!(can_verify_random_contract_sepolia, |prj, cmd| {
 // ETHERSCAN_API_KEY=<API_KEY>
 forgetest!(can_create_verify_random_contract_sepolia_etherscan, |prj, cmd| {
     // Implicitly tests `--verifier etherscan` on Sepolia testnet
-    create_verify_on_chain(EnvExternalities::sepolia_etherscan(), prj, cmd);
+    create_verify_with_chain_id(EnvExternalities::sepolia_etherscan(), prj, cmd);
 });
 
 // tests `create --verify --verifier sourcify` on Sepolia testnet
 forgetest!(can_create_verify_random_contract_sepolia_sourcify, |prj, cmd| {
-    verify_on_chain(EnvExternalities::sepolia_sourcify(), prj, cmd);
+    verify_with_chain_id(EnvExternalities::sepolia_sourcify(), prj, cmd);
 });
 
 // tests `create --verify --verifier sourcify` with etherscan api key set
@@ -286,20 +286,20 @@ forgetest!(can_create_verify_random_contract_sepolia_sourcify, |prj, cmd| {
 forgetest!(
     can_create_verify_random_contract_sepolia_sourcify_with_etherscan_api_key_set,
     |prj, cmd| {
-        verify_on_chain(EnvExternalities::sepolia_sourcify_with_etherscan_api_key_set(), prj, cmd);
+        verify_with_chain_id(EnvExternalities::sepolia_sourcify_with_etherscan_api_key_set(), prj, cmd);
     }
 );
 
 // tests `create --verify --verifier blockscout` on Sepolia testnet
 forgetest!(can_create_verify_random_contract_sepolia_blockscout, |prj, cmd| {
-    verify_on_chain(EnvExternalities::sepolia_blockscout(), prj, cmd);
+    verify_with_chain_id(EnvExternalities::sepolia_blockscout(), prj, cmd);
 });
 
 // tests `create --verify --verifier blockscout` on Sepolia testnet with etherscan api key set
 forgetest!(
     can_create_verify_random_contract_sepolia_blockscout_with_etherscan_api_key_set,
     |prj, cmd| {
-        verify_on_chain(
+        verify_with_chain_id(
             EnvExternalities::sepolia_blockscout_with_etherscan_api_key_set(),
             prj,
             cmd,
@@ -315,5 +315,5 @@ forgetest!(can_guess_constructor_args, |prj, cmd| {
 
 // tests `create && verify-contract && verify-check` on sepolia with default sourcify verifier
 forgetest!(can_verify_random_contract_sepolia_default_sourcify, |prj, cmd| {
-    verify_on_chain(EnvExternalities::sepolia_empty_verifier(), prj, cmd);
+    verify_with_chain_id(EnvExternalities::sepolia_empty_verifier(), prj, cmd);
 });

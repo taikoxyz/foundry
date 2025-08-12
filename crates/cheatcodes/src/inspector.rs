@@ -47,17 +47,9 @@ use itertools::Itertools;
 use proptest::test_runner::{RngAlgorithm, TestRng, TestRunner};
 use rand::Rng;
 use revm::{
-    Inspector, Journal,
-    bytecode::opcode as op,
-    context::{BlockEnv, JournalTr, LocalContext, TransactionType, result::EVMError},
-    context_interface::{CreateScheme, transaction::SignedAuthorization},
-    handler::FrameResult,
-    interpreter::{
-        CallInputs, CallOutcome, CallScheme, CreateInputs, CreateOutcome, FrameInput, Gas, Host,
-        InstructionResult, Interpreter, InterpreterAction, InterpreterResult,
-        interpreter_types::{Jumps, MemoryTr},
-    },
-    state::EvmStorageSlot,
+    bytecode::opcode as op, context::{result::EVMError, BlockEnv, ContextTr, JournalTr, LocalContext, TransactionType}, context_interface::{transaction::SignedAuthorization, CreateScheme}, handler::FrameResult, interpreter::{
+        interpreter_types::{Jumps, MemoryTr}, CallInputs, CallOutcome, CallScheme, CreateInputs, CreateOutcome, FrameInput, Gas, Host, InstructionResult, Interpreter, InterpreterAction, InterpreterResult
+    }, state::EvmStorageSlot, Inspector, Journal
 };
 use serde_json::Value;
 use std::{
@@ -830,7 +822,7 @@ impl Cheatcodes {
         if let Some(broadcast) = &self.broadcast {
 
             let mut broadcast = broadcast.clone();
-            broadcast.new_origin = broadcast.new_origin.on_chain(broadcast.chain_id);
+            broadcast.new_origin = broadcast.new_origin.with_chain_id(broadcast.chain_id);
 
             // We only apply a broadcast *to a specific depth*.
             //
@@ -946,7 +938,7 @@ impl Cheatcodes {
             // nonce, a non-zero KECCAK_EMPTY codehash, or non-empty code
             let initialized;
             let old_balance;
-            let target_address = call.target_address.on_chain(ecx.cfg.chain_id);
+            let target_address = call.target_address.with_chain_id(ecx.cfg.chain_id);
             if let Ok(acc) = ecx.journaled_state.load_account(target_address) {
                 initialized = acc.info.exists();
                 old_balance = acc.info.balance;
@@ -1766,8 +1758,9 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for Cheatcodes {
                             create_access.kind as u8,
                             crate::Vm::AccountAccessKind::Create as u8
                         );
+                        println!("YSG chain_id: {:?} {:?}", ecx.cfg().chain_id, outcome.address);
                         if let Some(address) = outcome.address
-                            && let Ok(created_acc) = ecx.journaled_state.load_account(address)
+                            && let Ok(created_acc) = ecx.journaled_state.load_account(address.with_chain_id(ecx.cfg().chain_id))
                         {
                             create_access.newBalance = created_acc.info.balance;
                             create_access.deployedCode =
@@ -1968,7 +1961,7 @@ impl Cheatcodes {
 
                 // get previous balance and initialized status of the target account
                 let target = try_or_return!(interpreter.stack.peek(0));
-                let target = Address::from_word(B256::from(target)).on_chain(ecx.cfg.chain_id);
+                let target = Address::from_word(B256::from(target)).with_chain_id(ecx.cfg.chain_id);
                 let (initialized, old_balance) = ecx
                     .journaled_state
                     .load_account(target)
@@ -2077,7 +2070,7 @@ impl Cheatcodes {
                     _ => unreachable!(),
                 };
                 let address =
-                    Address::from_word(B256::from(try_or_return!(interpreter.stack.peek(0)))).on_chain(ecx.cfg.chain_id);
+                    Address::from_word(B256::from(try_or_return!(interpreter.stack.peek(0)))).with_chain_id(ecx.cfg.chain_id);
                 let initialized;
                 let balance;
                 if let Ok(acc) = ecx.journaled_state.load_account(address) {

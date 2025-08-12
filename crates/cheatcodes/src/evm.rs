@@ -169,7 +169,7 @@ impl Cheatcode for addrCall {
 impl Cheatcode for getNonce_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account } = self;
-        let account = &account.on_chain(ccx.state.chain_id);
+        let account = &account.with_chain_id(ccx.state.chain_id);
         get_nonce(ccx, account)
     }
 }
@@ -177,7 +177,7 @@ impl Cheatcode for getNonce_0Call {
 impl Cheatcode for getNonce_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { wallet } = self;
-        let addr = wallet.addr.on_chain(ccx.caller.chain_id());
+        let addr = wallet.addr.with_chain_id(ccx.caller.chain_id());
         get_nonce(ccx, &addr)
     }
 }
@@ -185,7 +185,7 @@ impl Cheatcode for getNonce_1Call {
 impl Cheatcode for loadCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { target, slot } = *self;
-        let target = target.on_chain(ccx.caller.chain_id());
+        let target = target.with_chain_id(ccx.caller.chain_id());
         ensure_not_precompile!(&target, ccx);
         ccx.ecx.journaled_state.load_account(target)?;
         let mut val = ccx.ecx.journaled_state.sload(target, slot.into())?;
@@ -239,7 +239,7 @@ impl Cheatcode for loadAllocsCall {
 
         let chain_id = ccx.caller.chain_id();
         let allocs = allocs.into_iter().map(|alloc| {
-            (alloc.0.on_chain(chain_id), alloc.1)
+            (alloc.0.with_chain_id(chain_id), alloc.1)
         }).collect();
 
         // Then, load the allocs into the database.
@@ -382,7 +382,7 @@ impl Cheatcode for chainIdCall {
 impl Cheatcode for coinbaseCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { newCoinbase } = self;
-        let newCoinbase = newCoinbase.on_chain(ccx.state.chain_id);
+        let newCoinbase = newCoinbase.with_chain_id(ccx.state.chain_id);
         ccx.ecx.block.beneficiary = newCoinbase;
         Ok(Default::default())
     }
@@ -537,7 +537,7 @@ impl Cheatcode for dealCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account: address, newBalance: new_balance } = *self;
         let chain_id = ccx.caller.chain_id();
-        let address = address.on_chain(chain_id);
+        let address = address.with_chain_id(chain_id);
         let account = journaled_account(ccx.ecx, address.clone())?;
         let old_balance = std::mem::replace(&mut account.info.balance, new_balance);
         let record = DealRecord { address, old_balance, new_balance };
@@ -551,7 +551,7 @@ impl Cheatcode for etchCall {
         let Self { target, newRuntimeBytecode } = self;
         ensure_not_precompile!(target, ccx);
         let chain_id = ccx.caller.chain_id();
-        let target = target.on_chain(chain_id);
+        let target = target.with_chain_id(chain_id);
         ccx.ecx.journaled_state.load_account(target.clone())?;
         let bytecode = Bytecode::new_raw_checked(Bytes::copy_from_slice(newRuntimeBytecode))
             .map_err(|e| fmt_err!("failed to create bytecode: {e}"))?;
@@ -564,7 +564,7 @@ impl Cheatcode for resetNonceCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account } = self;
         let chain_id = ccx.caller.chain_id();
-        let account = account.on_chain(chain_id);
+        let account = account.with_chain_id(chain_id);
         let account = journaled_account(ccx.ecx, account)?;
         // Per EIP-161, EOA nonces start at 0, but contract nonces
         // start at 1. Comparing by code_hash instead of code
@@ -581,7 +581,7 @@ impl Cheatcode for setNonceCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account, newNonce } = *self;
         let chain_id = ccx.caller.chain_id();
-        let account = account.on_chain(chain_id);
+        let account = account.with_chain_id(chain_id);
         let account = journaled_account(ccx.ecx, account)?;
         // nonce must increment only
         let current = account.info.nonce;
@@ -599,7 +599,7 @@ impl Cheatcode for setNonceUnsafeCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account, newNonce } = *self;
         let chain_id = ccx.caller.chain_id();
-        let account = account.on_chain(chain_id);
+        let account = account.with_chain_id(chain_id);
         let account = journaled_account(ccx.ecx, account)?;
         account.info.nonce = newNonce;
         Ok(Default::default())
@@ -610,7 +610,7 @@ impl Cheatcode for storeCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { target, slot, value } = *self;
         let chain_id = ccx.caller.chain_id();
-        let target = target.on_chain(chain_id);
+        let target = target.with_chain_id(chain_id);
         ensure_not_precompile!(&target, ccx);
         // ensure the account is touched
         let _ = journaled_account(ccx.ecx, target)?;
@@ -623,7 +623,7 @@ impl Cheatcode for coolCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { target } = self;
         let chain_id = ccx.caller.chain_id();
-        let target = &target.on_chain(chain_id);
+        let target = &target.with_chain_id(chain_id);
         if let Some(account) = ccx.ecx.journaled_state.state.get_mut(target) {
             account.unmark_touch();
             account.storage.values_mut().for_each(|slot| slot.mark_cold());
@@ -662,7 +662,7 @@ impl Cheatcode for warmSlotCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { target, slot } = *self;
         let chain_id = ccx.caller.chain_id();
-        let target = target.on_chain(chain_id);
+        let target = target.with_chain_id(chain_id);
         set_cold_slot(ccx, target, slot.into(), false);
         Ok(Default::default())
     }
@@ -672,7 +672,7 @@ impl Cheatcode for coolSlotCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { target, slot } = *self;
         let chain_id = ccx.caller.chain_id();
-        let target = target.on_chain(chain_id);
+        let target = target.with_chain_id(chain_id);
         set_cold_slot(ccx, target, slot.into(), true);
         Ok(Default::default())
     }

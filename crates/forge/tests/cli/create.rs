@@ -95,7 +95,7 @@ library ChainlinkTWAP {
 }
 
 /// configures the `TestProject` with the given closure and calls the `forge create` command
-fn create_on_chain<F>(info: Option<EnvExternalities>, prj: TestProject, mut cmd: TestCommand, f: F)
+fn create_with_chain_id<F>(info: Option<EnvExternalities>, prj: TestProject, mut cmd: TestCommand, f: F)
 where
     F: FnOnce(&TestProject) -> String,
 {
@@ -116,17 +116,17 @@ where
 
 // tests `forge` create on goerli if correct env vars are set
 forgetest!(can_create_simple_on_goerli, |prj, cmd| {
-    create_on_chain(EnvExternalities::goerli(), prj, cmd, setup_with_simple_remapping);
+    create_with_chain_id(EnvExternalities::goerli(), prj, cmd, setup_with_simple_remapping);
 });
 
 // tests `forge` create on goerli if correct env vars are set
 forgetest!(can_create_oracle_on_goerli, |prj, cmd| {
-    create_on_chain(EnvExternalities::goerli(), prj, cmd, setup_oracle);
+    create_with_chain_id(EnvExternalities::goerli(), prj, cmd, setup_oracle);
 });
 
 // tests `forge` create on mumbai if correct env vars are set
 forgetest!(can_create_oracle_on_mumbai, |prj, cmd| {
-    create_on_chain(EnvExternalities::mumbai(), prj, cmd, setup_oracle);
+    create_with_chain_id(EnvExternalities::mumbai(), prj, cmd, setup_oracle);
 });
 
 // tests that we can deploy the template contract

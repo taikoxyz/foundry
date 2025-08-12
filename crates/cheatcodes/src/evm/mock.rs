@@ -50,7 +50,7 @@ impl Cheatcode for mockCall_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { callee, data, returnData } = self;
         let chain_id = ccx.caller.chain_id();
-        let callee = &callee.on_chain(chain_id);
+        let callee = &callee.with_chain_id(chain_id);
         let _ = make_acc_non_empty(callee, ccx)?;
 
         mock_call(ccx.state, callee, data, None, returnData, InstructionResult::Return);
@@ -62,7 +62,7 @@ impl Cheatcode for mockCall_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { callee, msgValue, data, returnData } = self;
         let chain_id = ccx.caller.chain_id();
-        let callee = &callee.on_chain(chain_id);
+        let callee = &callee.with_chain_id(chain_id);
         ccx.ecx.journaled_state.load_account(*callee)?;
         mock_call(ccx.state, callee, data, Some(msgValue), returnData, InstructionResult::Return);
         Ok(Default::default())
@@ -74,7 +74,7 @@ impl Cheatcode for mockCall_2Call {
         let Self { callee, data, returnData } = self;
         let _ = make_acc_non_empty(callee, ccx)?;
         let chain_id = ccx.caller.chain_id();
-        let callee = &callee.on_chain(chain_id);
+        let callee = &callee.with_chain_id(chain_id);
         mock_call(
             ccx.state,
             callee,
@@ -91,7 +91,7 @@ impl Cheatcode for mockCall_3Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { callee, msgValue, data, returnData } = self;
         let chain_id = ccx.caller.chain_id();
-        let callee = &callee.on_chain(chain_id);
+        let callee = &callee.with_chain_id(chain_id);
         ccx.ecx.journaled_state.load_account(*callee)?;
         mock_call(
             ccx.state,
@@ -109,7 +109,7 @@ impl Cheatcode for mockCalls_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { callee, data, returnData } = self;
         let chain_id = ccx.caller.chain_id();
-        let callee = &callee.on_chain(chain_id);
+        let callee = &callee.with_chain_id(chain_id);
         let _ = make_acc_non_empty(callee, ccx)?;
 
         mock_calls(ccx.state, callee, data, None, returnData, InstructionResult::Return);
@@ -121,7 +121,7 @@ impl Cheatcode for mockCalls_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { callee, msgValue, data, returnData } = self;
         let chain_id = ccx.caller.chain_id();
-        let callee = &callee.on_chain(chain_id);
+        let callee = &callee.with_chain_id(chain_id);
         ccx.ecx.journaled_state.load_account(*callee)?;
         mock_calls(ccx.state, callee, data, Some(msgValue), returnData, InstructionResult::Return);
         Ok(Default::default())
@@ -132,7 +132,7 @@ impl Cheatcode for mockCallRevert_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { callee, data, revertData } = self;
         let chain_id = ccx.caller.chain_id();
-        let callee = &callee.on_chain(chain_id);
+        let callee = &callee.with_chain_id(chain_id);
         let _ = make_acc_non_empty(callee, ccx)?;
 
         mock_call(ccx.state, callee, data, None, revertData, InstructionResult::Revert);
@@ -144,7 +144,7 @@ impl Cheatcode for mockCallRevert_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { callee, msgValue, data, revertData } = self;
         let chain_id = ccx.caller.chain_id();
-        let callee = &callee.on_chain(chain_id);
+        let callee = &callee.with_chain_id(chain_id);
         let _ = make_acc_non_empty(callee, ccx)?;
 
         mock_call(ccx.state, callee, data, Some(msgValue), revertData, InstructionResult::Revert);
@@ -156,7 +156,7 @@ impl Cheatcode for mockCallRevert_2Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { callee, data, revertData } = self;
         let chain_id = ccx.caller.chain_id();
-        let callee = &callee.on_chain(chain_id);
+        let callee = &callee.with_chain_id(chain_id);
         let _ = make_acc_non_empty(callee, ccx)?;
 
         mock_call(
@@ -175,7 +175,7 @@ impl Cheatcode for mockCallRevert_3Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { callee, msgValue, data, revertData } = self;
         let chain_id = ccx.caller.chain_id();
-        let callee = &callee.on_chain(chain_id);
+        let callee = &callee.with_chain_id(chain_id);
         let _ = make_acc_non_empty(callee, ccx)?;
 
         mock_call(
@@ -194,7 +194,7 @@ impl Cheatcode for mockFunctionCall {
     fn apply(&self, state: &mut Cheatcodes) -> Result {
         let Self { callee, target, data } = self;
         let chain_id = state.chain_id;
-        let callee = &callee.on_chain(chain_id);
+        let callee = &callee.with_chain_id(chain_id);
         state.mocked_functions.entry(*callee).or_default().insert(data.clone(), *target);
 
         Ok(Default::default())
