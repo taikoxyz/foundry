@@ -1,5 +1,5 @@
 use alloy_hardforks::EthereumHardfork;
-use alloy_op_hardforks::OpHardfork::{self};
+//use alloy_op_hardforks::OpHardfork::{self};
 use alloy_rpc_types::BlockNumberOrTag;
 
 use op_revm::OpSpecId;
@@ -8,7 +8,7 @@ use revm::primitives::hardfork::SpecId;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ChainHardfork {
     Ethereum(EthereumHardfork),
-    Optimism(OpHardfork),
+    //Optimism(OpHardfork),
 }
 
 impl From<EthereumHardfork> for ChainHardfork {

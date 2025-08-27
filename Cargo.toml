@@ -209,7 +209,6 @@ foundry-fork-db = { path = "../foundry-fork-db" }
 solang-parser = { version = "=0.3.9", package = "foundry-solang-parser" }
 solar-ast = { version = "=0.1.4", default-features = false }
 solar-parse = { version = "=0.1.4", default-features = false }
-solar-interface = { version = "=0.1.4", default-features = false }
 solar-sema = { version = "=0.1.4", default-features = false }
 solar-data-structures = { version = "=0.1.4", default-features = false }
 
@@ -242,7 +241,7 @@ alloy-op-hardforks = { version = "0.2.6", default-features = false }
 ## alloy-core
 alloy-dyn-abi = "1.2.1"
 alloy-json-abi = "1.2.1"
-alloy-primitives = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth", features = [
+alloy-primitives = { version = "1.2.1", features = [
     "getrandom",
     "rand",
     "map-fxhash",
@@ -264,11 +263,13 @@ op-alloy-flz = "0.13.1"
 ## revm
 revm = { path = "../revm-private/crates/revm", default-features = false }
 revm-inspectors = { path = "../revm-inspectors", features = ["serde"] }
-op-revm = { version = "5.0.1", default-features = false }
+#op-revm = { version = "5.0.1", default-features = false }
 
 ## alloy-evm
-alloy-evm = "0.10.0"
-alloy-op-evm = "0.10.0"
+#alloy-evm = "0.10.0"
+#alloy-op-evm = "0.10.0"
+
+alloy-evm = { path = "../alloy-evm/crates/evm" }
 
 ## cli
 anstream = "0.6"
@@ -353,6 +354,8 @@ heck = "0.5"
 uuid = "1.17.0"
 flate2 = "1.1"
 
+solar-interface = { path = "/tmp/solar-interface-patched" }
+
 ## Pinned dependencies. Enabled for the workspace in crates/test-utils.
 
 # Use unicode-rs which has a smaller binary size than the default ICU4X as the IDNA backend, used
@@ -364,15 +367,15 @@ zip-extract = "=0.2.1"
 
 [patch.crates-io]
 # Use alloy-core v1.2.1-gwyneth branch
-alloy-primitives = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-alloy-dyn-abi = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-alloy-json-abi = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-alloy-sol-types = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-alloy-sol-macro = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-alloy-sol-macro-expander = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-alloy-sol-macro-input = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-alloy-sol-type-parser = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-syn-solidity = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
+#alloy-primitives = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
+#alloy-dyn-abi = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
+#alloy-json-abi = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
+#alloy-sol-types = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
+#alloy-sol-macro = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
+#alloy-sol-macro-expander = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
+#alloy-sol-macro-input = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
+#alloy-sol-type-parser = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
+#syn-solidity = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
 
 # Use patched solar-interface to fix compilation bug
 solar-interface = { path = "/tmp/solar-interface-patched" }
@@ -390,13 +393,11 @@ revm-context-interface = { path = "../revm-private/crates/context/interface" }
 revm-context = { path = "../revm-private/crates/context" }
 revm-inspector = { path = "../revm-private/crates/inspector" }
 revm-handler = { path = "../revm-private/crates/handler" }
-op-revm = { path = "../revm-private/crates/op-revm" }
+#op-revm = { path = "../revm-private/crates/op-revm" }
 
-# Use local revm-inspectors patches
-revm-inspectors = { path = "../revm-inspectors" }
 
-# Use local foundry-fork-db patches
-foundry-fork-db = { path = "../foundry-fork-db" }
+
+alloy-evm = { path = "../alloy-evm/crates/evm" }
 ## alloy-core
 # alloy-dyn-abi = { path = "../../alloy-rs/core/crates/dyn-abi" }
 # alloy-json-abi = { path = "../../alloy-rs/core/crates/json-abi" }

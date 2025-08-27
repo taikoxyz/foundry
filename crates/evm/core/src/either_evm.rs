@@ -1,5 +1,5 @@
 use alloy_evm::{Database, EthEvm, Evm, EvmEnv, eth::EthEvmContext};
-use alloy_op_evm::OpEvm;
+//use alloy_op_evm::OpEvm;
 use alloy_primitives::{Address, Bytes};
 use op_revm::{OpContext, OpHaltReason, OpSpecId, OpTransaction, OpTransactionError};
 use revm::{
