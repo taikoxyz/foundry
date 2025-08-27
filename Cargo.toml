@@ -209,6 +209,7 @@ foundry-fork-db = { path = "../foundry-fork-db" }
 solang-parser = { version = "=0.3.9", package = "foundry-solang-parser" }
 solar-ast = { version = "=0.1.4", default-features = false }
 solar-parse = { version = "=0.1.4", default-features = false }
+solar-interface = { version = "=0.1.4", default-features = false }
 solar-sema = { version = "=0.1.4", default-features = false }
 solar-data-structures = { version = "=0.1.4", default-features = false }
 
@@ -354,8 +355,6 @@ heck = "0.5"
 uuid = "1.17.0"
 flate2 = "1.1"
 
-solar-interface = { path = "/tmp/solar-interface-patched" }
-
 ## Pinned dependencies. Enabled for the workspace in crates/test-utils.
 
 # Use unicode-rs which has a smaller binary size than the default ICU4X as the IDNA backend, used
@@ -376,9 +375,6 @@ zip-extract = "=0.2.1"
 #alloy-sol-macro-input = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
 #alloy-sol-type-parser = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
 #syn-solidity = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
-
-# Use patched solar-interface to fix compilation bug
-solar-interface = { path = "/tmp/solar-interface-patched" }
 
 # Use local revm patches
 revm = { path = "../revm-private/crates/revm" }

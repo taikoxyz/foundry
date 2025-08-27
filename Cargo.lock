@@ -8895,9 +8895,9 @@ dependencies = [
 
 [[package]]
 name = "solar-config"
-version = "0.1.6"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0446799e12df8126895ec1721982c53df0149046e668cc7fc88efe27d1d59292"
+checksum = "908d455bb7c04acd783bd157b63791bf010cf6a495a845e48f7aee334aad319f"
 dependencies = [
  "strum 0.27.2",
 ]
@@ -8920,6 +8920,8 @@ dependencies = [
 [[package]]
 name = "solar-interface"
 version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33e49e5a714ec80d7f9c8942584e5e86add1c5e824aa175d0681e9ac7a10e5cc"
 dependencies = [
  "annotate-snippets",
  "anstream",
@@ -8928,7 +8930,7 @@ dependencies = [
  "derive_builder",
  "derive_more 2.0.1",
  "dunce",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "itoa",
  "lasso",
  "match_cfg",
@@ -8940,16 +8942,16 @@ dependencies = [
  "solar-config",
  "solar-data-structures",
  "solar-macros",
- "thiserror 2.0.16",
+ "thiserror 1.0.69",
  "tracing",
  "unicode-width 0.2.0",
 ]
 
 [[package]]
 name = "solar-macros"
-version = "0.1.6"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73ecd98081d2aa15f8747a484a772e059df5359c2936e8caa8fd18ecc51e4a8e"
+checksum = "e17f8b99f28f358b41acb6efe4d7b8f326541b3c58a15dd1931d6fe581feefef"
 dependencies = [
  "proc-macro2",
  "quote",
