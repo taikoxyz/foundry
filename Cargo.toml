@@ -374,8 +374,6 @@ alloy-sol-macro-input = { git = "https://github.com/taikoxyz/alloy-core.git", br
 alloy-sol-type-parser = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
 syn-solidity = { git = "https://github.com/taikoxyz/alloy-core.git", branch = "v1.2.1-gwyneth" }
 
-# Use patched solar-interface to fix compilation bug
-solar-interface = { path = "/tmp/solar-interface-patched" }
 
 # Use local revm patches
 revm = { path = "../revm-private/crates/revm" }
