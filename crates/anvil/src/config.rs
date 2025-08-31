@@ -1171,7 +1171,7 @@ latest block number: {latest_block}"
             block.header.gas_limit
         };
 
-        for (chain_id, block_env) in env.blocks.iter_mut() {
+        for (_chain_id, block_env) in env.blocks.iter_mut() {
             *block_env = BlockEnv {
                 number: U256::from(fork_block_number),
                 timestamp: U256::from(block.header.timestamp),

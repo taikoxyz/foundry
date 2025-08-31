@@ -94,25 +94,16 @@ pub async fn environment<N: Network, T: Transport + Clone, P: Provider<T, N>>(
     // If not available, use current chain ID and parent chain ID as defaults
     let chain_ids = {
         // Try to get chain IDs from RPC (this might be a custom method)
-        let result: TransportResult<Vec<String>> = provider
+        let result: TransportResult<Vec<u64>> = provider
             .client()
-            .request_noparams("eth_getSupportedChainIds")
+            .request_noparams("eth_getSupportedChains")
             .await;
 
-        if let Ok(chain_ids_hex) = result {
-            // Parse hex chain IDs
-            let parsed: Vec<u64> = chain_ids_hex
-                .iter()
-                .filter_map(|id| {
-                    let without_prefix = id.trim_start_matches("0x");
-                    u64::from_str_radix(without_prefix, 16).ok()
-                })
-                .collect();
-
-            if !parsed.is_empty() {
-                Some(parsed)
+        if let Ok(chain_ids_list) = result {
+            if !chain_ids_list.is_empty() {
+                Some(chain_ids_list)
             } else {
-                // Fallback to default chain IDs
+                // Fallback to default chain IDs if empty
                 let mut default_ids = vec![cfg.chain_id];
                 if let Some(parent_id) = parent_chain_id {
                     if parent_id != cfg.chain_id {
@@ -129,7 +120,7 @@ pub async fn environment<N: Network, T: Transport + Clone, P: Provider<T, N>>(
                     default_ids.push(parent_id);
                 }
             }
-            println!("RPC doesn't support eth_getSupportedChainIds, using defaults: {:?}", default_ids);
+            println!("RPC doesn't support eth_getSupportedChains, using defaults: {:?}", default_ids);
             Some(default_ids)
         }
     };
