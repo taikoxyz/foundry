@@ -961,8 +961,10 @@ impl NodeConfig {
         cfg.disable_block_gas_limit = self.disable_block_gas_limit;
         //cfg.handler_cfg.is_optimism = self.enable_optimism;
         cfg.xchain = true;
-        // TODO(Brecht)
-        cfg.parent_chain_id = Some(160010);
+        // Use the current chain_id as the parent_chain_id by default
+        // This can be overridden when forking from another chain
+        cfg.parent_chain_id = Some(self.get_chain_id());
+        println!("parent_chain_id: {:?}", cfg.parent_chain_id);
 
         if let Some(value) = self.memory_limit {
             cfg.memory_limit = value;

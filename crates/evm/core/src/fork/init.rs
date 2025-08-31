@@ -90,9 +90,49 @@ pub async fn environment<N: Network, T: Transport + Clone, P: Provider<T, N>>(
     cfg.allow_mocking = true;
     cfg.parent_chain_id = parent_chain_id;
 
-    //let chain_ids: Vec<u64> = Some(0..200_000).collect();
-    // TODO(Brecht): discover this through the RPC server
-    let chain_ids = Some(vec![160010u64, 167010, 167011]);
+    // Try to get supported chain IDs from the RPC server
+    // If not available, use current chain ID and parent chain ID as defaults
+    let chain_ids = {
+        // Try to get chain IDs from RPC (this might be a custom method)
+        let result: TransportResult<Vec<String>> = provider
+            .client()
+            .request_noparams("eth_getSupportedChainIds")
+            .await;
+
+        if let Ok(chain_ids_hex) = result {
+            // Parse hex chain IDs
+            let parsed: Vec<u64> = chain_ids_hex
+                .iter()
+                .filter_map(|id| {
+                    let without_prefix = id.trim_start_matches("0x");
+                    u64::from_str_radix(without_prefix, 16).ok()
+                })
+                .collect();
+
+            if !parsed.is_empty() {
+                Some(parsed)
+            } else {
+                // Fallback to default chain IDs
+                let mut default_ids = vec![cfg.chain_id];
+                if let Some(parent_id) = parent_chain_id {
+                    if parent_id != cfg.chain_id {
+                        default_ids.push(parent_id);
+                    }
+                }
+                Some(default_ids)
+            }
+        } else {
+            // If RPC doesn't support getting chain IDs, use defaults
+            let mut default_ids = vec![cfg.chain_id];
+            if let Some(parent_id) = parent_chain_id {
+                if parent_id != cfg.chain_id {
+                    default_ids.push(parent_id);
+                }
+            }
+            println!("RPC doesn't support eth_getSupportedChainIds, using defaults: {:?}", default_ids);
+            Some(default_ids)
+        }
+    };
     println!("chain_ids: {:?}", chain_ids);
 
     let mut blocks = HashMap::new();
