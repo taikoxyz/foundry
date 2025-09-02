@@ -35,7 +35,7 @@ mod tests {
     use std::convert::Infallible;
 
     use alloy_evm::{EthEvm, Evm, EvmEnv, eth::EthEvmContext, precompiles::PrecompilesMap};
-   // use alloy_op_evm::OpEvm;
+    // use alloy_op_evm::OpEvm;
     use alloy_primitives::{Address, Bytes, TxKind, U256, address};
     use foundry_evm_core::either_evm::EitherEvm;
     use itertools::Itertools;

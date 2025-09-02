@@ -455,7 +455,11 @@ impl Backend {
 
             // insert the new genesis hash to the database so it's available for the next block in
             // the evm
-            db.insert_block_hash(U256::from(self.best_number()), self.best_hash(), self.env.read().evm_env.cfg_env.chain_id);
+            db.insert_block_hash(
+                U256::from(self.best_number()),
+                self.best_hash(),
+                self.env.read().evm_env.cfg_env.chain_id,
+            );
         }
 
         let db = self.db.write().await;
@@ -1339,7 +1343,11 @@ impl Backend {
 
                 // we also need to update the new blockhash in the db itself
                 let block_hash = executed_tx.block.block.header.hash_slow();
-                db.insert_block_hash(U256::from(executed_tx.block.block.header.number), block_hash, self.env.read().evm_env.cfg_env.chain_id);
+                db.insert_block_hash(
+                    U256::from(executed_tx.block.block.header.number),
+                    block_hash,
+                    self.env.read().evm_env.cfg_env.chain_id,
+                );
 
                 (executed_tx, block_hash)
             };

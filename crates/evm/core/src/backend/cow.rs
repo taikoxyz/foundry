@@ -16,11 +16,10 @@ use alloy_rpc_types::TransactionRequest;
 use eyre::WrapErr;
 use foundry_fork_db::DatabaseError;
 use revm::{
-    Database, DatabaseCommit,
     bytecode::Bytecode,
     context_interface::result::ResultAndState,
-    database::DatabaseRef,
-    primitives::{HashMap as Map, hardfork::SpecId},
+    database_interface::{MultiChainDatabase, MultiChainDatabaseCommit, MultiChainDatabaseRef},
+    primitives::{ChainAddress, HashMap as Map, hardfork::SpecId},
     state::{Account, AccountInfo},
 };
 use std::{borrow::Cow, collections::BTreeMap};
@@ -69,6 +68,7 @@ impl<'a> CowBackend<'a> {
         env: &mut Env,
         inspector: &mut I,
     ) -> eyre::Result<ResultAndState> {
+        println!("inspect");
         // this is a new call to inspect with a new env, so even if we've cloned the backend
         // already, we reset the initialized state
         self.is_initialized = false;
@@ -77,6 +77,8 @@ impl<'a> CowBackend<'a> {
         let mut evm = crate::evm::new_evm_with_inspector(self, env.to_owned(), inspector);
 
         let res = evm.transact(env.tx.clone()).wrap_err("EVM error")?;
+
+        // println!("res: {:?}", res);
 
         *env = evm.as_env_mut().to_owned();
 
@@ -234,7 +236,7 @@ impl DatabaseExt for CowBackend<'_> {
 
     fn diagnose_revert(
         &self,
-        callee: Address,
+        callee: ChainAddress,
         journaled_state: &JournaledState,
     ) -> Option<RevertDiagnostic> {
         self.backend.diagnose_revert(callee, journaled_state)
@@ -242,7 +244,7 @@ impl DatabaseExt for CowBackend<'_> {
 
     fn load_allocs(
         &mut self,
-        allocs: &BTreeMap<Address, GenesisAccount>,
+        allocs: &BTreeMap<ChainAddress, GenesisAccount>,
         journaled_state: &mut JournaledState,
     ) -> Result<(), BackendError> {
         self.backend_mut(&Env::default().as_env_mut()).load_allocs(allocs, journaled_state)
@@ -261,27 +263,27 @@ impl DatabaseExt for CowBackend<'_> {
         )
     }
 
-    fn is_persistent(&self, acc: &Address) -> bool {
+    fn is_persistent(&self, acc: &ChainAddress) -> bool {
         self.backend.is_persistent(acc)
     }
 
-    fn remove_persistent_account(&mut self, account: &Address) -> bool {
+    fn remove_persistent_account(&mut self, account: &ChainAddress) -> bool {
         self.backend.to_mut().remove_persistent_account(account)
     }
 
-    fn add_persistent_account(&mut self, account: Address) -> bool {
+    fn add_persistent_account(&mut self, account: ChainAddress) -> bool {
         self.backend.to_mut().add_persistent_account(account)
     }
 
-    fn allow_cheatcode_access(&mut self, account: Address) -> bool {
+    fn allow_cheatcode_access(&mut self, account: ChainAddress) -> bool {
         self.backend.to_mut().allow_cheatcode_access(account)
     }
 
-    fn revoke_cheatcode_access(&mut self, account: &Address) -> bool {
+    fn revoke_cheatcode_access(&mut self, account: &ChainAddress) -> bool {
         self.backend.to_mut().revoke_cheatcode_access(account)
     }
 
-    fn has_cheatcode_access(&self, account: &Address) -> bool {
+    fn has_cheatcode_access(&self, account: &ChainAddress) -> bool {
         self.backend.has_cheatcode_access(account)
     }
 
@@ -290,48 +292,61 @@ impl DatabaseExt for CowBackend<'_> {
     }
 }
 
-impl DatabaseRef for CowBackend<'_> {
+impl MultiChainDatabaseRef for CowBackend<'_> {
     type Error = DatabaseError;
 
-    fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
-        DatabaseRef::basic_ref(self.backend.as_ref(), address)
+    fn basic_ref_multi(&self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        MultiChainDatabaseRef::basic_ref_multi(self.backend.as_ref(), address)
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        DatabaseRef::code_by_hash_ref(self.backend.as_ref(), code_hash)
+    fn code_by_hash_ref_multi(
+        &self,
+        chain_id: u64,
+        code_hash: B256,
+    ) -> Result<Bytecode, Self::Error> {
+        println!("getting code: {} {}", chain_id, code_hash);
+        MultiChainDatabaseRef::code_by_hash_ref_multi(self.backend.as_ref(), chain_id, code_hash)
     }
 
-    fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
-        DatabaseRef::storage_ref(self.backend.as_ref(), address, index)
+    fn storage_ref_multi(&self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
+        MultiChainDatabaseRef::storage_ref_multi(self.backend.as_ref(), address, index)
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
-        DatabaseRef::block_hash_ref(self.backend.as_ref(), number)
+    fn block_hash_ref_multi(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        MultiChainDatabaseRef::block_hash_ref_multi(self.backend.as_ref(), chain_id, number)
     }
 }
 
-impl Database for CowBackend<'_> {
+impl MultiChainDatabase for CowBackend<'_> {
     type Error = DatabaseError;
 
-    fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
-        DatabaseRef::basic_ref(self, address)
+    fn basic_multi(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        //println!("CowBackend::basic: {:?}", address);
+        let res = MultiChainDatabaseRef::basic_ref_multi(self, address);
+        //println!("account result: {:?}", res);
+        res
     }
 
-    fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        DatabaseRef::code_by_hash_ref(self, code_hash)
+    fn code_by_hash_multi(
+        &mut self,
+        chain_id: u64,
+        code_hash: B256,
+    ) -> Result<Bytecode, Self::Error> {
+        //println!("getting code: {} {}", chain_id, code_hash);
+        MultiChainDatabaseRef::code_by_hash_ref_multi(self, chain_id, code_hash)
     }
 
-    fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
-        DatabaseRef::storage_ref(self, address, index)
+    fn storage_multi(&mut self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
+        MultiChainDatabaseRef::storage_ref_multi(self, address, index)
     }
 
-    fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
-        DatabaseRef::block_hash_ref(self, number)
+    fn block_hash_multi(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        MultiChainDatabaseRef::block_hash_ref_multi(self, chain_id, number)
     }
 }
 
-impl DatabaseCommit for CowBackend<'_> {
-    fn commit(&mut self, changes: Map<Address, Account>) {
-        self.backend.to_mut().commit(changes)
+impl MultiChainDatabaseCommit for CowBackend<'_> {
+    fn commit_multi(&mut self, changes: Map<ChainAddress, Account>) {
+        self.backend.to_mut().commit_multi(changes)
     }
 }

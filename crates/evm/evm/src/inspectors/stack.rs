@@ -702,7 +702,9 @@ impl InspectorStackRefMut<'_> {
         }
 
         let (result, address, output) = match res.result {
-            ExecutionResult::Success { reason, gas_used, gas_refunded, logs: _, output, .. } => {
+            ExecutionResult::Success {
+                reason, gas_used, gas_refunded, logs: _, output, ..
+            } => {
                 gas.set_refund(gas_refunded as i64);
                 let _ = gas.record_cost(gas_used);
                 let address = match output {

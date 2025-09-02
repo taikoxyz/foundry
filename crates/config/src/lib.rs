@@ -50,6 +50,7 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
 };
+use revm::primitives::ChainAddress;
 
 mod macros;
 
@@ -342,7 +343,7 @@ pub struct Config {
     /// The address which will be executing all tests
     pub sender: Address,
     /// The tx.origin value during EVM execution
-    pub tx_origin: Address,
+    pub tx_origin: ChainAddress,
     /// the initial balance of each deployed test contract
     pub initial_balance: U256,
     /// the block.number value during EVM execution
@@ -364,7 +365,7 @@ pub struct Config {
     /// The base fee in a block.
     pub block_base_fee_per_gas: u64,
     /// The `block.coinbase` value during EVM execution.
-    pub block_coinbase: Address,
+    pub block_coinbase: ChainAddress,
     /// The `block.timestamp` value during EVM execution.
     pub block_timestamp: u64,
     /// The `block.difficulty` value during EVM execution.
@@ -538,12 +539,12 @@ pub struct Config {
     ///
     /// let config = Config { src: "other".into(), ..Default::default() };
     /// ```
-    /// All chain ids allowed while in foundry
-    pub chain_ids: Option<Vec<u64>>,
-
     #[doc(hidden)]
     #[serde(skip)]
     pub _non_exhaustive: (),
+
+    /// All chain ids allowed while in foundry
+    pub chain_ids: Option<Vec<u64>>,
 }
 
 /// Mapping of fallback standalone sections. See [`FallbackProfileProvider`].
@@ -2371,7 +2372,7 @@ impl Default for Config {
             allow_internal_expect_revert: false,
             prompt_timeout: 120,
             sender: Self::DEFAULT_SENDER,
-            tx_origin: Self::DEFAULT_SENDER,
+            tx_origin: ChainAddress(1, Self::DEFAULT_SENDER),
             initial_balance: U256::from((1u128 << 96) - 1),
             block_number: 1,
             fork_block_number: None,
@@ -2380,7 +2381,7 @@ impl Default for Config {
             code_size_limit: None,
             gas_price: None,
             block_base_fee_per_gas: 0,
-            block_coinbase: Address::ZERO,
+            block_coinbase: ChainAddress(0, Address::ZERO),
             block_timestamp: 1,
             block_difficulty: 0,
             block_prevrandao: Default::default(),
@@ -2440,8 +2441,8 @@ impl Default for Config {
             additional_compiler_profiles: Default::default(),
             compilation_restrictions: Default::default(),
             script_execution_protection: true,
-            chain_ids: Some(vec![31337]),
             _non_exhaustive: (),
+            chain_ids: Some(vec![31337]),
         }
     }
 }

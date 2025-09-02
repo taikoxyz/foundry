@@ -328,12 +328,12 @@ pub async fn get_tracing_executor(
 }
 
 pub fn configure_env_block(env: &mut EnvMut<'_>, block: &AnyRpcBlock) {
-    env.block.timestamp = block.header.timestamp;
-    env.block.beneficiary = block.header.beneficiary;
-    env.block.difficulty = block.header.difficulty;
-    env.block.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
-    env.block.basefee = block.header.base_fee_per_gas.unwrap_or_default();
-    env.block.gas_limit = block.header.gas_limit;
+    env.blocks.timestamp = block.header.timestamp;
+    env.blocks.beneficiary = block.header.beneficiary;
+    env.blocks.difficulty = block.header.difficulty;
+    env.blocks.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
+    env.blocks.basefee = block.header.base_fee_per_gas.unwrap_or_default();
+    env.blocks.gas_limit = block.header.gas_limit;
 }
 
 pub fn deploy_contract(

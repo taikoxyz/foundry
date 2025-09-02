@@ -4,7 +4,10 @@ use crate::{
     backend::{RevertStateSnapshotAction, StateSnapshot},
     state_snapshot::StateSnapshots,
 };
-use alloy_primitives::{Address, B256, U256, map::{AddressHashMap, HashMap}};
+use alloy_primitives::{
+    Address, B256, U256,
+    map::{AddressHashMap, HashMap},
+};
 use alloy_rpc_types::BlockId;
 use foundry_fork_db::{BlockchainDb, DatabaseError, SharedBackend};
 use parking_lot::Mutex;
@@ -12,6 +15,8 @@ use revm::{
     Database, DatabaseCommit,
     bytecode::Bytecode,
     database::{CacheDB, DatabaseRef},
+    database_interface::{MultiChainDatabase, MultiChainDatabaseCommit, MultiChainDatabaseRef},
+    primitives::ChainAddress,
     state::{Account, AccountInfo},
 };
 use std::sync::Arc;
@@ -95,26 +100,26 @@ impl ForkedDatabase {
 
     pub fn create_state_snapshot(&self) -> ForkDbStateSnapshot {
         let db = self.db.db();
-        
+
         // Convert from chain-aware to non-chain-aware types
         let accounts_lock = db.accounts.read();
-        let mut accounts = AddressHashMap::default();
+        let mut accounts = HashMap::default();
         for ((_, addr), info) in accounts_lock.iter() {
             accounts.insert(*addr, info.clone());
         }
-        
+
         let storage_lock = db.storage.read();
-        let mut storage = AddressHashMap::default();
+        let mut storage = HashMap::default();
         for ((_, addr), store) in storage_lock.iter() {
             storage.insert(*addr, store.clone());
         }
-        
+
         let block_hashes_lock = db.block_hashes.read();
         let mut block_hashes = HashMap::default();
         for ((_, num), hash) in block_hashes_lock.iter() {
             block_hashes.insert(*num, *hash);
         }
-        
+
         let state_snapshot = StateSnapshot { accounts, storage, block_hashes };
         ForkDbStateSnapshot { local: self.cache_db.clone(), state_snapshot }
     }
@@ -139,7 +144,7 @@ impl ForkedDatabase {
                 state_snapshot: StateSnapshot { accounts, storage, block_hashes },
             } = state_snapshot;
             let db = self.inner().db();
-            
+
             // Convert back from non-chain-aware to chain-aware types
             // We need a chain_id - addresses should have it built-in
             {
@@ -181,52 +186,61 @@ impl ForkedDatabase {
     }
 }
 
-impl Database for ForkedDatabase {
+impl MultiChainDatabase for ForkedDatabase {
     type Error = DatabaseError;
 
-    fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+    fn basic_multi(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        println!("ForkedDatabase::basic: {:?}", address);
         // Note: this will always return Some, since the `SharedBackend` will always load the
         // account, this differs from `<CacheDB as Database>::basic`, See also
         // [MemDb::ensure_loaded](crate::backend::MemDb::ensure_loaded)
-        Database::basic(&mut self.cache_db, address)
+        MultiChainDatabase::basic_multi(&mut self.cache_db, address)
     }
 
-    fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        Database::code_by_hash(&mut self.cache_db, code_hash)
+    fn code_by_hash_multi(
+        &mut self,
+        chain_id: u64,
+        code_hash: B256,
+    ) -> Result<Bytecode, Self::Error> {
+        MultiChainDatabase::code_by_hash_multi(&mut self.cache_db, chain_id, code_hash)
     }
 
-    fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
-        Database::storage(&mut self.cache_db, address, index)
+    fn storage_multi(&mut self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
+        MultiChainDatabase::storage_multi(&mut self.cache_db, address, index)
     }
 
-    fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
-        Database::block_hash(&mut self.cache_db, number)
+    fn block_hash_multi(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        MultiChainDatabase::block_hash_multi(&mut self.cache_db, chain_id, number)
     }
 }
 
-impl DatabaseRef for ForkedDatabase {
+impl MultiChainDatabaseRef for ForkedDatabase {
     type Error = DatabaseError;
 
-    fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
-        self.cache_db.basic_ref(address)
+    fn basic_ref_multi(&self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        self.cache_db.basic_ref_multi(address)
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        self.cache_db.code_by_hash_ref(code_hash)
+    fn code_by_hash_ref_multi(
+        &self,
+        chain_id: u64,
+        code_hash: B256,
+    ) -> Result<Bytecode, Self::Error> {
+        self.cache_db.code_by_hash_ref_multi(chain_id, code_hash)
     }
 
-    fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
-        DatabaseRef::storage_ref(&self.cache_db, address, index)
+    fn storage_ref_multi(&self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
+        MultiChainDatabaseRef::storage_ref_multi(&self.cache_db, address, index)
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
-        self.cache_db.block_hash_ref(number)
+    fn block_hash_ref_multi(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        self.cache_db.block_hash_ref_multi(chain_id, number)
     }
 }
 
-impl DatabaseCommit for ForkedDatabase {
-    fn commit(&mut self, changes: HashMap<Address, Account>) {
-        self.database_mut().commit(changes)
+impl MultiChainDatabaseCommit for ForkedDatabase {
+    fn commit_multi(&mut self, changes: HashMap<ChainAddress, Account>) {
+        self.database_mut().commit_multi(changes)
     }
 }
 
@@ -240,7 +254,7 @@ pub struct ForkDbStateSnapshot {
 }
 
 impl ForkDbStateSnapshot {
-    fn get_storage(&self, address: Address, index: U256) -> Option<U256> {
+    fn get_storage(&self, address: ChainAddress, index: U256) -> Option<U256> {
         self.local
             .cache
             .accounts
@@ -250,13 +264,13 @@ impl ForkDbStateSnapshot {
     }
 }
 
-// This `DatabaseRef` implementation works similar to `CacheDB` which prioritizes modified elements,
-// and uses another db as fallback
+// This `MultiChainDatabaseRef` implementation works similar to `CacheDB` which prioritizes modified
+// elements, and uses another db as fallback
 // We prioritize stored changed accounts/storage
-impl DatabaseRef for ForkDbStateSnapshot {
+impl MultiChainDatabaseRef for ForkDbStateSnapshot {
     type Error = DatabaseError;
 
-    fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+    fn basic_ref_multi(&self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
         match self.local.cache.accounts.get(&address) {
             Some(account) => Ok(Some(account.info.clone())),
             None => {
@@ -270,29 +284,33 @@ impl DatabaseRef for ForkDbStateSnapshot {
         }
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        self.local.code_by_hash_ref(code_hash)
+    fn code_by_hash_ref_multi(
+        &self,
+        chain_id: u64,
+        code_hash: B256,
+    ) -> Result<Bytecode, Self::Error> {
+        self.local.code_by_hash_ref_multi(chain_id, code_hash)
     }
 
-    fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
+    fn storage_ref_multi(&self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
         match self.local.cache.accounts.get(&address) {
             Some(account) => match account.storage.get(&index) {
                 Some(entry) => Ok(*entry),
                 None => match self.get_storage(address, index) {
-                    None => DatabaseRef::storage_ref(&self.local, address, index),
+                    None => MultiChainDatabaseRef::storage_ref_multi(&self.local, address, index),
                     Some(storage) => Ok(storage),
                 },
             },
             None => match self.get_storage(address, index) {
-                None => DatabaseRef::storage_ref(&self.local, address, index),
+                None => MultiChainDatabaseRef::storage_ref_multi(&self.local, address, index),
                 Some(storage) => Ok(storage),
             },
         }
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
-        match self.state_snapshot.block_hashes.get(&U256::from(number)).copied() {
-            None => self.local.block_hash_ref(number),
+    fn block_hash_ref_multi(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        match self.state_snapshot.block_hashes.get(&(chain_id, U256::from(number))).copied() {
+            None => self.local.block_hash_ref_multi(chain_id, number),
             Some(block_hash) => Ok(block_hash),
         }
     }
@@ -304,6 +322,7 @@ mod tests {
     use crate::backend::BlockchainDbMeta;
     use foundry_common::provider::get_http_provider;
     use std::collections::BTreeSet;
+    use revm::database_interface::MultiChainDatase;
 
     /// Demonstrates that `Database::basic` for `ForkedDatabase` will always return the
     /// `AccountInfo`
@@ -317,9 +336,9 @@ mod tests {
         let backend = SharedBackend::spawn_backend(Arc::new(provider), db.clone(), None).await;
 
         let mut db = ForkedDatabase::new(backend, db);
-        let address = Address::random();
+        let address = ChainAddress(1,Address::random());
 
-        let info = Database::basic(&mut db, address).unwrap();
+        let info = MultiChainDatabase::basic_multi(&mut db, address).unwrap();
         assert!(info.is_some());
         let mut info = info.unwrap();
         info.balance = U256::from(500u64);
@@ -327,7 +346,7 @@ mod tests {
         // insert the modified account info
         db.database_mut().insert_account_info(address, info.clone());
 
-        let loaded = Database::basic(&mut db, address).unwrap();
+        let loaded = MultiChainDatabase::basic_multi(&mut db, address).unwrap();
         assert!(loaded.is_some());
         assert_eq!(loaded.unwrap(), info);
     }

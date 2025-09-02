@@ -351,22 +351,22 @@ impl StateDb {
     }
 }
 
-impl DatabaseRef for StateDb {
+impl MultiChainDatabaseRef for StateDb {
     type Error = DatabaseError;
-    fn basic_ref(&self, address: Address) -> DatabaseResult<Option<AccountInfo>> {
-        self.0.basic_ref(address)
+    fn basic_ref_multi(&self, address: ChainAddress) -> DatabaseResult<Option<AccountInfo>> {
+        self.0.basic_ref_multi(address)
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> DatabaseResult<Bytecode> {
-        self.0.code_by_hash_ref(code_hash)
+    fn code_by_hash_ref_multi(&self, chain_id: u64, code_hash: B256) -> DatabaseResult<Bytecode> {
+        self.0.code_by_hash_ref_multi(chain_id, code_hash)
     }
 
-    fn storage_ref(&self, address: Address, index: U256) -> DatabaseResult<U256> {
-        self.0.storage_ref(address, index)
+    fn storage_ref_multi(&self, address: ChainAddress, index: U256) -> DatabaseResult<U256> {
+        self.0.storage_ref_multi(address, index)
     }
 
-    fn block_hash_ref(&self, number: u64) -> DatabaseResult<B256> {
-        self.0.block_hash_ref(number)
+    fn block_hash_ref_multi(&self, chain_id: u64, number: u64) -> DatabaseResult<B256> {
+        self.0.block_hash_ref_multi(chain_id, number)
     }
 }
 

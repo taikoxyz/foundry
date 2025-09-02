@@ -22,7 +22,7 @@ impl Env {
 impl AsEnvMut for Env {
     fn as_env_mut(&mut self) -> EnvMut<'_> {
         EnvMut {
-            block: &mut self.evm_env.block_env,
+            blocks: &mut self.evm_env.block_env,
             cfg: &mut self.evm_env.cfg_env,
             tx: &mut self.tx.base,
         }

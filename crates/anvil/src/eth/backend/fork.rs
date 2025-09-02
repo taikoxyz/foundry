@@ -101,7 +101,11 @@ impl ClientFork {
 
         self.clear_cached_storage();
 
-        self.database.write().await.insert_block_hash(U256::from(number), block_hash, self.chain_id());
+        self.database.write().await.insert_block_hash(
+            U256::from(number),
+            block_hash,
+            self.chain_id(),
+        );
 
         Ok(())
     }

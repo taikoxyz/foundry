@@ -214,6 +214,13 @@ impl TransactionMaybeSigned {
         }
     }
 
+    pub fn chain_id(&self) -> Option<u64> {
+        match self {
+            Self::Signed { tx, .. } => tx.chain_id(),
+            Self::Unsigned(tx) => tx.chain_id,
+        }
+    }
+
     pub fn from(&self) -> Option<Address> {
         match self {
             Self::Signed { from, .. } => Some(*from),
