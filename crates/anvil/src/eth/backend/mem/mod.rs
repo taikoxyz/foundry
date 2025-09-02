@@ -40,7 +40,7 @@ use alloy_consensus::{
     transaction::Recovered,
 };
 use alloy_eips::{eip1559::BaseFeeParams, eip7840::BlobParams};
-use alloy_evm::{Database, Evm, eth::EthEvmContext, precompiles::PrecompilesMap};
+use alloy_evm::{Database, EthEvm, Evm, eth::EthEvmContext, precompiles::PrecompilesMap};
 use alloy_network::{
     AnyHeader, AnyRpcBlock, AnyRpcHeader, AnyRpcTransaction, AnyTxEnvelope, AnyTxType,
     EthereumWallet, UnknownTxEnvelope, UnknownTypedTransaction,
@@ -75,8 +75,7 @@ use anvil_core::eth::{
     block::{Block, BlockInfo},
     transaction::{
         DepositReceipt, MaybeImpersonatedTransaction, PendingTransaction, ReceiptResponse,
-        TransactionInfo, TypedReceipt, TypedTransaction, has_optimism_fields,
-        transaction_request_to_typed,
+        TransactionInfo, TypedReceipt, TypedTransaction, transaction_request_to_typed,
     },
     wallet::{Capabilities, DelegationCapability, WalletCapabilities},
 };
@@ -91,12 +90,13 @@ use foundry_evm::{
     inspectors::AccessListInspector,
     traces::TracingInspectorConfig,
 };
-use foundry_evm_core::either_evm::EitherEvm;
+//use foundry_evm_core::either_evm::EitherEvm;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
 use op_alloy_consensus::DEPOSIT_TX_TYPE_ID;
+/*
 use op_revm::{
     OpContext, OpHaltReason, OpTransaction, transaction::deposit::DepositTransactionParts,
-};
+}; */
 use parking_lot::{Mutex, RwLock};
 use revm::{
     DatabaseCommit, Inspector,
@@ -815,7 +815,8 @@ impl Backend {
 
     /// Returns true if op-stack deposits are active
     pub fn is_optimism(&self) -> bool {
-        self.env.read().is_optimism
+        false
+        // self.env.read().is_optimism
     }
 
     /// Returns [`BlobParams`] corresponding to the current spec.
@@ -1141,14 +1142,13 @@ impl Backend {
         db: &'db dyn DatabaseRef<Error = DatabaseError>,
         env: &Env,
         inspector: &'db mut I,
-    ) -> EitherEvm<
+    ) -> EthEvm<
         WrapDatabaseRef<&'db dyn DatabaseRef<Error = DatabaseError>>,
         &'db mut I,
         PrecompilesMap,
     >
     where
-        I: Inspector<EthEvmContext<WrapDatabaseRef<&'db dyn DatabaseRef<Error = DatabaseError>>>>
-            + Inspector<OpContext<WrapDatabaseRef<&'db dyn DatabaseRef<Error = DatabaseError>>>>,
+        I: Inspector<EthEvmContext<WrapDatabaseRef<&'db dyn DatabaseRef<Error = DatabaseError>>>>,
         WrapDatabaseRef<&'db dyn DatabaseRef<Error = DatabaseError>>:
             Database<Error = DatabaseError>,
     {
@@ -1176,10 +1176,12 @@ impl Backend {
         let mut env = self.next_env();
         env.tx = tx.pending_transaction.to_revm_tx_env();
 
+        /*
         if env.is_optimism {
             env.tx.enveloped_tx =
                 Some(alloy_rlp::encode(&tx.pending_transaction.transaction.transaction).into());
         }
+         */
 
         let db = self.db.read().await;
         let mut inspector = self.build_inspector();
@@ -1193,7 +1195,7 @@ impl Backend {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)), None)
             }
             ExecutionResult::Halt { reason, gas_used } => {
-                let eth_reason = op_haltreason_to_instruction_result(reason);
+                let eth_reason = reason.into();
                 (eth_reason, gas_used, None, None)
             }
         };
@@ -1504,10 +1506,10 @@ impl Backend {
                     nonce,
                     sidecar: _,
                     chain_id,
-                    transaction_type,
+                    transaction_type: _,
                     .. // Rest of the gas fees related fields are taken from `fee_details`
                 },
-            other,
+            other: _,
         } = request;
 
         let FeeDetails {
@@ -1564,10 +1566,10 @@ impl Backend {
             ..Default::default()
         };
         base.set_signed_authorization(authorization_list.unwrap_or_default());
-        env.tx = OpTransaction { base, ..Default::default() };
+        env.tx = base;
 
         if let Some(nonce) = nonce {
-            env.tx.base.nonce = nonce;
+            env.tx.nonce = nonce;
         } else {
             // Disable nonce check in revm
             env.evm_env.cfg_env.disable_nonce_check = true;
@@ -1579,6 +1581,7 @@ impl Backend {
             env.evm_env.cfg_env.disable_base_fee = true;
         }
 
+        /*
         // Deposit transaction?
         if transaction_type == Some(DEPOSIT_TX_TYPE_ID) && has_optimism_fields(&other) {
             let deposit = DepositTransactionParts {
@@ -1597,6 +1600,7 @@ impl Backend {
             };
             env.tx.deposit = deposit;
         }
+         */
 
         env
     }
@@ -1843,9 +1847,7 @@ impl Backend {
             ExecutionResult::Revert { gas_used, output } => {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
             }
-            ExecutionResult::Halt { reason, gas_used } => {
-                (op_haltreason_to_instruction_result(reason), gas_used, None)
-            }
+            ExecutionResult::Halt { reason, gas_used } => (reason.into(), gas_used, None),
         };
         drop(evm);
         inspector.print_logs();
@@ -1938,9 +1940,7 @@ impl Backend {
                 ExecutionResult::Revert { gas_used, output } => {
                     (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
                 }
-                ExecutionResult::Halt { reason, gas_used } => {
-                    (op_haltreason_to_instruction_result(reason), gas_used, None)
-                }
+                ExecutionResult::Halt { reason, gas_used } => (reason.into(), gas_used, None),
             };
 
             drop(evm);
@@ -1980,7 +1980,7 @@ impl Backend {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
             }
             ExecutionResult::Halt { reason, gas_used } => {
-                (op_haltreason_to_instruction_result(reason), gas_used, None)
+                (reason.into(), gas_used, None)
             }
         };
         drop(evm);
@@ -3407,9 +3407,11 @@ pub fn is_arbitrum(chain_id: u64) -> bool {
     false
 }
 
+/*
 pub fn op_haltreason_to_instruction_result(op_reason: OpHaltReason) -> InstructionResult {
     match op_reason {
         OpHaltReason::Base(eth_h) => eth_h.into(),
         OpHaltReason::FailedDeposit => InstructionResult::Stop,
     }
 }
+*/

@@ -11,7 +11,7 @@ use anvil_rpc::{
     response::ResponseResult,
 };
 use foundry_evm::{backend::DatabaseError, decode::RevertDecoder};
-use op_revm::OpTransactionError;
+//use op_revm::OpTransactionError;
 use revm::{
     context_interface::result::{EVMError, InvalidHeader, InvalidTransaction},
     interpreter::InstructionResult,
@@ -145,6 +145,7 @@ where
     }
 }
 
+/*
 impl<T> From<EVMError<T, OpTransactionError>> for BlockchainError
 where
     T: Into<Self>,
@@ -169,6 +170,7 @@ where
         }
     }
 }
+ */
 
 impl From<WalletError> for BlockchainError {
     fn from(value: WalletError) -> Self {
@@ -361,6 +363,7 @@ impl From<InvalidTransaction> for InvalidTransactionError {
     }
 }
 
+/*
 impl From<OpTransactionError> for InvalidTransactionError {
     fn from(value: OpTransactionError) -> Self {
         match value {
@@ -370,6 +373,8 @@ impl From<OpTransactionError> for InvalidTransactionError {
         }
     }
 }
+ */
+
 /// Helper trait to easily convert results to rpc results
 pub(crate) trait ToRpcResponseResult {
     fn to_rpc_result(self) -> ResponseResult;

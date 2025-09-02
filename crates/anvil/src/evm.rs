@@ -1,12 +1,12 @@
 use std::fmt::Debug;
 
 use alloy_evm::{
-    Database, Evm,
+    Database, EthEvm, Evm,
     eth::EthEvmContext,
     precompiles::{DynPrecompile, PrecompilesMap},
 };
-use foundry_evm_core::either_evm::EitherEvm;
-use op_revm::OpContext;
+//use foundry_evm_core::either_evm::EitherEvm;
+//use op_revm::OpContext;
 use revm::{Inspector, precompile::PrecompileWithAddress};
 
 /// Object-safe trait that enables injecting extra precompiles when using
@@ -18,11 +18,11 @@ pub trait PrecompileFactory: Send + Sync + Unpin + Debug {
 
 /// Inject precompiles into the EVM dynamically.
 pub fn inject_precompiles<DB, I>(
-    evm: &mut EitherEvm<DB, I, PrecompilesMap>,
+    evm: &mut EthEvm<DB, I, PrecompilesMap>,
     precompiles: Vec<PrecompileWithAddress>,
 ) where
     DB: Database,
-    I: Inspector<EthEvmContext<DB>> + Inspector<OpContext<DB>>,
+    I: Inspector<EthEvmContext<DB>>,
 {
     for p in precompiles {
         evm.precompiles_mut()
@@ -35,11 +35,11 @@ mod tests {
     use std::convert::Infallible;
 
     use alloy_evm::{EthEvm, Evm, EvmEnv, eth::EthEvmContext, precompiles::PrecompilesMap};
-    use alloy_op_evm::OpEvm;
+    //  use alloy_op_evm::OpEvm;
     use alloy_primitives::{Address, Bytes, TxKind, U256, address};
-    use foundry_evm_core::either_evm::EitherEvm;
+    //use foundry_evm_core::either_evm::EitherEvm;
     use itertools::Itertools;
-    use op_revm::{L1BlockInfo, OpContext, OpSpecId, OpTransaction, precompiles::OpPrecompiles};
+    //use op_revm::{L1BlockInfo, OpContext, OpSpecId, OpTransaction, precompiles::OpPrecompiles};
     use revm::{
         Journal,
         context::{CfgEnv, Evm as RevmEvm, JournalTr, LocalContext, TxEnv},
@@ -87,8 +87,7 @@ mod tests {
     /// Creates a new EVM instance with the custom precompile factory.
     fn create_eth_evm(
         spec: SpecId,
-    ) -> (foundry_evm::Env, EitherEvm<EmptyDBTyped<Infallible>, NoOpInspector, PrecompilesMap>)
-    {
+    ) -> (foundry_evm::Env, EthEvm<EmptyDBTyped<Infallible>, NoOpInspector, PrecompilesMap>) {
         let eth_env = foundry_evm::Env {
             evm_env: EvmEnv { block_env: Default::default(), cfg_env: CfgEnv::new_with_spec(spec) },
             tx: TxEnv {
@@ -113,7 +112,7 @@ mod tests {
             spec,
         }
         .precompiles;
-        let eth_evm = EitherEvm::Eth(EthEvm::new(
+        let eth_evm = EthEvm::new(
             RevmEvm::new_with_inspector(
                 eth_evm_context,
                 NoOpInspector,
@@ -121,11 +120,12 @@ mod tests {
                 PrecompilesMap::from_static(eth_precompiles),
             ),
             true,
-        ));
+        );
 
         (eth_env, eth_evm)
     }
 
+    /*
     /// Creates a new OP EVM instance with the custom precompile factory.
     fn create_op_evm(
         spec: SpecId,
@@ -183,6 +183,7 @@ mod tests {
 
         (op_env, op_evm)
     }
+     */
 
     #[test]
     fn build_eth_evm_with_extra_precompiles_default_spec() {
@@ -197,11 +198,13 @@ mod tests {
 
         assert!(evm.precompiles().addresses().contains(&PRECOMPILE_ADDR));
 
+        /*
         let result = match &mut evm {
             EitherEvm::Eth(eth_evm) => eth_evm.transact(env.tx).unwrap(),
             _ => unreachable!(),
         };
-
+        */
+        let result = evm.transact(env.tx).unwrap();
         assert!(result.result.is_success());
         assert_eq!(result.result.output(), Some(&PAYLOAD.into()));
     }
@@ -219,15 +222,18 @@ mod tests {
 
         assert!(evm.precompiles().addresses().contains(&PRECOMPILE_ADDR));
 
+        /*
         let result = match &mut evm {
             EitherEvm::Eth(eth_evm) => eth_evm.transact(env.tx).unwrap(),
             _ => unreachable!(),
         };
-
+         */
+        let result = evm.transact(env.tx).unwrap();
         assert!(result.result.is_success());
         assert_eq!(result.result.output(), Some(&PAYLOAD.into()));
     }
 
+    /*
     #[test]
     fn build_op_evm_with_extra_precompiles_default_spec() {
         let (env, mut evm) = create_op_evm(SpecId::default(), OpSpecId::default());
@@ -277,4 +283,5 @@ mod tests {
         assert!(result.result.is_success());
         assert_eq!(result.result.output(), Some(&PAYLOAD.into()));
     }
+     */
 }

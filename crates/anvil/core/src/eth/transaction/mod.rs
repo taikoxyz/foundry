@@ -19,7 +19,7 @@ use alloy_serde::{OtherFields, WithOtherFields};
 use bytes::BufMut;
 use foundry_evm::traces::CallTraceNode;
 use op_alloy_consensus::{DEPOSIT_TX_TYPE_ID, TxDeposit};
-use op_revm::{OpTransaction, transaction::deposit::DepositTransactionParts};
+//use op_revm::{OpTransaction, transaction::deposit::DepositTransactionParts};
 use revm::{context::TxEnv, interpreter::InstructionResult};
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, Mul};
@@ -397,7 +397,7 @@ impl PendingTransaction {
     /// expects.
     ///
     /// Base [`TxEnv`] is encapsulated in the [`op_revm::OpTransaction`]
-    pub fn to_revm_tx_env(&self) -> OpTransaction<TxEnv> {
+    pub fn to_revm_tx_env(&self) -> TxEnv {
         fn transact_to(kind: &TxKind) -> TxKind {
             match kind {
                 TxKind::Call(c) => TxKind::Call(*c),
@@ -410,7 +410,7 @@ impl PendingTransaction {
             TypedTransaction::Legacy(tx) => {
                 let chain_id = tx.tx().chain_id;
                 let TxLegacy { nonce, gas_price, gas_limit, value, to, input, .. } = tx.tx();
-                OpTransaction::new(TxEnv {
+                TxEnv {
                     caller,
                     kind: transact_to(to),
                     data: input.clone(),
@@ -423,7 +423,7 @@ impl PendingTransaction {
                     access_list: vec![].into(),
                     tx_type: 0,
                     ..Default::default()
-                })
+                }
             }
             TypedTransaction::EIP2930(tx) => {
                 let TxEip2930 {
@@ -437,7 +437,7 @@ impl PendingTransaction {
                     access_list,
                     ..
                 } = tx.tx();
-                OpTransaction::new(TxEnv {
+                TxEnv {
                     caller,
                     kind: transact_to(to),
                     data: input.clone(),
@@ -450,7 +450,7 @@ impl PendingTransaction {
                     access_list: access_list.clone(),
                     tx_type: 1,
                     ..Default::default()
-                })
+                }
             }
             TypedTransaction::EIP1559(tx) => {
                 let TxEip1559 {
@@ -465,7 +465,7 @@ impl PendingTransaction {
                     access_list,
                     ..
                 } = tx.tx();
-                OpTransaction::new(TxEnv {
+                TxEnv {
                     caller,
                     kind: transact_to(to),
                     data: input.clone(),
@@ -478,7 +478,7 @@ impl PendingTransaction {
                     access_list: access_list.clone(),
                     tx_type: 2,
                     ..Default::default()
-                })
+                }
             }
             TypedTransaction::EIP4844(tx) => {
                 let TxEip4844 {
@@ -495,7 +495,7 @@ impl PendingTransaction {
                     blob_versioned_hashes,
                     ..
                 } = tx.tx().tx();
-                OpTransaction::new(TxEnv {
+                TxEnv {
                     caller,
                     kind: TxKind::Call(*to),
                     data: input.clone(),
@@ -510,7 +510,7 @@ impl PendingTransaction {
                     access_list: access_list.clone(),
                     tx_type: 3,
                     ..Default::default()
-                })
+                }
             }
             TypedTransaction::EIP7702(tx) => {
                 let TxEip7702 {
@@ -542,9 +542,11 @@ impl PendingTransaction {
                 };
                 tx.set_signed_authorization(authorization_list.clone());
 
-                OpTransaction::new(tx)
+                tx
             }
-            TypedTransaction::Deposit(tx) => {
+            TypedTransaction::Deposit(_) => {
+                unimplemented!("Deposit transaction not implemented yet");
+                /*
                 let chain_id = tx.chain_id();
                 let TxDeposit {
                     source_hash,
@@ -579,6 +581,7 @@ impl PendingTransaction {
                 };
 
                 OpTransaction { base, deposit, enveloped_tx: None }
+                 */
             }
         }
     }

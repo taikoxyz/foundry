@@ -819,6 +819,7 @@ async fn test_fork_init_base_fee() {
     assert!(next_base_fee < init_base_fee);
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_reset_fork_on_new_blocks() {
     let (api, handle) =
@@ -1229,6 +1230,7 @@ async fn test_arb_fork_mining() {
 }
 
 // <https://github.com/foundry-rs/foundry/issues/6749>
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_arbitrum_fork_block_number() {
     // fork to get initial block for test

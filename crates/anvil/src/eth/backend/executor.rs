@@ -1,10 +1,7 @@
 use crate::{
     PrecompileFactory,
     eth::{
-        backend::{
-            db::Db, env::Env, mem::op_haltreason_to_instruction_result,
-            validate::TransactionValidator,
-        },
+        backend::{db::Db, env::Env, validate::TransactionValidator},
         error::InvalidTransactionError,
         pool::transactions::PoolTransaction,
     },
@@ -16,7 +13,7 @@ use alloy_consensus::{
 };
 use alloy_eips::{eip7685::EMPTY_REQUESTS_HASH, eip7840::BlobParams};
 use alloy_evm::{EthEvm, Evm, eth::EthEvmContext, precompiles::PrecompilesMap};
-use alloy_op_evm::OpEvm;
+//use alloy_op_evm::OpEvm;
 use alloy_primitives::{B256, Bloom, BloomInput, Log};
 use anvil_core::eth::{
     block::{Block, BlockInfo, PartialHeader},
@@ -25,8 +22,8 @@ use anvil_core::eth::{
     },
 };
 use foundry_evm::{backend::DatabaseError, traces::CallTraceNode};
-use foundry_evm_core::either_evm::EitherEvm;
-use op_revm::{L1BlockInfo, OpContext, precompiles::OpPrecompiles};
+//use foundry_evm_core::either_evm::EitherEvm;
+//use op_revm::{L1BlockInfo, OpContext, precompiles::OpPrecompiles};
 use revm::{
     Database, DatabaseRef, Inspector, Journal,
     context::{Block as RevmBlock, BlockEnv, CfgEnv, Evm as RevmEvm, JournalTr, LocalContext},
@@ -249,13 +246,15 @@ impl<DB: Db + ?Sized, V: TransactionValidator> TransactionExecutor<'_, DB, V> {
     }
 
     fn env_for(&self, tx: &PendingTransaction) -> Env {
-        let mut tx_env = tx.to_revm_tx_env();
+        let tx_env = tx.to_revm_tx_env();
 
+        /*
         if self.optimism {
             tx_env.enveloped_tx = Some(alloy_rlp::encode(&tx.transaction.transaction).into());
         }
+         */
 
-        Env::new(self.cfg_env.clone(), self.block_env.clone(), tx_env, self.optimism)
+        Env::new(self.cfg_env.clone(), self.block_env.clone(), tx_env)
     }
 }
 
@@ -287,7 +286,7 @@ impl<DB: Db + ?Sized, V: TransactionValidator> Iterator for &mut TransactionExec
         let env = self.env_for(&transaction.pending_transaction);
 
         // check that we comply with the block's gas limit, if not disabled
-        let max_gas = self.gas_used.saturating_add(env.tx.base.gas_limit);
+        let max_gas = self.gas_used.saturating_add(env.tx.gas_limit);
         if !env.evm_env.cfg_env.disable_block_gas_limit && max_gas > env.evm_env.block_env.gas_limit
         {
             return Some(TransactionExecutionOutcome::Exhausted(transaction));
@@ -374,9 +373,7 @@ impl<DB: Db + ?Sized, V: TransactionValidator> Iterator for &mut TransactionExec
             ExecutionResult::Revert { gas_used, output } => {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)), None)
             }
-            ExecutionResult::Halt { reason, gas_used } => {
-                (op_haltreason_to_instruction_result(reason), gas_used, None, None)
-            }
+            ExecutionResult::Halt { reason, gas_used } => (reason.into(), gas_used, None, None),
         };
 
         if exit_reason == InstructionResult::OutOfGas {
@@ -425,11 +422,12 @@ pub fn new_evm_with_inspector<DB, I>(
     db: DB,
     env: &Env,
     inspector: I,
-) -> EitherEvm<DB, I, PrecompilesMap>
+) -> EthEvm<DB, I, PrecompilesMap>
 where
     DB: Database<Error = DatabaseError>,
-    I: Inspector<EthEvmContext<DB>> + Inspector<OpContext<DB>>,
+    I: Inspector<EthEvmContext<DB>>,
 {
+    /*
     if env.is_optimism {
         let op_cfg = env.evm_env.cfg_env.clone().with_spec(op_revm::OpSpecId::ISTHMUS);
         let op_context = OpContext {
@@ -458,7 +456,8 @@ where
         let op = OpEvm::new(op_evm, true);
 
         EitherEvm::Op(op)
-    } else {
+    } else */
+    {
         let spec = env.evm_env.cfg_env.spec;
         let eth_context = EthEvmContext {
             journaled_state: {
@@ -468,7 +467,7 @@ where
             },
             block: env.evm_env.block_env.clone(),
             cfg: env.evm_env.cfg_env.clone(),
-            tx: env.tx.base.clone(),
+            tx: env.tx.clone(),
             chain: (),
             local: LocalContext::default(),
             error: Ok(()),
@@ -488,7 +487,7 @@ where
 
         let eth = EthEvm::new(eth_evm, true);
 
-        EitherEvm::Eth(eth)
+        eth
     }
 }
 
@@ -497,11 +496,10 @@ pub fn new_evm_with_inspector_ref<'db, DB, I>(
     db: &'db DB,
     env: &Env,
     inspector: &'db mut I,
-) -> EitherEvm<WrapDatabaseRef<&'db DB>, &'db mut I, PrecompilesMap>
+) -> EthEvm<WrapDatabaseRef<&'db DB>, &'db mut I, PrecompilesMap>
 where
     DB: DatabaseRef<Error = DatabaseError> + 'db + ?Sized,
-    I: Inspector<EthEvmContext<WrapDatabaseRef<&'db DB>>>
-        + Inspector<OpContext<WrapDatabaseRef<&'db DB>>>,
+    I: Inspector<EthEvmContext<WrapDatabaseRef<&'db DB>>>,
     WrapDatabaseRef<&'db DB>: Database<Error = DatabaseError>,
 {
     new_evm_with_inspector(WrapDatabaseRef(db), env, inspector)

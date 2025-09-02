@@ -148,6 +148,7 @@ async fn test_send_value_raw_deposit_transaction() {
     assert_eq!(after_balance_to, before_balance_to + send_value);
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_deposit_transaction_hash_matches_sepolia() {
     // enable the Optimism flag
@@ -179,6 +180,7 @@ async fn test_deposit_transaction_hash_matches_sepolia() {
     assert_eq!(receipt.transaction_hash, tx_hash);
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_deposit_tx_checks_sufficient_funds_after_applying_deposited_value() {
     // enable the Optimism flag

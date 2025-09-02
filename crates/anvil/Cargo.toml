@@ -31,7 +31,7 @@ foundry-evm-core.workspace = true
 
 # alloy
 alloy-evm.workspace = true
-alloy-op-evm.workspace = true
+# alloy-op-evm.workspace = true
 alloy-primitives = { workspace = true, features = ["serde"] }
 alloy-consensus = { workspace = true, features = ["k256", "kzg"] }
 alloy-contract = { workspace = true, features = ["pubsub"] }
@@ -56,7 +56,7 @@ alloy-chains.workspace = true
 alloy-genesis.workspace = true
 alloy-trie.workspace = true
 alloy-hardforks.workspace = true
-alloy-op-hardforks.workspace = true
+# alloy-op-hardforks.workspace = true
 op-alloy-consensus = { workspace = true, features = ["serde"] }
 
 # revm
@@ -67,7 +67,7 @@ revm = { workspace = true, features = [
     "c-kzg",
 ] }
 revm-inspectors.workspace = true
-op-revm.workspace = true
+#op-revm.workspace = true
 
 # axum related
 axum.workspace = true
