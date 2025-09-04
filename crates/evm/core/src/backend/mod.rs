@@ -74,6 +74,7 @@ pub const GLOBAL_FAIL_SLOT: U256 =
 
 pub type JournaledState = JournalInner<JournalEntry>;
 
+/// This is right YSG
 /// An extension trait that allows us to easily extend the `revm::Inspector` capabilities
 #[auto_impl::auto_impl(&mut)]
 pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit {

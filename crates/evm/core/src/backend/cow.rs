@@ -19,7 +19,7 @@ use revm::{
     Database, DatabaseCommit,
     bytecode::Bytecode,
     context_interface::result::ResultAndState,
-    database::DatabaseRef,
+    database::{DatabaseRef, MultiChainDatabase, SimpleMultiChainDB},
     primitives::{HashMap as Map, hardfork::SpecId},
     state::{Account, AccountInfo},
 };
@@ -65,18 +65,29 @@ impl<'a> CowBackend<'a> {
     /// update the given `env` with the new values.
     #[instrument(name = "inspect", level = "debug", skip_all)]
     pub fn inspect<I: InspectorExt>(
-        &mut self,
+        mut self,
         env: &mut Env,
         inspector: &mut I,
     ) -> eyre::Result<ResultAndState> {
+        println!("inspect");
         // this is a new call to inspect with a new env, so even if we've cloned the backend
         // already, we reset the initialized state
         self.is_initialized = false;
         self.spec_id = env.evm_env.cfg_env.spec;
 
-        let mut evm = crate::evm::new_evm_with_inspector(self, env.to_owned(), inspector);
+        let chain_id = env.evm_env.cfg_env.chain_id;
+        let mut db = SimpleMultiChainDB::new();
+        db.add_chain(chain_id, self);
+
+        let mut evm = crate::evm::new_evm_with_inspector(
+            &mut db as &mut dyn MultiChainDatabase<Error = DatabaseError>,
+            env.to_owned(),
+            inspector,
+        );
 
         let res = evm.transact(env.tx.clone()).wrap_err("EVM error")?;
+
+        // println!("res: {:?}", res);
 
         *env = evm.as_env_mut().to_owned();
 

@@ -1,8 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::{
-    Env, InspectorExt, backend::DatabaseExt, constants::DEFAULT_CREATE2_DEPLOYER_CODEHASH,
-};
+use crate::{Env, InspectorExt, constants::DEFAULT_CREATE2_DEPLOYER_CODEHASH};
 use alloy_consensus::constants::KECCAK_EMPTY;
 use alloy_evm::{
     Evm, EvmEnv,
@@ -14,7 +12,8 @@ use foundry_fork_db::DatabaseError;
 use revm::{
     Context, ExecuteEvm, Journal,
     context::{
-        BlockEnv, CfgEnv, ContextTr, CreateScheme, Evm as RevmEvm, JournalTr, LocalContext, TxEnv,
+        BlockEnv, CfgEnv, ContextTr, CreateScheme, Evm as RevmEvm, JournalTr, LocalContext,
+        MultiChainDatabase, TxEnv,
         result::{EVMError, HaltReason, ResultAndState},
     },
     handler::{
@@ -32,13 +31,13 @@ use revm::{
 };
 
 pub fn new_evm_with_inspector<'i, 'db, I: InspectorExt + ?Sized>(
-    db: &'db mut dyn DatabaseExt,
+    db: &'db mut dyn MultiChainDatabase<Error = DatabaseError>,
     env: Env,
     inspector: &'i mut I,
 ) -> FoundryEvm<'db, &'i mut I> {
     let ctx = EthEvmContext {
         journaled_state: {
-            let mut journal = Journal::new(db);
+            let mut journal = Journal::new(db, 1);
             journal.set_spec_id(env.evm_env.cfg_env.spec);
             journal
         },
@@ -66,7 +65,7 @@ pub fn new_evm_with_inspector<'i, 'db, I: InspectorExt + ?Sized>(
 }
 
 pub fn new_evm_with_existing_context<'a>(
-    ctx: EthEvmContext<&'a mut dyn DatabaseExt>,
+    ctx: EthEvmContext<&'a mut dyn MultiChainDatabase<Error = DatabaseError>>,
     inspector: &'a mut dyn InspectorExt,
 ) -> FoundryEvm<'a, &'a mut dyn InspectorExt> {
     let spec = ctx.cfg.spec;
@@ -129,9 +128,12 @@ fn get_create2_factory_call_inputs(
 pub struct FoundryEvm<'db, I: InspectorExt> {
     #[allow(clippy::type_complexity)]
     pub inner: RevmEvm<
-        EthEvmContext<&'db mut dyn DatabaseExt>,
+        EthEvmContext<&'db mut dyn MultiChainDatabase<Error = DatabaseError>>,
         I,
-        EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn DatabaseExt>>,
+        EthInstructions<
+            EthInterpreter,
+            EthEvmContext<&'db mut dyn MultiChainDatabase<Error = DatabaseError>>,
+        >,
         PrecompilesMap,
     >,
 }
@@ -157,7 +159,7 @@ impl<I: InspectorExt> FoundryEvm<'_, I> {
 impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
     type Precompiles = PrecompilesMap;
     type Inspector = I;
-    type DB = &'db mut dyn DatabaseExt;
+    type DB = &'db mut dyn MultiChainDatabase<Error = DatabaseError>;
     type Error = EVMError<DatabaseError>;
     type HaltReason = HaltReason;
     type Spec = SpecId;
@@ -168,7 +170,16 @@ impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
     }
 
     fn block(&self) -> &BlockEnv {
-        &self.inner.block
+        let chain_id = self.chain_id();
+        &self
+            .inner
+            .block
+            .get(&chain_id)
+            .or_else(|| {
+                // Fallback to chain 0
+                self.inner.block.get(&0)
+            })
+            .expect("No block environment found for chain or fallback chain 0")
     }
 
     fn db_mut(&mut self) -> &mut Self::DB {
@@ -224,7 +235,8 @@ impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
 }
 
 impl<'db, I: InspectorExt> Deref for FoundryEvm<'db, I> {
-    type Target = Context<BlockEnv, TxEnv, CfgEnv, &'db mut dyn DatabaseExt>;
+    type Target =
+        Context<BlockEnv, TxEnv, CfgEnv, &'db mut dyn MultiChainDatabase<Error = DatabaseError>>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner.ctx
@@ -241,17 +253,23 @@ pub struct FoundryHandler<'db, I: InspectorExt> {
     #[allow(clippy::type_complexity)]
     inner: MainnetHandler<
         RevmEvm<
-            EthEvmContext<&'db mut dyn DatabaseExt>,
+            EthEvmContext<&'db mut dyn MultiChainDatabase<Error = DatabaseError>>,
             I,
-            EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn DatabaseExt>>,
+            EthInstructions<
+                EthInterpreter,
+                EthEvmContext<&'db mut dyn MultiChainDatabase<Error = DatabaseError>>,
+            >,
             PrecompilesMap,
         >,
         EVMError<DatabaseError>,
         EthFrame<
             RevmEvm<
-                EthEvmContext<&'db mut dyn DatabaseExt>,
+                EthEvmContext<&'db mut dyn MultiChainDatabase<Error = DatabaseError>>,
                 I,
-                EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn DatabaseExt>>,
+                EthInstructions<
+                    EthInterpreter,
+                    EthEvmContext<&'db mut dyn MultiChainDatabase<Error = DatabaseError>>,
+                >,
                 PrecompilesMap,
             >,
             EVMError<DatabaseError>,
@@ -269,17 +287,23 @@ impl<I: InspectorExt> Default for FoundryHandler<'_, I> {
 
 impl<'db, I: InspectorExt> Handler for FoundryHandler<'db, I> {
     type Evm = RevmEvm<
-        EthEvmContext<&'db mut dyn DatabaseExt>,
+        EthEvmContext<&'db mut dyn MultiChainDatabase<Error = DatabaseError>>,
         I,
-        EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn DatabaseExt>>,
+        EthInstructions<
+            EthInterpreter,
+            EthEvmContext<&'db mut dyn MultiChainDatabase<Error = DatabaseError>>,
+        >,
         PrecompilesMap,
     >;
     type Error = EVMError<DatabaseError>;
     type Frame = EthFrame<
         RevmEvm<
-            EthEvmContext<&'db mut dyn DatabaseExt>,
+            EthEvmContext<&'db mut dyn MultiChainDatabase<Error = DatabaseError>>,
             I,
-            EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn DatabaseExt>>,
+            EthInstructions<
+                EthInterpreter,
+                EthEvmContext<&'db mut dyn MultiChainDatabase<Error = DatabaseError>>,
+            >,
             PrecompilesMap,
         >,
         EVMError<DatabaseError>,

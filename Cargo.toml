@@ -205,7 +205,7 @@ foundry-linking = { path = "crates/linking" }
 # solc & compilation utilities
 foundry-block-explorers = { version = "0.19.1", default-features = false }
 foundry-compilers = { version = "0.17.3", default-features = false }
-foundry-fork-db = "0.15"
+foundry-fork-db = { path = "../foundry-fork-db" }
 solang-parser = { version = "=0.3.9", package = "foundry-solang-parser" }
 solar-ast = { version = "=0.1.4", default-features = false }
 solar-parse = { version = "=0.1.4", default-features = false }
@@ -262,12 +262,15 @@ op-alloy-rpc-types = "0.17.2"
 op-alloy-flz = "0.13.1"
 
 ## revm
-revm = { version = "24.0.1", default-features = false }
-revm-inspectors = { version = "0.23.0", features = ["serde"] }
+#revm = { version = "24.0.1", default-features = false }
+revm = { path = "../revm-private/crates/revm", default-features = false }
+revm-inspectors = { path = "../revm-inspectors", features = ["serde"] }
+#revm-inspectors = { version = "0.23.0", features = ["serde"] }
 #op-revm = { version = "5.0.1", default-features = false }
 
 ## alloy-evm
-alloy-evm = "0.10.0"
+#alloy-evm = "0.10.0"
+alloy-evm = { path = "../alloy-evm/crates/evm" }
 #alloy-op-evm = "0.10.0"
 
 ## cli
