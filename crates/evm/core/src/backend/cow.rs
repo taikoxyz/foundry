@@ -16,12 +16,7 @@ use alloy_rpc_types::TransactionRequest;
 use eyre::WrapErr;
 use foundry_fork_db::DatabaseError;
 use revm::{
-    Database, DatabaseCommit,
-    bytecode::Bytecode,
-    context_interface::result::ResultAndState,
-    database::{DatabaseRef, MultiChainDatabase, SimpleMultiChainDB},
-    primitives::{HashMap as Map, hardfork::SpecId},
-    state::{Account, AccountInfo},
+    bytecode::Bytecode, context_interface::result::ResultAndState, database::{DatabaseRef, MultiChainDatabase, SimpleMultiChainDB}, primitives::{hardfork::SpecId, ChainAddress, HashMap as Map}, state::{Account, AccountInfo}, Database, DatabaseCommit
 };
 use std::{borrow::Cow, collections::BTreeMap};
 
@@ -245,7 +240,7 @@ impl DatabaseExt for CowBackend<'_> {
 
     fn diagnose_revert(
         &self,
-        callee: Address,
+        callee: ChainAddress,
         journaled_state: &JournaledState,
     ) -> Option<RevertDiagnostic> {
         self.backend.diagnose_revert(callee, journaled_state)
@@ -272,27 +267,27 @@ impl DatabaseExt for CowBackend<'_> {
         )
     }
 
-    fn is_persistent(&self, acc: &Address) -> bool {
+    fn is_persistent(&self, acc: &ChainAddress) -> bool {
         self.backend.is_persistent(acc)
     }
 
-    fn remove_persistent_account(&mut self, account: &Address) -> bool {
+    fn remove_persistent_account(&mut self, account: &ChainAddress) -> bool {
         self.backend.to_mut().remove_persistent_account(account)
     }
 
-    fn add_persistent_account(&mut self, account: Address) -> bool {
+    fn add_persistent_account(&mut self, account: ChainAddress) -> bool {
         self.backend.to_mut().add_persistent_account(account)
     }
 
-    fn allow_cheatcode_access(&mut self, account: Address) -> bool {
+    fn allow_cheatcode_access(&mut self, account: ChainAddress) -> bool {
         self.backend.to_mut().allow_cheatcode_access(account)
     }
 
-    fn revoke_cheatcode_access(&mut self, account: &Address) -> bool {
+    fn revoke_cheatcode_access(&mut self, account: &ChainAddress) -> bool {
         self.backend.to_mut().revoke_cheatcode_access(account)
     }
 
-    fn has_cheatcode_access(&self, account: &Address) -> bool {
+    fn has_cheatcode_access(&self, account: &ChainAddress) -> bool {
         self.backend.has_cheatcode_access(account)
     }
 
