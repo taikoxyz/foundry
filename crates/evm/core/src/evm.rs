@@ -27,7 +27,7 @@ use revm::{
         return_ok,
     },
     precompile::{PrecompileSpecId, Precompiles, secp256r1::P256VERIFY},
-    primitives::hardfork::SpecId,
+    primitives::{ChainAddress, hardfork::SpecId},
 };
 
 pub fn new_evm_with_inspector<'i, 'db, I: InspectorExt + ?Sized>(
@@ -97,7 +97,7 @@ fn inject_precompiles(evm: &mut FoundryEvm<'_, impl InspectorExt>) {
 fn get_precompiles(spec: SpecId) -> PrecompilesMap {
     PrecompilesMap::from_static(
         EthPrecompiles {
-            precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec)),
+            precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec), false),
             spec,
         }
         .precompiles,
@@ -113,8 +113,8 @@ fn get_create2_factory_call_inputs(
     let calldata = [&salt.to_be_bytes::<32>()[..], &inputs.init_code[..]].concat();
     CallInputs {
         caller: inputs.caller,
-        bytecode_address: deployer,
-        target_address: deployer,
+        bytecode_address: ChainAddress(inputs.caller.0, deployer),
+        target_address: ChainAddress(inputs.caller.0, deployer),
         scheme: CallScheme::Call,
         value: CallValue::Transfer(inputs.value),
         input: CallInput::Bytes(calldata.into()),
@@ -320,7 +320,7 @@ impl<'db, I: InspectorExt> Handler for FoundryHandler<'db, I> {
         let result = if self
             .create2_overrides
             .last()
-            .is_some_and(|(depth, _)| *depth == evm.journal().depth)
+            .is_some_and(|(depth, _)| *depth == evm.journal().inner.depth)
         {
             let (_, call_inputs) = self.create2_overrides.pop().unwrap();
             let FrameResult::Call(mut result) = result else {
@@ -382,7 +382,11 @@ impl<I: InspectorExt> InspectorHandler for FoundryHandler<'_, I> {
         self.create2_overrides.push((evm.journal().depth(), call_inputs.clone()));
 
         // Sanity check that CREATE2 deployer exists.
-        let code_hash = evm.journal().load_account(create2_deployer)?.info.code_hash;
+        let code_hash = evm
+            .journal()
+            .load_account(ChainAddress(call_inputs.caller.0, create2_deployer))?
+            .info
+            .code_hash;
         if code_hash == KECCAK_EMPTY {
             return Ok(ItemOrResult::Result(FrameResult::Call(CallOutcome {
                 result: InterpreterResult {

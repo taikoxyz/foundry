@@ -304,8 +304,20 @@ impl MultiForkHandler {
     /// cheatcodes when new fork selected.
     fn update_block(&mut self, fork_id: ForkId, block_number: u64, block_timestamp: u64) {
         if let Some(fork) = self.forks.get_mut(&fork_id) {
-            fork.opts.env.evm_env.block_env.number = block_number;
-            fork.opts.env.evm_env.block_env.timestamp = block_timestamp;
+            fork.opts
+                .env
+                .evm_env
+                .block_env
+                .get_mut(&fork.opts.env.evm_env.chainid())
+                .unwrap()
+                .number = block_number;
+            fork.opts
+                .env
+                .evm_env
+                .block_env
+                .get_mut(&fork.opts.env.evm_env.chainid())
+                .unwrap()
+                .timestamp = block_timestamp;
         }
     }
 
@@ -507,6 +519,8 @@ impl Drop for ShutDownMultiFork {
 ///
 /// This will establish a new `Provider` to the endpoint and return the Fork Backend.
 async fn create_fork(mut fork: CreateFork) -> eyre::Result<(ForkId, CreatedFork, Handler)> {
+    println!("create_fork");
+
     let provider = Arc::new(
         ProviderBuilder::new(fork.url.as_str())
             .maybe_max_retry(fork.evm_opts.fork_retries)

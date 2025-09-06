@@ -16,7 +16,12 @@ use alloy_rpc_types::TransactionRequest;
 use eyre::WrapErr;
 use foundry_fork_db::DatabaseError;
 use revm::{
-    bytecode::Bytecode, context_interface::result::ResultAndState, database::{DatabaseRef, MultiChainDatabase, SimpleMultiChainDB}, primitives::{hardfork::SpecId, ChainAddress, HashMap as Map}, state::{Account, AccountInfo}, Database, DatabaseCommit
+    Database, DatabaseCommit,
+    bytecode::Bytecode,
+    context_interface::result::ResultAndState,
+    database::{DatabaseRef, MultiChainDatabase, SimpleMultiChainDB},
+    primitives::{ChainAddress, HashMap as Map, hardfork::SpecId},
+    state::{Account, AccountInfo},
 };
 use std::{borrow::Cow, collections::BTreeMap};
 
@@ -248,7 +253,7 @@ impl DatabaseExt for CowBackend<'_> {
 
     fn load_allocs(
         &mut self,
-        allocs: &BTreeMap<Address, GenesisAccount>,
+        allocs: &BTreeMap<ChainAddress, GenesisAccount>,
         journaled_state: &mut JournaledState,
     ) -> Result<(), BackendError> {
         self.backend_mut(&Env::default().as_env_mut()).load_allocs(allocs, journaled_state)
@@ -257,7 +262,7 @@ impl DatabaseExt for CowBackend<'_> {
     fn clone_account(
         &mut self,
         source: &GenesisAccount,
-        target: &Address,
+        target: &ChainAddress,
         journaled_state: &mut JournaledState,
     ) -> Result<(), BackendError> {
         self.backend_mut(&Env::default().as_env_mut()).clone_account(

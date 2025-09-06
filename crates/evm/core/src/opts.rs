@@ -9,7 +9,10 @@ use alloy_provider::{Provider, network::AnyRpcBlock};
 use eyre::WrapErr;
 use foundry_common::{ALCHEMY_FREE_TIER_CUPS, provider::ProviderBuilder};
 use foundry_config::{Chain, Config, GasLimit};
-use revm::context::{BlockEnv, TxEnv};
+use revm::{
+    context::{BlockEnv, TxEnv},
+    primitives::{ChainAddress, HashMap},
+};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 use url::Url;
@@ -77,6 +80,9 @@ pub struct EvmOpts {
 
     /// The CREATE2 deployer's address.
     pub create2_deployer: Address,
+
+    /// the supported chain ids
+    pub chain_ids: Option<Vec<u64>>,
 }
 
 impl Default for EvmOpts {
@@ -101,6 +107,7 @@ impl Default for EvmOpts {
             disable_block_gas_limit: false,
             odyssey: false,
             create2_deployer: DEFAULT_CREATE2_DEPLOYER,
+            chain_ids: None,
         }
     }
 }
@@ -147,30 +154,38 @@ impl EvmOpts {
 
     /// Returns the `revm::Env` configured with only local settings
     pub fn local_evm_env(&self) -> crate::Env {
-        let cfg = configure_env(
+        let mut cfg = configure_env(
             self.env.chain_id.unwrap_or(foundry_common::DEV_CHAIN_ID),
             self.memory_limit,
             self.disable_block_gas_limit,
         );
+        cfg.xchain = true;
+        cfg.allow_mocking = true;
+        cfg.parent_chain_id = Some(self.env.parent_chain_id.unwrap_or(cfg.chain_id));
 
-        crate::Env {
-            evm_env: EvmEnv {
-                cfg_env: cfg,
-                block_env: BlockEnv {
+        let chain_id = cfg.chain_id;
+
+        let mut blocks = HashMap::default();
+        for &chain_id in self.chain_ids.as_ref().unwrap().iter() {
+            blocks.insert(
+                chain_id,
+                BlockEnv {
                     number: self.env.block_number,
                     beneficiary: self.env.block_coinbase,
                     timestamp: self.env.block_timestamp,
-                    difficulty: U256::from(self.env.block_difficulty),
-                    prevrandao: Some(self.env.block_prevrandao),
                     basefee: self.env.block_base_fee_per_gas,
                     gas_limit: self.gas_limit(),
                     ..Default::default()
                 },
-            },
+            );
+        }
+
+        crate::Env {
+            evm_env: EvmEnv { cfg_env: cfg, block_env: blocks },
             tx: TxEnv {
                 gas_price: self.env.gas_price.unwrap_or_default().into(),
                 gas_limit: self.gas_limit(),
-                caller: self.sender,
+                caller: ChainAddress(chain_id, self.sender),
                 ..Default::default()
             },
         }
@@ -272,10 +287,10 @@ pub struct Env {
     pub block_base_fee_per_gas: u64,
 
     /// the tx.origin value during EVM execution
-    pub tx_origin: Address,
+    pub tx_origin: ChainAddress,
 
     /// the block.coinbase value during EVM execution
-    pub block_coinbase: Address,
+    pub block_coinbase: ChainAddress,
 
     /// the block.timestamp value during EVM execution
     pub block_timestamp: u64,
@@ -296,4 +311,7 @@ pub struct Env {
     /// EIP-170: Contract code size limit in bytes. Useful to increase this because of tests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code_size_limit: Option<usize>,
+
+    // The parent chain id
+    pub parent_chain_id: Option<u64>,
 }
