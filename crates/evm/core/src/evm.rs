@@ -2,11 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use crate::{Env, InspectorExt, constants::DEFAULT_CREATE2_DEPLOYER_CODEHASH};
 use alloy_consensus::constants::KECCAK_EMPTY;
-use alloy_evm::{
-    Evm, EvmEnv,
-    eth::EthEvmContext,
-    precompiles::{DynPrecompile, PrecompilesMap},
-};
+use alloy_evm::{Evm, EvmEnv, eth::EthEvmContext, precompiles::PrecompilesMap};
 use alloy_primitives::{Address, Bytes, U256};
 use foundry_fork_db::DatabaseError;
 use revm::{
@@ -26,7 +22,7 @@ use revm::{
         FrameInput, Gas, InstructionResult, InterpreterResult, interpreter::EthInterpreter,
         return_ok,
     },
-    precompile::{PrecompileSpecId, Precompiles, secp256r1::P256VERIFY},
+    precompile::{PrecompileSpecId, Precompiles},
     primitives::{ChainAddress, hardfork::SpecId},
 };
 
@@ -87,9 +83,12 @@ pub fn new_evm_with_existing_context<'a>(
 /// Conditionally inject additional precompiles into the EVM context.
 fn inject_precompiles(evm: &mut FoundryEvm<'_, impl InspectorExt>) {
     if evm.inspector().is_odyssey() {
+        // XXX FIXME YSG
+        /*
         evm.precompiles_mut().apply_precompile(P256VERIFY.address(), |_| {
             Some(DynPrecompile::from(P256VERIFY.precompile()))
         });
+        */
     }
 }
 
