@@ -4412,6 +4412,7 @@ dependencies = [
  "foundry-common-fmt",
  "foundry-macros",
  "itertools 0.14.0",
+ "revm",
 ]
 
 [[package]]
