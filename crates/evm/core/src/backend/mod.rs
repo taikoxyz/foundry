@@ -1455,7 +1455,10 @@ impl DatabaseExt for Backend {
     ) -> Result<(), BackendError> {
         // Fetch the account from the journaled state. Will create a new account if it does
         // not already exist.
-        let mut state_acc = journaled_state.load_account(self, *target)?;
+        let mut db = SimpleMultiChainDB::new();
+        // XXX FIXME YSG
+        db.add_chain(target.0, self);
+        let mut state_acc = journaled_state.load_account(&mut db, *target)?;
 
         // Set the account's bytecode and code hash, if the `bytecode` field is present.
         if let Some(bytecode) = source.code.as_ref() {
