@@ -12,6 +12,7 @@ use parking_lot::{RawRwLock, RwLock, lock_api::RwLockReadGuard};
 use revm::{
     bytecode::opcode,
     database::{CacheDB, DatabaseRef, DbAccount},
+    primitives::ChainAddress,
     state::AccountInfo,
 };
 use std::{collections::BTreeMap, fmt, sync::Arc};
@@ -39,12 +40,21 @@ impl EvmFuzzState {
         deployed_libs: &[Address],
     ) -> Self {
         // Sort accounts to ensure deterministic dictionary generation from the same setUp state.
-        let mut accs = db.cache.accounts.iter().collect::<Vec<_>>();
+        // XXX FIXME YSG
+        let chain_id = 1;
+        let mut accs = db
+            .cache
+            .accounts
+            .iter()
+            .map(|(address, account)| (ChainAddress(chain_id, *address), account))
+            .collect::<Vec<_>>();
         accs.sort_by_key(|(address, _)| *address);
+
+        let acc1 = accs.iter().map(|(address, account)| (address, *account)).collect::<Vec<_>>();
 
         // Create fuzz dictionary and insert values from db state.
         let mut dictionary = FuzzDictionary::new(config);
-        dictionary.insert_db_values(accs);
+        dictionary.insert_db_values(acc1);
         Self { inner: Arc::new(RwLock::new(dictionary)), deployed_libs: deployed_libs.to_vec() }
     }
 
@@ -140,12 +150,12 @@ impl FuzzDictionary {
 
     /// Insert values from initial db state into fuzz dictionary.
     /// These values are persisted across invariant runs.
-    fn insert_db_values(&mut self, db_state: Vec<(&Address, &DbAccount)>) {
+    fn insert_db_values(&mut self, db_state: Vec<(&ChainAddress, &DbAccount)>) {
         for (address, account) in db_state {
             // Insert basic account information
-            self.insert_value(address.into_word());
+            self.insert_value(address.1.into_word());
             // Insert push bytes
-            self.insert_push_bytes_values(address, &account.info);
+            self.insert_push_bytes_values(&address.1, &account.info);
             // Insert storage values.
             if self.config.include_storage {
                 // Sort storage values before inserting to ensure deterministic dictionary.
@@ -229,9 +239,9 @@ impl FuzzDictionary {
     fn insert_new_state_values(&mut self, state_changeset: &StateChangeset) {
         for (address, account) in state_changeset {
             // Insert basic account information.
-            self.insert_value(address.into_word());
+            self.insert_value(address.1.into_word());
             // Insert push bytes.
-            self.insert_push_bytes_values(address, &account.info);
+            self.insert_push_bytes_values(&address.1, &account.info);
             // Insert storage values.
             if self.config.include_storage {
                 for (slot, value) in &account.storage {

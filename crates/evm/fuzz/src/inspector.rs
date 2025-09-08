@@ -33,7 +33,7 @@ where
     #[inline]
     fn call(&mut self, ecx: &mut CTX, inputs: &mut CallInputs) -> Option<CallOutcome> {
         // We don't want to override the very first call made to the test contract.
-        if self.call_generator.is_some() && ecx.tx().caller() != inputs.caller {
+        if self.call_generator.is_some() && ecx.tx().caller() != inputs.caller.1 {
             self.override_call(inputs);
         }
 
