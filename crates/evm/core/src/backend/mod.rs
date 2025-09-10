@@ -43,6 +43,8 @@ pub use error::{BackendError, BackendResult, DatabaseError, DatabaseResult};
 mod cow;
 pub use cow::CowBackend;
 
+// Note: Types are defined later in this file
+
 mod in_memory_db;
 pub use in_memory_db::{EmptyDBWrapper, FoundryEvmInMemoryDB, MemDb};
 
@@ -782,8 +784,7 @@ impl Backend {
         self.initialize(env);
 
         let chain_id = env.evm_env.cfg_env.chain_id;
-        let mut db = SimpleMultiChainDB::new();
-        db.add_chain(chain_id, self);
+        let mut db = DatabaseExtRefWrapper::new(chain_id, &mut self);
 
         let mut evm = crate::evm::new_evm_with_inspector(
             &mut db as &mut dyn MultiChainDatabase<Error = DatabaseError>,
@@ -1613,6 +1614,248 @@ impl Database for Backend {
         } else {
             Ok(self.mem_db.block_hash(number)?)
         }
+    }
+}
+
+/// Trait for managing multiple DatabaseExt instances across different chains
+pub trait MultiChainDatabaseExt {
+    /// Get a reference to a DatabaseExt instance for a specific chain
+    fn get(&self, chain_id: u64) -> Option<&dyn DatabaseExt>;
+    
+    /// Get a mutable reference to a DatabaseExt instance for a specific chain
+    fn get_mut(&mut self, chain_id: u64) -> Option<&mut dyn DatabaseExt>;
+    
+    /// Add a new chain database
+    fn add_chain_ext(&mut self, chain_id: u64, db: Box<dyn DatabaseExt>);
+    
+    /// Check if a chain exists
+    fn has_chain(&self, chain_id: u64) -> bool;
+}
+
+/// Wrapper for SimpleMultiChainDB that works with DatabaseExt trait objects
+pub struct DatabaseExtWrapper {
+    inner: SimpleMultiChainDB<Box<dyn DatabaseExt>>,
+}
+
+impl DatabaseExtWrapper {
+    /// Create a new empty DatabaseExtWrapper
+    pub fn new() -> Self {
+        Self {
+            inner: SimpleMultiChainDB::new(),
+        }
+    }
+    
+    /// Wrap a single DatabaseExt instance for a specific chain
+    pub fn wrap_single<DB: DatabaseExt + 'static>(db: DB, chain_id: u64) -> Self {
+        let mut wrapper = Self::new();
+        wrapper.add_chain_ext(chain_id, Box::new(db));
+        wrapper
+    }
+}
+
+impl MultiChainDatabaseExt for DatabaseExtWrapper {
+    fn get(&self, chain_id: u64) -> Option<&dyn DatabaseExt> {
+        self.inner.get_chain(chain_id).map(|db| db.as_ref())
+    }
+    
+    fn get_mut(&mut self, chain_id: u64) -> Option<&mut dyn DatabaseExt> {
+        self.inner.get_chain_mut(chain_id).map(|db| db.as_mut() as &mut dyn DatabaseExt)
+    }
+    
+    fn add_chain_ext(&mut self, chain_id: u64, db: Box<dyn DatabaseExt>) {
+        self.inner.add_chain(chain_id, db);
+    }
+    
+    fn has_chain(&self, chain_id: u64) -> bool {
+        self.inner.get_chain(chain_id).is_some()
+    }
+}
+
+impl Default for DatabaseExtWrapper {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// Implement MultiChainDatabase for DatabaseExtWrapper  
+impl MultiChainDatabase for DatabaseExtWrapper {
+    type Error = DatabaseError;
+    
+    fn basic_multi(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        if let Some(db) = self.inner.get_chain_mut(address.0) {
+            db.basic(address.1)
+        } else {
+            Ok(None)
+        }
+    }
+    
+    fn code_by_hash_multi(&mut self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        if let Some(db) = self.inner.get_chain_mut(chain_id) {
+            db.code_by_hash(code_hash)
+        } else {
+            Err(DatabaseError::AnyRequest(std::sync::Arc::new(eyre::eyre!("Missing database for chain {}", chain_id))))
+        }
+    }
+    
+    fn storage_multi(&mut self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
+        if let Some(db) = self.inner.get_chain_mut(address.0) {
+            db.storage(address.1, index)
+        } else {
+            Ok(U256::ZERO)
+        }
+    }
+    
+    fn block_hash_multi(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        if let Some(db) = self.inner.get_chain_mut(chain_id) {
+            db.block_hash(number)
+        } else {
+            Err(DatabaseError::AnyRequest(std::sync::Arc::new(eyre::eyre!("Missing database for chain {}", chain_id))))
+        }
+    }
+}
+
+// Helper function to wrap DatabaseExt with SimpleMultiChainDB for multi-chain compatibility
+pub fn wrap_database_ext<DB: DatabaseExt>(db: DB, chain_id: u64) -> SimpleMultiChainDB<DB> {
+    let mut multi_db = SimpleMultiChainDB::new();
+    multi_db.add_chain(chain_id, db);
+    multi_db
+}
+
+/// Reference-based DatabaseExt wrapper for cases where we can't move the database
+pub struct DatabaseExtRefWrapper<'a> {
+    chain_id: u64,
+    db: &'a mut dyn DatabaseExt,
+}
+
+impl<'a> DatabaseExtRefWrapper<'a> {
+    pub fn new(chain_id: u64, db: &'a mut dyn DatabaseExt) -> Self {
+        Self { chain_id, db }
+    }
+}
+
+impl<'a> MultiChainDatabase for DatabaseExtRefWrapper<'a> {
+    type Error = DatabaseError;
+    
+    fn basic_multi(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        if address.0 == self.chain_id {
+            self.db.basic(address.1)
+        } else {
+            Ok(None)
+        }
+    }
+    
+    fn code_by_hash_multi(&mut self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        if chain_id == self.chain_id {
+            self.db.code_by_hash(code_hash)
+        } else {
+            Err(DatabaseError::AnyRequest(std::sync::Arc::new(eyre::eyre!("Missing database for chain {}", chain_id))))
+        }
+    }
+    
+    fn storage_multi(&mut self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
+        if address.0 == self.chain_id {
+            self.db.storage(address.1, index)
+        } else {
+            Ok(U256::ZERO)
+        }
+    }
+    
+    fn block_hash_multi(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        if chain_id == self.chain_id {
+            self.db.block_hash(number)
+        } else {
+            Err(DatabaseError::AnyRequest(std::sync::Arc::new(eyre::eyre!("Missing database for chain {}", chain_id))))
+        }
+    }
+}
+
+impl<'a> MultiChainDatabaseExt for DatabaseExtRefWrapper<'a> {
+    fn get(&self, chain_id: u64) -> Option<&dyn DatabaseExt> {
+        if chain_id == self.chain_id {
+            Some(&*self.db)
+        } else {
+            None
+        }
+    }
+    
+    fn get_mut(&mut self, chain_id: u64) -> Option<&mut dyn DatabaseExt> {
+        if chain_id == self.chain_id {
+            Some(&mut *self.db)
+        } else {
+            None
+        }
+    }
+    
+    fn add_chain_ext(&mut self, _chain_id: u64, _db: Box<dyn DatabaseExt>) {
+        // Can't add chains to a reference wrapper
+        panic!("Cannot add chains to DatabaseExtRefWrapper");
+    }
+    
+    fn has_chain(&self, chain_id: u64) -> bool {
+        chain_id == self.chain_id
+    }
+}
+
+/// Helper function to wrap DatabaseExt with DatabaseExtWrapper
+/// 
+/// # Example
+/// ```
+/// use foundry_evm_core::backend::{Backend, wrap_database_ext_trait, MultiChainDatabaseExt};
+/// 
+/// // Create a backend instance
+/// let backend = Backend::spawn(None).unwrap();
+/// let chain_id = 1;
+/// 
+/// // Wrap it for multi-chain usage
+/// let mut wrapper = wrap_database_ext_trait(backend, chain_id);
+/// 
+/// // Access the specific chain's database
+/// if let Some(db) = wrapper.get_mut(chain_id) {
+///     // Use the DatabaseExt instance
+/// }
+/// ```
+pub fn wrap_database_ext_trait<DB: DatabaseExt + 'static>(
+    db: DB, 
+    chain_id: u64
+) -> DatabaseExtWrapper {
+    DatabaseExtWrapper::wrap_single(db, chain_id)
+}
+
+/// Helper function to wrap a reference to DatabaseExt with DatabaseExtRefWrapper
+pub fn wrap_database_ext_ref<'a>(
+    chain_id: u64,
+    db: &'a mut dyn DatabaseExt
+) -> DatabaseExtRefWrapper<'a> {
+    DatabaseExtRefWrapper::new(chain_id, db)
+}
+
+/// Example of how to use the new MultiChainDatabaseExt interface
+#[cfg(test)]
+mod example_usage {
+    use super::*;
+    
+    #[allow(dead_code)]
+    fn example_with_wrapper() {
+        // Create a wrapper for multiple DatabaseExt instances
+        let mut multi_db = DatabaseExtWrapper::new();
+        
+        // Add databases for different chains
+        // multi_db.add_chain_ext(1, Box::new(backend_eth));
+        // multi_db.add_chain_ext(137, Box::new(backend_polygon));
+        
+        // Access a specific chain's database
+        let chain_id = 1;
+        if let Some(db) = multi_db.get_mut(chain_id) {
+            // Now you can use any DatabaseExt methods on db
+            let _result = db.basic(Address::ZERO);
+        }
+        
+        // Check if a chain exists
+        let has_eth = multi_db.has_chain(1);
+        let has_bsc = multi_db.has_chain(56);
+        
+        assert_eq!(has_eth, false); // false because we didn't actually add any
+        assert_eq!(has_bsc, false);
     }
 }
 

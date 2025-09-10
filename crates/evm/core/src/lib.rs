@@ -9,7 +9,7 @@ use crate::constants::DEFAULT_CREATE2_DEPLOYER;
 use alloy_evm::eth::EthEvmContext;
 use alloy_primitives::Address;
 use auto_impl::auto_impl;
-use foundry_fork_db::DatabaseError;
+pub use foundry_fork_db::DatabaseError;
 use revm::{
     Inspector, context::MultiChainDatabase, inspector::NoOpInspector, interpreter::CreateInputs,
 };
@@ -37,7 +37,6 @@ pub mod opts;
 pub mod precompiles;
 pub mod state_snapshot;
 pub mod utils;
-
 /// An extension trait that allows us to add additional hooks to Inspector for later use in
 /// handlers.
 #[auto_impl(&mut, Box)]
