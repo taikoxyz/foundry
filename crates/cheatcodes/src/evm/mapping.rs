@@ -129,11 +129,11 @@ pub(crate) fn step(mapping_slots: &mut AddressHashMap<MappingSlots>, interpreter
                 let high = B256::from_slice(&data[0x20..]);
                 let result = keccak256(&*data);
 
-                mapping_slots.entry(address).or_default().seen_sha3.insert(result, (low, high));
+                mapping_slots.entry(address.1).or_default().seen_sha3.insert(result, (low, high));
             }
         }
         opcode::SSTORE => {
-            if let Some(mapping_slots) = mapping_slots.get_mut(&interpreter.input.target_address)
+            if let Some(mapping_slots) = mapping_slots.get_mut(&interpreter.input.target_address.1)
                 && let Ok(slot) = interpreter.stack.peek(0)
             {
                 mapping_slots.insert(slot.into());
