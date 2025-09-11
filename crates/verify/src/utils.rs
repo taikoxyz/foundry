@@ -20,7 +20,7 @@ use foundry_evm::{
     traces::TraceMode,
 };
 use reqwest::Url;
-use revm::{bytecode::Bytecode, database::Database, primitives::hardfork::SpecId};
+use revm::{bytecode::Bytecode, database::Database, primitives::hardfork::SpecId, primitives::ChainAddress};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use yansi::Paint;
@@ -328,12 +328,15 @@ pub async fn get_tracing_executor(
 }
 
 pub fn configure_env_block(env: &mut EnvMut<'_>, block: &AnyRpcBlock) {
-    env.block.timestamp = block.header.timestamp;
-    env.block.beneficiary = block.header.beneficiary;
-    env.block.difficulty = block.header.difficulty;
-    env.block.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
-    env.block.basefee = block.header.base_fee_per_gas.unwrap_or_default();
-    env.block.gas_limit = block.header.gas_limit;
+    let chain_id = env.cfg.chain_id;
+    if let Some(block_env) = env.block.get_mut(&chain_id) {
+        block_env.timestamp = block.header.timestamp;
+        block_env.beneficiary = ChainAddress(chain_id, block.header.beneficiary);
+        block_env.difficulty = block.header.difficulty;
+        block_env.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
+        block_env.basefee = block.header.base_fee_per_gas.unwrap_or_default();
+        block_env.gas_limit = block.header.gas_limit;
+    }
 }
 
 pub fn deploy_contract(
@@ -342,9 +345,10 @@ pub fn deploy_contract(
     spec_id: SpecId,
     to: Option<TxKind>,
 ) -> Result<Address, eyre::ErrReport> {
+    let chain_id = env.evm_env.chainid();
     let env = Env::new_with_spec_id(
         env.evm_env.cfg_env.clone(),
-        env.evm_env.block_env.clone(),
+        env.evm_env.block_env.get(&chain_id).cloned().unwrap_or_default(),
         env.tx.clone(),
         spec_id,
     );
