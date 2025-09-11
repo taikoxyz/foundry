@@ -3,6 +3,7 @@ use crate::{
     inspectors::Fuzzer,
 };
 use alloy_primitives::{Address, Bytes, FixedBytes, Selector, U256, map::HashMap};
+use revm::primitives::ChainAddress;
 use alloy_sol_types::{SolCall, sol};
 use eyre::{ContextCompat, Result, eyre};
 use foundry_common::contracts::{ContractsByAddress, ContractsByArtifact};
@@ -253,7 +254,7 @@ pub struct InvariantTestRun {
     // Invariant run stat reports (eg. gas usage).
     pub fuzz_runs: Vec<FuzzCase>,
     // Contracts created during current invariant run.
-    pub created_contracts: Vec<Address>,
+    pub created_contracts: Vec<ChainAddress>,
     // Traces of each call of the invariant run call sequence.
     pub run_traces: Vec<SparsedTraceArena>,
     // Current depth of invariant run.
@@ -388,8 +389,8 @@ impl<'a> InvariantExecutor<'a> {
                 let mut call_result = current_run
                     .executor
                     .call_raw(
-                        tx.sender,
-                        tx.call_details.target,
+                        tx.sender.1,
+                        tx.call_details.target.1,
                         tx.call_details.calldata.clone(),
                         U256::ZERO,
                     )
@@ -541,9 +542,9 @@ impl<'a> InvariantExecutor<'a> {
         deployed_libs: &[Address],
     ) -> Result<(InvariantTest, TxCorpusManager)> {
         // Finds out the chosen deployed contracts and/or senders.
-        self.select_contract_artifacts(invariant_contract.address)?;
+        self.select_contract_artifacts(invariant_contract.address.1)?;
         let (targeted_senders, targeted_contracts) =
-            self.select_contracts_and_senders(invariant_contract.address)?;
+            self.select_contracts_and_senders(invariant_contract.address.1)?;
 
         // Stores fuzz state for use with [fuzz_calldata_from_state].
         let fuzz_state = EvmFuzzState::new(
@@ -566,7 +567,7 @@ impl<'a> InvariantExecutor<'a> {
         // EVM execution.
         let mut call_generator = None;
         if self.config.call_override {
-            let target_contract_ref = Arc::new(RwLock::new(Address::ZERO));
+            let target_contract_ref = Arc::new(RwLock::new(ChainAddress(self.executor.env().evm_env.cfg_env.chain_id, Address::ZERO)));
 
             call_generator = Some(RandomCallGenerator::new(
                 invariant_contract.address,
@@ -759,7 +760,7 @@ impl<'a> InvariantExecutor<'a> {
                     && self.artifact_filters.matches(identifier)
             })
             .map(|(addr, (identifier, abi))| {
-                (*addr, TargetedContract::new(identifier.clone(), abi.clone()))
+                (ChainAddress(self.executor.env().evm_env.cfg_env.chain_id, *addr), TargetedContract::new(identifier.clone(), abi.clone()))
             })
             .collect();
         let mut contracts = TargetedContracts { inner: contracts };
@@ -806,7 +807,7 @@ impl<'a> InvariantExecutor<'a> {
                 {
                     combined
                         // Check if there's an entry for the given key in the 'combined' map.
-                        .entry(*addr)
+                        .entry(ChainAddress(self.executor.env().evm_env.cfg_env.chain_id, *addr))
                         // If the entry exists, extends its ABI with the function list.
                         .and_modify(|entry| {
                             // Extend the ABI's function list with the new functions.
@@ -830,7 +831,7 @@ impl<'a> InvariantExecutor<'a> {
         address: Address,
         targeted_contracts: &mut TargetedContracts,
     ) -> Result<()> {
-        if let Some(target) = targeted_contracts.get(&address) {
+        if let Some(target) = targeted_contracts.get(&ChainAddress(self.executor.env().evm_env.cfg_env.chain_id, address)) {
             // If test contract is a target, then include only state-changing functions
             // that are not reserved.
             let selectors: Vec<_> = target
@@ -888,7 +889,7 @@ impl<'a> InvariantExecutor<'a> {
             return Ok(());
         }
 
-        let contract = match targeted_contracts.entry(address) {
+        let contract = match targeted_contracts.entry(ChainAddress(self.executor.env().evm_env.cfg_env.chain_id, address)) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
                 let (identifier, abi) = self.setup_contracts.get(&address).ok_or_else(|| {
@@ -911,7 +912,7 @@ impl<'a> InvariantExecutor<'a> {
 /// randomly generated addresses.
 fn collect_data(
     invariant_test: &InvariantTest,
-    state_changeset: &mut HashMap<Address, Account>,
+    state_changeset: &mut HashMap<ChainAddress, Account>,
     tx: &BasicTxDetails,
     call_result: &RawCallResult,
     run_depth: u32,
@@ -936,7 +937,7 @@ fn collect_data(
         tx,
         &call_result.result,
         &call_result.logs,
-        &*state_changeset,
+        state_changeset,
         run_depth,
     );
 

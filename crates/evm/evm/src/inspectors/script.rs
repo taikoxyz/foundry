@@ -1,5 +1,6 @@
-use alloy_evm::Database;
+use revm::Database;
 use alloy_primitives::Address;
+use revm::primitives::ChainAddress;
 use foundry_common::sh_err;
 use foundry_evm_core::backend::DatabaseError;
 use revm::{
@@ -32,8 +33,8 @@ where
         // Check if both target and bytecode address are the same as script contract address
         // (allow calling external libraries when bytecode address is different).
         if interpreter.bytecode.opcode() == ADDRESS
-            && interpreter.input.target_address == self.script_address
-            && interpreter.input.bytecode_address == Some(self.script_address)
+            && interpreter.input.target_address.1 == self.script_address
+            && interpreter.input.bytecode_address == Some(ChainAddress(interpreter.input.target_address.0, self.script_address))
         {
             // Log the reason for revert
             let _ = sh_err!(

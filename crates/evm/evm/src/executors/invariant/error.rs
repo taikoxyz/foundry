@@ -92,7 +92,7 @@ impl FailedInvariantCaseData {
             ),
             return_reason: "".into(),
             revert_reason,
-            addr: invariant_contract.address,
+            addr: invariant_contract.address.1,
             calldata: func.selector().to_vec().into(),
             inner_sequence: inner_sequence.to_vec(),
             shrink_run_limit: invariant_config.shrink_run_limit,

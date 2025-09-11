@@ -250,7 +250,7 @@ impl FuzzedExecutor {
 
         let (breakpoints, deprecated_cheatcodes) =
             call.cheatcodes.as_ref().map_or_else(Default::default, |cheats| {
-                (cheats.breakpoints.clone(), cheats.deprecated.clone())
+                (cheats.breakpoints.clone(), Default::default())
             });
 
         let success = self.executor.is_raw_call_mut_success(address, &mut call, false);

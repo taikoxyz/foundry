@@ -71,7 +71,7 @@ pub(crate) fn assert_invariants(
 
     let (call_result, success) = call_invariant_function(
         executor,
-        invariant_contract.address,
+        invariant_contract.address.1,
         invariant_contract.invariant_function.abi_encode_input(&[])?.into(),
     )?;
     if !success {
@@ -108,7 +108,7 @@ pub(crate) fn can_continue(
     let handlers_succeeded = || {
         invariant_test.targeted_contracts.targets.lock().keys().all(|address| {
             invariant_run.executor.is_success(
-                *address,
+                address.1,
                 false,
                 Cow::Borrowed(state_changeset),
                 false,
@@ -169,7 +169,7 @@ pub(crate) fn assert_after_invariant(
     invariant_config: &InvariantConfig,
 ) -> Result<bool> {
     let (call_result, success) =
-        call_after_invariant_function(&invariant_run.executor, invariant_contract.address)?;
+        call_after_invariant_function(&invariant_run.executor, invariant_contract.address.1)?;
     // Fail the test case if `afterInvariant` doesn't succeed.
     if !success {
         let case_data = FailedInvariantCaseData::new(

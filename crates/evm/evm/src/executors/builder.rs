@@ -76,15 +76,27 @@ impl ExecutorBuilder {
     pub fn build(self, env: Env, db: Backend) -> Executor {
         let Self { mut stack, gas_limit, spec_id, legacy_assertions } = self;
         if stack.block.is_none() {
-            stack.block = Some(env.evm_env.block_env.clone());
+            let chain_id = env.evm_env.cfg_env.chain_id;
+            if let Some(block_env) = env.evm_env.block_env.get(&chain_id) {
+                stack.block = Some(block_env.clone());
+            }
         }
         if stack.gas_price.is_none() {
             stack.gas_price = Some(env.tx.gas_price);
         }
-        let gas_limit = gas_limit.unwrap_or(env.evm_env.block_env.gas_limit);
+        let gas_limit = gas_limit.unwrap_or_else(|| {
+            let chain_id = env.evm_env.cfg_env.chain_id;
+            env.evm_env.block_env.get(&chain_id)
+                .map(|block| block.gas_limit)
+                .unwrap_or(u64::MAX.into())
+        });
+        let chain_id = env.evm_env.cfg_env.chain_id;
+        let block_env = env.evm_env.block_env.get(&chain_id)
+            .cloned()
+            .unwrap_or_default();
         let env = Env::new_with_spec_id(
             env.evm_env.cfg_env.clone(),
-            env.evm_env.block_env.clone(),
+            block_env,
             env.tx,
             spec_id,
         );

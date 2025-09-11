@@ -156,8 +156,8 @@ pub fn check_sequence(
     for call_index in sequence {
         let tx = &calls[call_index];
         let call_result = executor.transact_raw(
-            tx.sender,
-            tx.call_details.target,
+            tx.sender.1,
+            tx.call_details.target.1,
             tx.call_details.calldata.clone(),
             U256::ZERO,
         )?;

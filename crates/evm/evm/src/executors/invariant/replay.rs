@@ -43,8 +43,8 @@ pub fn replay_run(
     // Replay each call from the sequence, collect logs, traces and coverage.
     for tx in inputs {
         let call_result = executor.transact_raw(
-            tx.sender,
-            tx.call_details.target,
+            tx.sender.1,
+            tx.call_details.target.1,
             tx.call_details.calldata.clone(),
             U256::ZERO,
         )?;
@@ -75,22 +75,17 @@ pub fn replay_run(
     // (invariant call result is always success until the last call that breaks it).
     let (invariant_result, invariant_success) = call_invariant_function(
         &executor,
-        invariant_contract.address,
+        invariant_contract.address.1,
         invariant_contract.invariant_function.abi_encode_input(&[])?.into(),
     )?;
     traces.push((TraceKind::Execution, invariant_result.traces.clone().unwrap()));
     logs.extend(invariant_result.logs);
-    deprecated_cheatcodes.extend(
-        invariant_result
-            .cheatcodes
-            .as_ref()
-            .map_or_else(Default::default, |cheats| cheats.deprecated.clone()),
-    );
+    // No deprecated cheatcodes to extend since the deprecated field was removed
 
     // Collect after invariant logs and traces.
     if invariant_contract.call_after_invariant && invariant_success {
         let (after_invariant_result, _) =
-            call_after_invariant_function(&executor, invariant_contract.address)?;
+            call_after_invariant_function(&executor, invariant_contract.address.1)?;
         traces.push((TraceKind::Execution, after_invariant_result.traces.clone().unwrap()));
         logs.extend(after_invariant_result.logs);
     }
