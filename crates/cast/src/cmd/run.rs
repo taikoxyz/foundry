@@ -29,6 +29,7 @@ use foundry_evm::{
     utils::configure_tx_env,
 };
 use foundry_evm_core::env::AsEnvMut;
+use revm::primitives::ChainAddress;
 
 use crate::utils::apply_chain_and_block_specific_env_changes;
 
@@ -153,15 +154,17 @@ impl RunArgs {
         let mut evm_version = self.evm_version;
 
         env.evm_env.cfg_env.disable_block_gas_limit = self.disable_block_gas_limit;
-        env.evm_env.block_env.number = tx_block_number;
+        env.evm_env.block_env.get_mut(&env.evm_env.chainid()).unwrap().number = tx_block_number;
 
         if let Some(block) = &block {
-            env.evm_env.block_env.timestamp = block.header.timestamp;
-            env.evm_env.block_env.beneficiary = block.header.beneficiary;
-            env.evm_env.block_env.difficulty = block.header.difficulty;
-            env.evm_env.block_env.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
-            env.evm_env.block_env.basefee = block.header.base_fee_per_gas.unwrap_or_default();
-            env.evm_env.block_env.gas_limit = block.header.gas_limit;
+            let chain_id = env.evm_env.cfg_env.chain_id;
+            let block_env = env.evm_env.block_env.get_mut(&env.evm_env.cfg_env.chain_id).unwrap();
+            block_env.timestamp = block.header.timestamp;
+            block_env.beneficiary = ChainAddress(chain_id, block.header.beneficiary);
+            block_env.difficulty = block.header.difficulty;
+            block_env.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
+            block_env.basefee = block.header.base_fee_per_gas.unwrap_or_default();
+            block_env.gas_limit = block.header.gas_limit;
 
             // TODO: we need a smarter way to map the block to the corresponding evm_version for
             // commonly used chains
@@ -193,7 +196,7 @@ impl RunArgs {
         )?;
         let mut env = Env::new_with_spec_id(
             env.evm_env.cfg_env.clone(),
-            env.evm_env.block_env.clone(),
+            env.evm_env.block_env.get(&env.evm_env.chainid()).unwrap().clone(),
             env.tx.clone(),
             executor.spec_id(),
         );
@@ -234,7 +237,7 @@ impl RunArgs {
                             format!(
                                 "Failed to execute transaction: {:?} in block {}",
                                 tx.tx_hash(),
-                                env.evm_env.block_env.number
+                                env.evm_env.block_env.get(&env.evm_env.chainid()).unwrap().number
                             )
                         })?;
                     } else {
@@ -248,7 +251,7 @@ impl RunArgs {
                                         format!(
                                             "Failed to deploy transaction: {:?} in block {}",
                                             tx.tx_hash(),
-                                            env.evm_env.block_env.number
+                                            env.evm_env.block_env.get(&env.evm_env.chainid()).unwrap().number
                                         )
                                     });
                                 }
