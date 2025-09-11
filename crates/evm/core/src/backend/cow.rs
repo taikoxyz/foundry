@@ -4,7 +4,7 @@ use super::BackendError;
 use crate::{
     AsEnvMut, Env, EnvMut, InspectorExt,
     backend::{
-        Backend, DatabaseExt, JournaledState, LocalForkId, RevertStateSnapshotAction,
+        Backend, DatabaseExt, JournaledState, LocalForkId, MultiChainDatabaseExt, RevertStateSnapshotAction,
         diagnostic::RevertDiagnostic,
     },
     fork::{CreateFork, ForkId},
@@ -19,7 +19,7 @@ use revm::{
     Database, DatabaseCommit,
     bytecode::Bytecode,
     context_interface::result::ResultAndState,
-    database::{DatabaseRef, MultiChainDatabase, SimpleMultiChainDB},
+    database::{DatabaseRef, MultiChainDatabase},
     primitives::{ChainAddress, HashMap as Map, hardfork::SpecId},
     state::{Account, AccountInfo},
 };
@@ -75,12 +75,9 @@ impl<'a> CowBackend<'a> {
         self.is_initialized = false;
         self.spec_id = env.evm_env.cfg_env.spec;
 
-        let chain_id = env.evm_env.cfg_env.chain_id;
-        let mut db = SimpleMultiChainDB::new();
-        db.add_chain(chain_id, self);
-
+        // Now CowBackend directly implements MultiChainDatabaseExt
         let mut evm = crate::evm::new_evm_with_inspector(
-            &mut db as &mut dyn MultiChainDatabase<Error = DatabaseError>,
+            &mut self as &mut dyn MultiChainDatabaseExt,
             env.to_owned(),
             inspector,
         );
@@ -300,6 +297,32 @@ impl DatabaseExt for CowBackend<'_> {
         self.backend.to_mut().set_blockhash(block_number, block_hash);
     }
 }
+
+// Implement MultiChainDatabase for CowBackend to enable MultiChainDatabaseExt
+impl MultiChainDatabase for CowBackend<'_> {
+    type Error = DatabaseError;
+
+    fn basic_multi(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        // Extract the Address from ChainAddress and use the regular Database method
+        Database::basic(self, address.1)
+    }
+
+    fn code_by_hash_multi(&mut self, _chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        Database::code_by_hash(self, code_hash)
+    }
+
+    fn storage_multi(&mut self, address: ChainAddress, index: revm::primitives::StorageKey) -> Result<revm::primitives::StorageValue, Self::Error> {
+        // Extract the Address from ChainAddress and use the regular Database method
+        Database::storage(self, address.1, index)
+    }
+
+    fn block_hash_multi(&mut self, _chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        Database::block_hash(self, number)
+    }
+}
+
+// Now CowBackend implements both MultiChainDatabase and DatabaseExt, so it can implement MultiChainDatabaseExt
+impl MultiChainDatabaseExt for CowBackend<'_> {}
 
 impl DatabaseRef for CowBackend<'_> {
     type Error = DatabaseError;

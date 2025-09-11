@@ -787,7 +787,7 @@ impl Backend {
         let mut db = DatabaseExtRefWrapper::new(chain_id, &mut self);
 
         let mut evm = crate::evm::new_evm_with_inspector(
-            &mut db as &mut dyn MultiChainDatabase<Error = DatabaseError>,
+            &mut db as &mut dyn MultiChainDatabaseExt,
             env.to_owned(),
             inspector,
         );
@@ -1348,9 +1348,8 @@ impl DatabaseExt for Backend {
             configure_tx_req_env(&mut env.as_env_mut(), tx, None)?;
 
             let chain_id = env.evm_env.cfg_env.chain_id;
-            let mut db = SimpleMultiChainDB::new();
-            db.add_chain(chain_id, self.clone());
-            let mut evm = new_evm_with_inspector(&mut db as &mut dyn MultiChainDatabase<Error = DatabaseError>, env.to_owned(), inspector);
+            let mut db = wrap_database_ext_trait(self.clone(), chain_id);
+            let mut evm = new_evm_with_inspector(&mut db as &mut dyn MultiChainDatabaseExt, env.to_owned(), inspector);
             evm.journaled_state.depth = journaled_state.depth + 1;
             evm.transact(env.tx)?
         };
@@ -1618,7 +1617,7 @@ impl Database for Backend {
 }
 
 /// Trait for managing multiple DatabaseExt instances across different chains
-pub trait MultiChainDatabaseExt {
+pub trait MultiChainDatabaseManager {
     /// Get a reference to a DatabaseExt instance for a specific chain
     fn get(&self, chain_id: u64) -> Option<&dyn DatabaseExt>;
     
@@ -1632,9 +1631,14 @@ pub trait MultiChainDatabaseExt {
     fn has_chain(&self, chain_id: u64) -> bool;
 }
 
+/// Combined trait that extends MultiChainDatabase with DatabaseExt methods
+/// This allows the same interface to provide both multi-chain and fork functionality
+pub trait MultiChainDatabaseExt: MultiChainDatabase<Error = DatabaseError> + DatabaseExt {}
+
 /// Wrapper for SimpleMultiChainDB that works with DatabaseExt trait objects
 pub struct DatabaseExtWrapper {
     inner: SimpleMultiChainDB<Box<dyn DatabaseExt>>,
+    active_chain_id: Option<u64>,
 }
 
 impl DatabaseExtWrapper {
@@ -1642,6 +1646,7 @@ impl DatabaseExtWrapper {
     pub fn new() -> Self {
         Self {
             inner: SimpleMultiChainDB::new(),
+            active_chain_id: None,
         }
     }
     
@@ -1649,11 +1654,33 @@ impl DatabaseExtWrapper {
     pub fn wrap_single<DB: DatabaseExt + 'static>(db: DB, chain_id: u64) -> Self {
         let mut wrapper = Self::new();
         wrapper.add_chain_ext(chain_id, Box::new(db));
+        wrapper.set_active_chain(chain_id);
         wrapper
+    }
+    
+    /// Set the active chain ID
+    pub fn set_active_chain(&mut self, chain_id: u64) {
+        self.active_chain_id = Some(chain_id);
+    }
+    
+    /// Get the active chain ID
+    pub fn active_chain_id(&self) -> Option<u64> {
+        self.active_chain_id
+    }
+    
+    /// Get the active chain's database
+    fn get_active_db(&self) -> Option<&dyn DatabaseExt> {
+        self.active_chain_id.and_then(|id| self.get(id))
+    }
+    
+    /// Get the active chain's database mutably
+    fn get_active_db_mut(&mut self) -> Option<&mut dyn DatabaseExt> {
+        let chain_id = self.active_chain_id?;
+        self.get_mut(chain_id)
     }
 }
 
-impl MultiChainDatabaseExt for DatabaseExtWrapper {
+impl MultiChainDatabaseManager for DatabaseExtWrapper {
     fn get(&self, chain_id: u64) -> Option<&dyn DatabaseExt> {
         self.inner.get_chain(chain_id).map(|db| db.as_ref())
     }
@@ -1674,6 +1701,341 @@ impl MultiChainDatabaseExt for DatabaseExtWrapper {
 impl Default for DatabaseExtWrapper {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Implement DatabaseExt for DatabaseExtWrapper by delegating to active chain
+impl DatabaseExt for DatabaseExtWrapper {
+    fn snapshot_state(&mut self, journaled_state: &JournaledState, env: &mut EnvMut<'_>) -> U256 {
+        if let Some(db) = self.get_active_db_mut() {
+            db.snapshot_state(journaled_state, env)
+        } else {
+            U256::ZERO
+        }
+    }
+
+    fn revert_state(
+        &mut self,
+        id: U256,
+        journaled_state: &JournaledState,
+        env: &mut EnvMut<'_>,
+        action: RevertStateSnapshotAction,
+    ) -> Option<JournaledState> {
+        if let Some(db) = self.get_active_db_mut() {
+            db.revert_state(id, journaled_state, env, action)
+        } else {
+            None
+        }
+    }
+
+    fn delete_state_snapshot(&mut self, id: U256) -> bool {
+        if let Some(db) = self.get_active_db_mut() {
+            db.delete_state_snapshot(id)
+        } else {
+            false
+        }
+    }
+
+    fn delete_state_snapshots(&mut self) {
+        if let Some(db) = self.get_active_db_mut() {
+            db.delete_state_snapshots()
+        }
+    }
+
+    fn create_select_fork(
+        &mut self,
+        fork: CreateFork,
+        env: &mut EnvMut<'_>,
+        journaled_state: &mut JournaledState,
+    ) -> eyre::Result<LocalForkId> {
+        if let Some(db) = self.get_active_db_mut() {
+            db.create_select_fork(fork, env, journaled_state)
+        } else {
+            Err(eyre::eyre!("No active chain for fork creation"))
+        }
+    }
+
+    fn create_select_fork_at_transaction(
+        &mut self,
+        fork: CreateFork,
+        env: &mut EnvMut<'_>,
+        journaled_state: &mut JournaledState,
+        transaction: B256,
+    ) -> eyre::Result<LocalForkId> {
+        if let Some(db) = self.get_active_db_mut() {
+            db.create_select_fork_at_transaction(fork, env, journaled_state, transaction)
+        } else {
+            Err(eyre::eyre!("No active chain for fork creation"))
+        }
+    }
+
+    fn create_fork(&mut self, fork: CreateFork) -> eyre::Result<LocalForkId> {
+        if let Some(db) = self.get_active_db_mut() {
+            db.create_fork(fork)
+        } else {
+            Err(eyre::eyre!("No active chain for fork creation"))
+        }
+    }
+
+    fn create_fork_at_transaction(
+        &mut self,
+        fork: CreateFork,
+        transaction: B256,
+    ) -> eyre::Result<LocalForkId> {
+        if let Some(db) = self.get_active_db_mut() {
+            db.create_fork_at_transaction(fork, transaction)
+        } else {
+            Err(eyre::eyre!("No active chain for fork creation"))
+        }
+    }
+
+    fn select_fork(
+        &mut self,
+        id: LocalForkId,
+        env: &mut EnvMut<'_>,
+        journaled_state: &mut JournaledState,
+    ) -> eyre::Result<()> {
+        if let Some(db) = self.get_active_db_mut() {
+            db.select_fork(id, env, journaled_state)
+        } else {
+            Err(eyre::eyre!("No active chain for fork selection"))
+        }
+    }
+
+    fn roll_fork(
+        &mut self,
+        id: Option<LocalForkId>,
+        block_number: u64,
+        env: &mut EnvMut<'_>,
+        journaled_state: &mut JournaledState,
+    ) -> eyre::Result<()> {
+        if let Some(db) = self.get_active_db_mut() {
+            db.roll_fork(id, block_number, env, journaled_state)
+        } else {
+            Err(eyre::eyre!("No active chain for fork rolling"))
+        }
+    }
+
+    fn roll_fork_to_transaction(
+        &mut self,
+        id: Option<LocalForkId>,
+        transaction: B256,
+        env: &mut EnvMut<'_>,
+        journaled_state: &mut JournaledState,
+    ) -> eyre::Result<()> {
+        if let Some(db) = self.get_active_db_mut() {
+            db.roll_fork_to_transaction(id, transaction, env, journaled_state)
+        } else {
+            Err(eyre::eyre!("No active chain for fork transaction rolling"))
+        }
+    }
+
+    fn transact(
+        &mut self,
+        id: Option<LocalForkId>,
+        transaction: B256,
+        env: Env,
+        journaled_state: &mut JournaledState,
+        inspector: &mut dyn InspectorExt,
+    ) -> eyre::Result<()> {
+        if let Some(db) = self.get_active_db_mut() {
+            db.transact(id, transaction, env, journaled_state, inspector)
+        } else {
+            Err(eyre::eyre!("No active chain for transaction"))
+        }
+    }
+
+    fn transact_from_tx(
+        &mut self,
+        transaction: &TransactionRequest,
+        env: Env,
+        journaled_state: &mut JournaledState,
+        inspector: &mut dyn InspectorExt,
+    ) -> eyre::Result<()> {
+        if let Some(db) = self.get_active_db_mut() {
+            db.transact_from_tx(transaction, env, journaled_state, inspector)
+        } else {
+            Err(eyre::eyre!("No active chain for transaction"))
+        }
+    }
+
+    fn active_fork_id(&self) -> Option<LocalForkId> {
+        if let Some(db) = self.get_active_db() {
+            db.active_fork_id()
+        } else {
+            None
+        }
+    }
+
+    fn active_fork_url(&self) -> Option<String> {
+        if let Some(db) = self.get_active_db() {
+            db.active_fork_url()
+        } else {
+            None
+        }
+    }
+
+    fn ensure_fork(&self, id: Option<LocalForkId>) -> eyre::Result<LocalForkId> {
+        if let Some(db) = self.get_active_db() {
+            db.ensure_fork(id)
+        } else {
+            Err(eyre::eyre!("No active chain"))
+        }
+    }
+
+    fn ensure_fork_id(&self, id: LocalForkId) -> eyre::Result<&ForkId> {
+        if let Some(db) = self.get_active_db() {
+            db.ensure_fork_id(id)
+        } else {
+            Err(eyre::eyre!("No active chain"))
+        }
+    }
+
+    fn diagnose_revert(
+        &self,
+        callee: ChainAddress,
+        journaled_state: &JournaledState,
+    ) -> Option<RevertDiagnostic> {
+        if let Some(db) = self.get_active_db() {
+            db.diagnose_revert(callee, journaled_state)
+        } else {
+            None
+        }
+    }
+
+    fn load_allocs(
+        &mut self,
+        allocs: &std::collections::BTreeMap<ChainAddress, GenesisAccount>,
+        journaled_state: &mut JournaledState,
+    ) -> Result<(), BackendError> {
+        if let Some(db) = self.get_active_db_mut() {
+            db.load_allocs(allocs, journaled_state)
+        } else {
+            Err(BackendError::msg("No active chain for allocs loading"))
+        }
+    }
+
+    fn clone_account(
+        &mut self,
+        source: &GenesisAccount,
+        target: &ChainAddress,
+        journaled_state: &mut JournaledState,
+    ) -> Result<(), BackendError> {
+        if let Some(db) = self.get_active_db_mut() {
+            db.clone_account(source, target, journaled_state)
+        } else {
+            Err(BackendError::msg("No active chain"))
+        }
+    }
+
+    fn is_persistent(&self, account: &ChainAddress) -> bool {
+        if let Some(db) = self.get_active_db() {
+            db.is_persistent(account)
+        } else {
+            false
+        }
+    }
+
+    fn remove_persistent_account(&mut self, account: &ChainAddress) -> bool {
+        if let Some(db) = self.get_active_db_mut() {
+            db.remove_persistent_account(account)
+        } else {
+            false
+        }
+    }
+
+    fn add_persistent_account(&mut self, account: ChainAddress) -> bool {
+        if let Some(db) = self.get_active_db_mut() {
+            db.add_persistent_account(account)
+        } else {
+            false
+        }
+    }
+
+    fn allow_cheatcode_access(&mut self, account: ChainAddress) -> bool {
+        if let Some(db) = self.get_active_db_mut() {
+            db.allow_cheatcode_access(account)
+        } else {
+            false
+        }
+    }
+
+    fn revoke_cheatcode_access(&mut self, account: &ChainAddress) -> bool {
+        if let Some(db) = self.get_active_db_mut() {
+            db.revoke_cheatcode_access(account)
+        } else {
+            false
+        }
+    }
+
+    fn has_cheatcode_access(&self, account: &ChainAddress) -> bool {
+        if let Some(db) = self.get_active_db() {
+            db.has_cheatcode_access(account)
+        } else {
+            false
+        }
+    }
+
+    fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
+        if let Some(db) = self.get_active_db_mut() {
+            db.set_blockhash(block_number, block_hash)
+        }
+    }
+}
+
+/// Implement the combined trait for DatabaseExtWrapper
+impl MultiChainDatabaseExt for DatabaseExtWrapper {}
+
+/// Implement the combined trait for trait object references
+impl MultiChainDatabaseExt for &mut dyn MultiChainDatabaseExt {}
+
+/// Implement Database trait for DatabaseExtWrapper
+impl Database for DatabaseExtWrapper {
+    type Error = DatabaseError;
+
+    fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+        if let Some(chain_id) = self.active_chain_id {
+            if let Some(db) = self.get_mut(chain_id) {
+                return db.basic(address);
+            }
+        }
+        Ok(None)
+    }
+
+    fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        if let Some(chain_id) = self.active_chain_id {
+            if let Some(db) = self.get_mut(chain_id) {
+                return db.code_by_hash(code_hash);
+            }
+        }
+        Ok(Bytecode::default())
+    }
+
+    fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
+        if let Some(chain_id) = self.active_chain_id {
+            if let Some(db) = self.get_mut(chain_id) {
+                return db.storage(address, index);
+            }
+        }
+        Ok(U256::ZERO)
+    }
+
+    fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
+        if let Some(chain_id) = self.active_chain_id {
+            if let Some(db) = self.get_mut(chain_id) {
+                return db.block_hash(number);
+            }
+        }
+        Ok(B256::ZERO)
+    }
+}
+
+/// Implement DatabaseCommit trait for DatabaseExtWrapper
+impl DatabaseCommit for DatabaseExtWrapper {
+    fn commit(&mut self, changes: Map<Address, Account>) {
+        if let Some(db) = self.get_active_db_mut() {
+            db.commit(changes)
+        }
     }
 }
 
@@ -1769,7 +2131,7 @@ impl<'a> MultiChainDatabase for DatabaseExtRefWrapper<'a> {
     }
 }
 
-impl<'a> MultiChainDatabaseExt for DatabaseExtRefWrapper<'a> {
+impl<'a> MultiChainDatabaseManager for DatabaseExtRefWrapper<'a> {
     fn get(&self, chain_id: u64) -> Option<&dyn DatabaseExt> {
         if chain_id == self.chain_id {
             Some(&*self.db)
@@ -1796,11 +2158,217 @@ impl<'a> MultiChainDatabaseExt for DatabaseExtRefWrapper<'a> {
     }
 }
 
+/// Implement Database trait for DatabaseExtRefWrapper by delegating to the wrapped database
+impl<'a> Database for DatabaseExtRefWrapper<'a> {
+    type Error = DatabaseError;
+
+    fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+        self.db.basic(address)
+    }
+
+    fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        self.db.code_by_hash(code_hash)
+    }
+
+    fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
+        self.db.storage(address, index)
+    }
+
+    fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
+        self.db.block_hash(number)
+    }
+}
+
+/// Implement DatabaseCommit trait for DatabaseExtRefWrapper by delegating to the wrapped database
+impl<'a> DatabaseCommit for DatabaseExtRefWrapper<'a> {
+    fn commit(&mut self, changes: Map<Address, Account>) {
+        self.db.commit(changes)
+    }
+}
+
+/// Implement DatabaseExt for DatabaseExtRefWrapper by delegating to the wrapped database
+impl<'a> DatabaseExt for DatabaseExtRefWrapper<'a> {
+    fn snapshot_state(&mut self, journaled_state: &JournaledState, env: &mut EnvMut<'_>) -> U256 {
+        self.db.snapshot_state(journaled_state, env)
+    }
+
+    fn revert_state(
+        &mut self,
+        id: U256,
+        journaled_state: &JournaledState,
+        env: &mut EnvMut<'_>,
+        action: RevertStateSnapshotAction,
+    ) -> Option<JournaledState> {
+        self.db.revert_state(id, journaled_state, env, action)
+    }
+
+    fn delete_state_snapshot(&mut self, id: U256) -> bool {
+        self.db.delete_state_snapshot(id)
+    }
+
+    fn delete_state_snapshots(&mut self) {
+        self.db.delete_state_snapshots()
+    }
+
+    fn create_select_fork(
+        &mut self,
+        fork: CreateFork,
+        env: &mut EnvMut<'_>,
+        journaled_state: &mut JournaledState,
+    ) -> eyre::Result<LocalForkId> {
+        self.db.create_select_fork(fork, env, journaled_state)
+    }
+
+    fn create_select_fork_at_transaction(
+        &mut self,
+        fork: CreateFork,
+        env: &mut EnvMut<'_>,
+        journaled_state: &mut JournaledState,
+        transaction: B256,
+    ) -> eyre::Result<LocalForkId> {
+        self.db.create_select_fork_at_transaction(fork, env, journaled_state, transaction)
+    }
+
+    fn create_fork(&mut self, fork: CreateFork) -> eyre::Result<LocalForkId> {
+        self.db.create_fork(fork)
+    }
+
+    fn create_fork_at_transaction(
+        &mut self,
+        fork: CreateFork,
+        transaction: B256,
+    ) -> eyre::Result<LocalForkId> {
+        self.db.create_fork_at_transaction(fork, transaction)
+    }
+
+    fn select_fork(
+        &mut self,
+        id: LocalForkId,
+        env: &mut EnvMut<'_>,
+        journaled_state: &mut JournaledState,
+    ) -> eyre::Result<()> {
+        self.db.select_fork(id, env, journaled_state)
+    }
+
+    fn roll_fork(
+        &mut self,
+        id: Option<LocalForkId>,
+        block_number: u64,
+        env: &mut EnvMut<'_>,
+        journaled_state: &mut JournaledState,
+    ) -> eyre::Result<()> {
+        self.db.roll_fork(id, block_number, env, journaled_state)
+    }
+
+    fn roll_fork_to_transaction(
+        &mut self,
+        id: Option<LocalForkId>,
+        transaction: B256,
+        env: &mut EnvMut<'_>,
+        journaled_state: &mut JournaledState,
+    ) -> eyre::Result<()> {
+        self.db.roll_fork_to_transaction(id, transaction, env, journaled_state)
+    }
+
+    fn transact(
+        &mut self,
+        id: Option<LocalForkId>,
+        transaction: B256,
+        env: Env,
+        journaled_state: &mut JournaledState,
+        inspector: &mut dyn InspectorExt,
+    ) -> eyre::Result<()> {
+        self.db.transact(id, transaction, env, journaled_state, inspector)
+    }
+
+    fn transact_from_tx(
+        &mut self,
+        transaction: &TransactionRequest,
+        env: Env,
+        journaled_state: &mut JournaledState,
+        inspector: &mut dyn InspectorExt,
+    ) -> eyre::Result<()> {
+        self.db.transact_from_tx(transaction, env, journaled_state, inspector)
+    }
+
+    fn active_fork_id(&self) -> Option<LocalForkId> {
+        self.db.active_fork_id()
+    }
+
+    fn active_fork_url(&self) -> Option<String> {
+        self.db.active_fork_url()
+    }
+
+    fn ensure_fork(&self, id: Option<LocalForkId>) -> eyre::Result<LocalForkId> {
+        self.db.ensure_fork(id)
+    }
+
+    fn ensure_fork_id(&self, id: LocalForkId) -> eyre::Result<&ForkId> {
+        self.db.ensure_fork_id(id)
+    }
+
+    fn diagnose_revert(
+        &self,
+        callee: ChainAddress,
+        journaled_state: &JournaledState,
+    ) -> Option<RevertDiagnostic> {
+        self.db.diagnose_revert(callee, journaled_state)
+    }
+
+    fn load_allocs(
+        &mut self,
+        allocs: &std::collections::BTreeMap<ChainAddress, GenesisAccount>,
+        journaled_state: &mut JournaledState,
+    ) -> Result<(), BackendError> {
+        self.db.load_allocs(allocs, journaled_state)
+    }
+
+    fn clone_account(
+        &mut self,
+        source: &GenesisAccount,
+        target: &ChainAddress,
+        journaled_state: &mut JournaledState,
+    ) -> Result<(), BackendError> {
+        self.db.clone_account(source, target, journaled_state)
+    }
+
+    fn is_persistent(&self, account: &ChainAddress) -> bool {
+        self.db.is_persistent(account)
+    }
+
+    fn remove_persistent_account(&mut self, account: &ChainAddress) -> bool {
+        self.db.remove_persistent_account(account)
+    }
+
+    fn add_persistent_account(&mut self, account: ChainAddress) -> bool {
+        self.db.add_persistent_account(account)
+    }
+
+    fn allow_cheatcode_access(&mut self, account: ChainAddress) -> bool {
+        self.db.allow_cheatcode_access(account)
+    }
+
+    fn revoke_cheatcode_access(&mut self, account: &ChainAddress) -> bool {
+        self.db.revoke_cheatcode_access(account)
+    }
+
+    fn has_cheatcode_access(&self, account: &ChainAddress) -> bool {
+        self.db.has_cheatcode_access(account)
+    }
+
+    fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
+        self.db.set_blockhash(block_number, block_hash)
+    }
+}
+
+/// Implement the combined trait for DatabaseExtRefWrapper
+impl<'a> MultiChainDatabaseExt for DatabaseExtRefWrapper<'a> {}
+
 /// Helper function to wrap DatabaseExt with DatabaseExtWrapper
 /// 
 /// # Example
 /// ```
-/// use foundry_evm_core::backend::{Backend, wrap_database_ext_trait, MultiChainDatabaseExt};
+/// use foundry_evm_core::backend::{Backend, wrap_database_ext_trait, MultiChainDatabaseManager};
 /// 
 /// // Create a backend instance
 /// let backend = Backend::spawn(None).unwrap();
@@ -2262,11 +2830,10 @@ fn commit_transaction(
         let depth = journaled_state.depth;
 
         let backend = Backend::new_with_fork(fork_id, fork, journaled_state)?;
-        let mut db = SimpleMultiChainDB::new();
-        db.add_chain(env.cfg.chain_id, backend);
+        let mut db = wrap_database_ext_trait(backend, env.cfg.chain_id);
 
         let mut evm = crate::evm::new_evm_with_inspector(
-            &mut db as &mut dyn MultiChainDatabase<Error = DatabaseError>,
+            &mut db as &mut dyn MultiChainDatabaseExt,
             env.to_owned(),
             inspector,
         );

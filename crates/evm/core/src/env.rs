@@ -82,7 +82,7 @@ impl<DB: MultiChainDatabase, J: JournalTr<Database = DB>, C> AsEnvMut
 }
 
 pub trait ContextExt {
-    type DB: MultiChainDatabase;
+    type DB: crate::backend::MultiChainDatabaseExt;
 
     fn as_db_env_and_journal(
         &mut self,
@@ -90,7 +90,7 @@ pub trait ContextExt {
 }
 
 // this is right YSG
-impl<DB: MultiChainDatabase, C> ContextExt
+impl<DB: crate::backend::MultiChainDatabaseExt, C> ContextExt
     for Context<BlockEnv, TxEnv, CfgEnv, DB, Journal<DB, JournalEntry>, C>
 {
     type DB = DB;
@@ -105,3 +105,4 @@ impl<DB: MultiChainDatabase, C> ContextExt
         )
     }
 }
+
