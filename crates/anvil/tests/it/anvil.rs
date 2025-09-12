@@ -3,6 +3,7 @@
 use alloy_primitives::Address;
 use alloy_provider::Provider;
 use anvil::{spawn, NodeConfig};
+use revm::primitives::ChainAddress;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_can_change_mining_mode() {
@@ -47,7 +48,7 @@ async fn can_get_default_dev_keys() {
 #[tokio::test(flavor = "multi_thread")]
 async fn can_set_empty_code() {
     let (api, _handle) = spawn(NodeConfig::test()).await;
-    let addr = Address::random();
+    let addr = ChainAddress(api.chain_id(), Address::random());
     api.anvil_set_code(addr, Vec::new().into()).await.unwrap();
     let code = api.get_code(addr, None).await.unwrap();
     assert!(code.as_ref().is_empty());

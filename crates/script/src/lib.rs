@@ -17,20 +17,21 @@ use broadcast::next_nonce;
 use build::PreprocessedState;
 use clap::{Parser, ValueHint};
 use dialoguer::Confirm;
-use eyre::{ContextCompat, Result};
+use eyre::{ContextCompat, Result, WrapErr};
 use forge_verify::RetryArgs;
 use foundry_cli::{opts::CoreBuildArgs, utils::LoadConfig};
 use foundry_common::{
     abi::{encode_function_args, get_func},
     evm::{Breakpoints, EvmArgs},
     shell, ContractsByArtifact, CONTRACT_MAX_SIZE, SELECTOR_LEN,
+    provider::try_get_http_provider,
 };
 use foundry_compilers::ArtifactId;
 use foundry_config::{
     figment,
     figment::{
         value::{Dict, Map},
-        Metadata, Profile, Provider,
+        Metadata, Profile, Provider as ConfigProvider,
     },
     Config,
 };
@@ -46,9 +47,11 @@ use foundry_evm::{
     traces::{TraceMode, Traces},
 };
 use foundry_wallets::MultiWalletOpts;
+use revm_primitives::ChainAddress;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use yansi::Paint;
+use alloy_provider::Provider;
 
 mod broadcast;
 mod build;
@@ -204,12 +207,20 @@ pub struct ScriptArgs {
 impl ScriptArgs {
     pub async fn preprocess(self) -> Result<PreprocessedState> {
         let script_wallets =
-            ScriptWallets::new(self.wallets.get_multi_wallet().await?, self.evm_opts.sender);
+            ScriptWallets::new(self.wallets.get_multi_wallet().await?, self.evm_opts.sender.map(|a| ChainAddress(self.evm_opts.env.chain.unwrap().id(), a)));
 
-        let (config, mut evm_opts) = self.load_config_and_evm_opts_emit_warnings()?;
+        let (mut config, mut evm_opts) = self.load_config_and_evm_opts_emit_warnings()?;
 
         if let Some(sender) = self.maybe_load_private_key()? {
             evm_opts.sender = sender;
+        }
+
+        // Get the chain id from the provider
+        if let Some(fork_url) = evm_opts.fork_url.as_ref() {
+            let provider = try_get_http_provider(fork_url)
+                .wrap_err_with(|| format!("bad fork_url provider: {fork_url}"))?;
+            let chain_id = provider.get_chain_id().await.unwrap();
+            config.tx_origin.0 = chain_id;
         }
 
         let script_config = ScriptConfig::new(config, evm_opts).await?;
@@ -219,6 +230,8 @@ impl ScriptArgs {
 
     /// Executes the script
     pub async fn run_script(self) -> Result<()> {
+        println!("running script...");
+
         trace!(target: "script", "executing script command");
 
         let compiled = self.preprocess().await?.compile()?;
@@ -229,6 +242,8 @@ impl ScriptArgs {
         {
             compiled.resume().await?
         } else {
+            println!("pre simulation");
+
             // Drive state machine to point at which we have everything needed for simulation.
             let pre_simulation = compiled
                 .link()
@@ -442,7 +457,7 @@ impl ScriptArgs {
     }
 }
 
-impl Provider for ScriptArgs {
+impl ConfigProvider for ScriptArgs {
     fn metadata(&self) -> Metadata {
         Metadata::named("Script Args Provider")
     }
@@ -525,8 +540,9 @@ pub struct ScriptConfig {
 
 impl ScriptConfig {
     pub async fn new(config: Config, evm_opts: EvmOpts) -> Result<Self> {
+        let chain_id = config.tx_origin.0;
         let sender_nonce = if let Some(fork_url) = evm_opts.fork_url.as_ref() {
-            next_nonce(evm_opts.sender, fork_url).await?
+            next_nonce(ChainAddress(chain_id, evm_opts.sender), fork_url).await?
         } else {
             // dapptools compatibility
             1
@@ -534,14 +550,14 @@ impl ScriptConfig {
         Ok(Self { config, evm_opts, sender_nonce, backends: HashMap::new() })
     }
 
-    pub async fn update_sender(&mut self, sender: Address) -> Result<()> {
+    pub async fn update_sender(&mut self, sender: ChainAddress) -> Result<()> {
         self.sender_nonce = if let Some(fork_url) = self.evm_opts.fork_url.as_ref() {
             next_nonce(sender, fork_url).await?
         } else {
             // dapptools compatibility
             1
         };
-        self.evm_opts.sender = sender;
+        self.evm_opts.sender = sender.1;
         Ok(())
     }
 

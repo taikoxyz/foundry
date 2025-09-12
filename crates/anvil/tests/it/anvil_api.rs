@@ -22,6 +22,7 @@ use anvil_core::{
     types::{ReorgOptions, TransactionData},
 };
 use foundry_evm::revm::primitives::SpecId;
+use revm::primitives::ChainAddress;
 use std::{
     str::FromStr,
     time::{Duration, SystemTime},
@@ -64,7 +65,9 @@ async fn can_set_storage() {
 
     api.execute(req).await;
 
-    let storage_value = api.storage_at(addr, slot, None).await.unwrap();
+    let chain_id = api.chain_id();
+
+    let storage_value = api.storage_at(ChainAddress(chain_id, addr), slot, None).await.unwrap();
     assert_eq!(val, storage_value);
 }
 
@@ -74,7 +77,9 @@ async fn can_impersonate_account() {
 
     let provider = handle.http_provider();
 
-    let impersonate = Address::random();
+    let chain_id = api.chain_id();
+
+    let impersonate = ChainAddress(chain_id, Address::random());
     let to = Address::random();
     let val = U256::from(1337);
     let funding = U256::from(1e18 as u64);
@@ -84,25 +89,25 @@ async fn can_impersonate_account() {
     let balance = api.balance(impersonate, None).await.unwrap();
     assert_eq!(balance, funding);
 
-    let tx = TransactionRequest::default().with_from(impersonate).with_to(to).with_value(val);
+    let tx = TransactionRequest::default().with_from(impersonate.1).with_to(to).with_value(val);
     let tx = WithOtherFields::new(tx);
 
     let res = provider.send_transaction(tx.clone()).await;
     res.unwrap_err();
 
-    api.anvil_impersonate_account(impersonate).await.unwrap();
-    assert!(api.accounts().unwrap().contains(&impersonate));
+    api.anvil_impersonate_account(impersonate.1).await.unwrap();
+    assert!(api.accounts().unwrap().contains(&impersonate.1));
 
     let res = provider.send_transaction(tx.clone()).await.unwrap().get_receipt().await.unwrap();
-    assert_eq!(res.from, impersonate);
+    assert_eq!(res.from, impersonate.1);
 
-    let nonce = provider.get_transaction_count(impersonate).await.unwrap();
+    let nonce = provider.get_transaction_count(impersonate.1).await.unwrap();
     assert_eq!(nonce, 1);
 
     let balance = provider.get_balance(to).await.unwrap();
     assert_eq!(balance, val);
 
-    api.anvil_stop_impersonating_account(impersonate).await.unwrap();
+    api.anvil_stop_impersonating_account(impersonate.1).await.unwrap();
     let res = provider.send_transaction(tx).await;
     res.unwrap_err();
 }
@@ -113,7 +118,9 @@ async fn can_auto_impersonate_account() {
 
     let provider = handle.http_provider();
 
-    let impersonate = Address::random();
+    let chain_id = api.chain_id();
+
+    let impersonate = ChainAddress(chain_id, Address::random());
     let to = Address::random();
     let val = U256::from(1337);
     let funding = U256::from(1e18 as u64);
@@ -123,7 +130,7 @@ async fn can_auto_impersonate_account() {
     let balance = api.balance(impersonate, None).await.unwrap();
     assert_eq!(balance, funding);
 
-    let tx = TransactionRequest::default().with_from(impersonate).with_to(to).with_value(val);
+    let tx = TransactionRequest::default().with_from(impersonate.1).with_to(to).with_value(val);
     let tx = WithOtherFields::new(tx);
 
     let res = provider.send_transaction(tx.clone()).await;
@@ -132,9 +139,9 @@ async fn can_auto_impersonate_account() {
     api.anvil_auto_impersonate_account(true).await.unwrap();
 
     let res = provider.send_transaction(tx.clone()).await.unwrap().get_receipt().await.unwrap();
-    assert_eq!(res.from, impersonate);
+    assert_eq!(res.from, impersonate.1);
 
-    let nonce = provider.get_transaction_count(impersonate).await.unwrap();
+    let nonce = provider.get_transaction_count(impersonate.1).await.unwrap();
     assert_eq!(nonce, 1);
 
     let balance = provider.get_balance(to).await.unwrap();
@@ -145,18 +152,20 @@ async fn can_auto_impersonate_account() {
     res.unwrap_err();
 
     // explicitly impersonated accounts get returned by `eth_accounts`
-    api.anvil_impersonate_account(impersonate).await.unwrap();
-    assert!(api.accounts().unwrap().contains(&impersonate));
+    api.anvil_impersonate_account(impersonate.1).await.unwrap();
+    assert!(api.accounts().unwrap().contains(&impersonate.1));
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn can_impersonate_contract() {
     let (api, handle) = spawn(NodeConfig::test()).await;
 
+    let chain_id = api.chain_id();
+
     let provider = handle.http_provider();
 
     let greeter_contract = Greeter::deploy(&provider, "Hello World!".to_string()).await.unwrap();
-    let impersonate = greeter_contract.address().to_owned();
+    let impersonate = ChainAddress(chain_id, greeter_contract.address().to_owned());
 
     let to = Address::random();
     let val = U256::from(1337);
@@ -164,7 +173,7 @@ async fn can_impersonate_contract() {
     // // fund the impersonated account
     api.anvil_set_balance(impersonate, U256::from(1e18 as u64)).await.unwrap();
 
-    let tx = TransactionRequest::default().with_from(impersonate).to(to).with_value(val);
+    let tx = TransactionRequest::default().with_from(impersonate.1).to(to).with_value(val);
     let tx = WithOtherFields::new(tx);
 
     let res = provider.send_transaction(tx.clone()).await;
@@ -173,15 +182,15 @@ async fn can_impersonate_contract() {
     let greeting = greeter_contract.greet().call().await.unwrap()._0;
     assert_eq!("Hello World!", greeting);
 
-    api.anvil_impersonate_account(impersonate).await.unwrap();
+    api.anvil_impersonate_account(impersonate.1).await.unwrap();
 
     let res = provider.send_transaction(tx.clone()).await.unwrap().get_receipt().await.unwrap();
-    assert_eq!(res.from, impersonate);
+    assert_eq!(res.from, impersonate.1);
 
     let balance = provider.get_balance(to).await.unwrap();
     assert_eq!(balance, val);
 
-    api.anvil_stop_impersonating_account(impersonate).await.unwrap();
+    api.anvil_stop_impersonating_account(impersonate.1).await.unwrap();
     let res = provider.send_transaction(tx).await;
     res.unwrap_err();
 
@@ -193,6 +202,8 @@ async fn can_impersonate_contract() {
 async fn can_impersonate_gnosis_safe() {
     let (api, handle) = spawn(fork_config()).await;
     let provider = handle.http_provider();
+
+    let chain_id = api.chain_id();
 
     // <https://help.safe.global/en/articles/40824-i-don-t-remember-my-safe-address-where-can-i-find-it>
     let safe = address!("A063Cb7CFd8E57c30c788A0572CBbf2129ae56B6");
@@ -207,7 +218,7 @@ async fn can_impersonate_gnosis_safe() {
 
     let balance = U256::from(1e18 as u64);
     // fund the impersonated account
-    api.anvil_set_balance(safe, balance).await.unwrap();
+    api.anvil_set_balance(ChainAddress(chain_id, safe), balance).await.unwrap();
 
     let on_chain_balance = provider.get_balance(safe).await.unwrap();
     assert_eq!(on_chain_balance, balance);
@@ -224,6 +235,8 @@ async fn can_impersonate_multiple_accounts() {
     let (api, handle) = spawn(NodeConfig::test()).await;
     let provider = handle.http_provider();
 
+    let chain_id = api.chain_id();
+
     let impersonate0 = Address::random();
     let impersonate1 = Address::random();
     let to = Address::random();
@@ -231,8 +244,8 @@ async fn can_impersonate_multiple_accounts() {
     let val = U256::from(1337);
     let funding = U256::from(1e18 as u64);
     // fund the impersonated accounts
-    api.anvil_set_balance(impersonate0, funding).await.unwrap();
-    api.anvil_set_balance(impersonate1, funding).await.unwrap();
+    api.anvil_set_balance(ChainAddress(chain_id, impersonate0), funding).await.unwrap();
+    api.anvil_set_balance(ChainAddress(chain_id, impersonate1), funding).await.unwrap();
 
     let tx = TransactionRequest::default().with_from(impersonate0).to(to).with_value(val);
     let tx = WithOtherFields::new(tx);
@@ -416,11 +429,14 @@ async fn test_can_set_storage_bsc_fork() {
         .unwrap();
     let value = fixed_bytes!("0000000000000000000000000000000000000000000000000000000000003039");
 
+    let chain_id = api.chain_id();
+    let busd_addr = ChainAddress(chain_id, busd_addr);
+
     api.anvil_set_storage_at(busd_addr, idx, value).await.unwrap();
     let storage = api.storage_at(busd_addr, idx, None).await.unwrap();
     assert_eq!(storage, value);
 
-    let busd_contract = BUSD::new(busd_addr, &provider);
+    let busd_contract = BUSD::new(busd_addr.1, &provider);
 
     let BUSD::balanceOfReturn { _0 } = busd_contract
         .balanceOf(address!("0000000000000000000000000000000000000000"))
@@ -648,6 +664,8 @@ async fn can_remove_pool_transactions() {
 
     let provider = http_provider_with_signer(&handle.http_endpoint(), signer);
 
+    let chain_id = api.chain_id();
+
     let sender = Address::random();
     let to = Address::random();
     let val = U256::from(1337);
@@ -659,7 +677,7 @@ async fn can_remove_pool_transactions() {
     let initial_txs = provider.txpool_inspect().await.unwrap();
     assert_eq!(initial_txs.pending.len(), 1);
 
-    api.anvil_remove_pool_transactions(wallet.address()).await.unwrap();
+    api.anvil_remove_pool_transactions(ChainAddress(chain_id, wallet.address())).await.unwrap();
 
     let final_txs = provider.txpool_inspect().await.unwrap();
     assert_eq!(final_txs.pending.len(), 0);
@@ -671,6 +689,8 @@ async fn test_reorg() {
     let provider = handle.ws_provider();
 
     let accounts = handle.dev_wallets().collect::<Vec<_>>();
+
+    let chain_id = api.chain_id();
 
     // Test calls
     // Populate chain
@@ -732,7 +752,7 @@ async fn test_reorg() {
     // Test reverting code
     let greeter = abi::Greeter::deploy(provider.clone(), "Reorg".to_string()).await.unwrap();
     api.anvil_reorg(ReorgOptions { depth: 5, tx_block_pairs: vec![] }).await.unwrap();
-    let code = api.get_code(*greeter.address(), Some(BlockId::latest())).await.unwrap();
+    let code = api.get_code(ChainAddress(chain_id, *greeter.address()), Some(BlockId::latest())).await.unwrap();
     assert_eq!(code, Bytes::default());
 
     // Test reverting contract storage

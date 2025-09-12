@@ -1,17 +1,18 @@
 use crate::{Cheatcode, Cheatcodes, CheatsCtxt, DatabaseExt, Result, Vm::*};
 use alloy_primitives::Address;
+use revm::primitives::ChainAddress;
 
 /// Prank information.
 #[derive(Clone, Debug, Default)]
 pub struct Prank {
     /// Address of the contract that initiated the prank
-    pub prank_caller: Address,
+    pub prank_caller: ChainAddress,
     /// Address of `tx.origin` when the prank was initiated
-    pub prank_origin: Address,
+    pub prank_origin: ChainAddress,
     /// The address to assign to `msg.sender`
-    pub new_caller: Address,
+    pub new_caller: ChainAddress,
     /// The address to assign to `tx.origin`
-    pub new_origin: Option<Address>,
+    pub new_origin: Option<ChainAddress>,
     /// The depth at which the prank was called
     pub depth: u64,
     /// Whether the prank stops by itself after the next call
@@ -23,10 +24,10 @@ pub struct Prank {
 impl Prank {
     /// Create a new prank.
     pub fn new(
-        prank_caller: Address,
-        prank_origin: Address,
-        new_caller: Address,
-        new_origin: Option<Address>,
+        prank_caller: ChainAddress,
+        prank_origin: ChainAddress,
+        new_caller: ChainAddress,
+        new_origin: Option<ChainAddress>,
         depth: u64,
         single_call: bool,
     ) -> Self {
@@ -47,6 +48,7 @@ impl Prank {
 impl Cheatcode for prank_0Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { msgSender } = self;
+        let msgSender = &ChainAddress(ccx.state.chain_id, *msgSender);
         prank(ccx, msgSender, None, true)
     }
 }
@@ -54,6 +56,7 @@ impl Cheatcode for prank_0Call {
 impl Cheatcode for startPrank_0Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { msgSender } = self;
+        let msgSender = &ChainAddress(ccx.state.chain_id, *msgSender);
         prank(ccx, msgSender, None, false)
     }
 }
@@ -61,6 +64,8 @@ impl Cheatcode for startPrank_0Call {
 impl Cheatcode for prank_1Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { msgSender, txOrigin } = self;
+        let msgSender = &ChainAddress(ccx.state.chain_id, *msgSender);
+        let txOrigin = &ChainAddress(ccx.state.chain_id, *txOrigin);
         prank(ccx, msgSender, Some(txOrigin), true)
     }
 }
@@ -68,6 +73,8 @@ impl Cheatcode for prank_1Call {
 impl Cheatcode for startPrank_1Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { msgSender, txOrigin } = self;
+        let msgSender = &ChainAddress(ccx.state.chain_id, *msgSender);
+        let txOrigin = &ChainAddress(ccx.cfg().chain_id, *txOrigin);
         prank(ccx, msgSender, Some(txOrigin), false)
     }
 }
@@ -82,8 +89,8 @@ impl Cheatcode for stopPrankCall {
 
 fn prank<DB: DatabaseExt>(
     ccx: &mut CheatsCtxt<DB>,
-    new_caller: &Address,
-    new_origin: Option<&Address>,
+    new_caller: &ChainAddress,
+    new_origin: Option<&ChainAddress>,
     single_call: bool,
 ) -> Result {
     let prank = Prank::new(

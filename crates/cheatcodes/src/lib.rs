@@ -13,7 +13,7 @@ extern crate tracing;
 
 use alloy_primitives::Address;
 use foundry_evm_core::backend::DatabaseExt;
-use revm::{ContextPrecompiles, InnerEvmContext};
+use revm::{primitives::ChainAddress, ContextPrecompiles, InnerEvmContext};
 
 pub use config::CheatsConfig;
 pub use error::{Error, ErrorKind, Result};
@@ -113,7 +113,7 @@ pub struct CheatsCtxt<'cheats, 'evm, DB: DatabaseExt> {
     /// The precompiles context.
     pub(crate) precompiles: &'evm mut ContextPrecompiles<DB>,
     /// The original `msg.sender`.
-    pub(crate) caller: Address,
+    pub(crate) caller: ChainAddress,
     /// Gas limit of the current cheatcode call.
     pub(crate) gas_limit: u64,
 }

@@ -8,6 +8,7 @@ use alloy_primitives::{Address, Bytes, U256};
 use foundry_evm_fuzz::invariant::BasicTxDetails;
 use indicatif::ProgressBar;
 use proptest::bits::{BitSetLike, VarBitSet};
+use revm::primitives::ChainAddress;
 use std::cmp::min;
 
 #[derive(Clone, Copy, Debug)]
@@ -146,7 +147,7 @@ pub fn check_sequence(
     mut executor: Executor,
     calls: &[BasicTxDetails],
     sequence: Vec<usize>,
-    test_address: Address,
+    test_address: ChainAddress,
     calldata: Bytes,
     fail_on_revert: bool,
     call_after_invariant: bool,

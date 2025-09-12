@@ -23,10 +23,10 @@ use bytes::BufMut;
 use foundry_evm::traces::CallTraceNode;
 use revm::{
     interpreter::InstructionResult,
-    primitives::{OptimismFields, TxEnv},
+    primitives::{BlockEnv, ChainAddress, TransactTo, TxEnv},
 };
 use serde::{Deserialize, Serialize};
-use std::ops::{Deref, Mul};
+use std::{collections::HashMap, ops::{Deref, Mul}};
 
 pub mod optimism;
 
@@ -440,23 +440,24 @@ pub struct PendingTransaction {
     /// The actual transaction
     pub transaction: MaybeImpersonatedTransaction,
     /// the recovered sender of this transaction
-    sender: Address,
+    sender: ChainAddress,
     /// hash of `transaction`, so it can easily be reused with encoding and hashing agan
     hash: TxHash,
 }
 
 impl PendingTransaction {
     pub fn new(transaction: TypedTransaction) -> Result<Self, alloy_primitives::SignatureError> {
-        let sender = transaction.recover()?;
+        let chain_id = transaction.chain_id().unwrap();
+        let sender = ChainAddress(chain_id, transaction.recover()?);
         let hash = transaction.hash();
         Ok(Self { transaction: MaybeImpersonatedTransaction::new(transaction), sender, hash })
     }
 
     #[cfg(feature = "impersonated-tx")]
-    pub fn with_impersonated(transaction: TypedTransaction, sender: Address) -> Self {
-        let hash = transaction.impersonated_hash(sender);
+    pub fn with_impersonated(transaction: TypedTransaction, sender: ChainAddress) -> Self {
+        let hash = transaction.impersonated_hash(sender.1);
         Self {
-            transaction: MaybeImpersonatedTransaction::impersonated(transaction, sender),
+            transaction: MaybeImpersonatedTransaction::impersonated(transaction, sender.1),
             sender,
             hash,
         }
@@ -470,30 +471,33 @@ impl PendingTransaction {
         &self.hash
     }
 
-    pub fn sender(&self) -> &Address {
+    pub fn sender(&self) -> &ChainAddress {
         &self.sender
     }
 
     /// Converts the [PendingTransaction] into the [TxEnv] context that [`revm`](foundry_evm)
     /// expects.
-    pub fn to_revm_tx_env(&self) -> TxEnv {
-        fn transact_to(kind: &TxKind) -> TxKind {
+    pub fn to_revm_tx_env(&self, blocks: &HashMap<u64, BlockEnv>) -> TxEnv {
+        fn transact_to(chain_id: u64, kind: &TxKind) -> TransactTo {
             match kind {
-                TxKind::Call(c) => TxKind::Call(*c),
-                TxKind::Create => TxKind::Create,
+                TxKind::Call(c) => TransactTo::Call(ChainAddress(chain_id, *c)),
+                TxKind::Create => TransactTo::Create,
             }
         }
+        let chain_ids = Some(blocks.keys().cloned().collect());
 
         let caller = *self.sender();
         match &self.transaction.transaction {
             TypedTransaction::Legacy(tx) => {
-                let chain_id = tx.tx().chain_id;
+                let chain_id = tx.tx().chain_id.unwrap();
+                //let chain_ids = Some(vec![chain_id]);
+
                 let TxLegacy { nonce, gas_price, gas_limit, value, to, input, .. } = tx.tx();
                 TxEnv {
                     caller,
-                    transact_to: transact_to(to),
+                    transact_to: transact_to(chain_id, to),
                     data: input.clone(),
-                    chain_id,
+                    chain_ids,
                     nonce: Some(*nonce),
                     value: (*value),
                     gas_price: U256::from(*gas_price),
@@ -504,6 +508,8 @@ impl PendingTransaction {
                 }
             }
             TypedTransaction::EIP2930(tx) => {
+                let chain_id = tx.tx().chain_id;
+                //let chain_ids = Some(vec![chain_id]);
                 let TxEip2930 {
                     chain_id,
                     nonce,
@@ -517,9 +523,9 @@ impl PendingTransaction {
                 } = tx.tx();
                 TxEnv {
                     caller,
-                    transact_to: transact_to(to),
+                    transact_to: transact_to(*chain_id, to),
                     data: input.clone(),
-                    chain_id: Some(*chain_id),
+                    chain_ids,
                     nonce: Some(*nonce),
                     value: *value,
                     gas_price: U256::from(*gas_price),
@@ -530,6 +536,8 @@ impl PendingTransaction {
                 }
             }
             TypedTransaction::EIP1559(tx) => {
+                let chain_id = tx.tx().chain_id;
+                //let chain_ids = Some(vec![chain_id]);
                 let TxEip1559 {
                     chain_id,
                     nonce,
@@ -544,9 +552,9 @@ impl PendingTransaction {
                 } = tx.tx();
                 TxEnv {
                     caller,
-                    transact_to: transact_to(to),
+                    transact_to: transact_to(*chain_id, to),
                     data: input.clone(),
-                    chain_id: Some(*chain_id),
+                    chain_ids,
                     nonce: Some(*nonce),
                     value: *value,
                     gas_price: U256::from(*max_fee_per_gas),
@@ -557,6 +565,8 @@ impl PendingTransaction {
                 }
             }
             TypedTransaction::EIP4844(tx) => {
+                let chain_id = tx.tx().tx().chain_id;
+                //let chain_ids = Some(vec![chain_id]);
                 let TxEip4844 {
                     chain_id,
                     nonce,
@@ -573,9 +583,9 @@ impl PendingTransaction {
                 } = tx.tx().tx();
                 TxEnv {
                     caller,
-                    transact_to: TxKind::Call(*to),
+                    transact_to: TransactTo::Call(ChainAddress(*chain_id, *to)),
                     data: input.clone(),
-                    chain_id: Some(*chain_id),
+                    chain_ids,
                     nonce: Some(*nonce),
                     value: *value,
                     gas_price: U256::from(*max_fee_per_gas),
@@ -588,6 +598,8 @@ impl PendingTransaction {
                 }
             }
             TypedTransaction::EIP7702(tx) => {
+                let chain_id = tx.tx().chain_id;
+                //let chain_ids = Some(vec![chain_id]);
                 let TxEip7702 {
                     chain_id,
                     nonce,
@@ -602,9 +614,9 @@ impl PendingTransaction {
                 } = tx.tx();
                 TxEnv {
                     caller,
-                    transact_to: TxKind::Call(*to),
+                    transact_to: TransactTo::Call(ChainAddress(*chain_id, *to)),
                     data: input.clone(),
-                    chain_id: Some(*chain_id),
+                    chain_ids,
                     nonce: Some(*nonce),
                     value: *value,
                     gas_price: U256::from(*max_fee_per_gas),
@@ -616,7 +628,8 @@ impl PendingTransaction {
                 }
             }
             TypedTransaction::Deposit(tx) => {
-                let chain_id = tx.chain_id();
+                let chain_id = tx.chain_id().unwrap();
+                //let chain_ids = Some(vec![chain_id]);
                 let DepositTransaction {
                     nonce,
                     source_hash,
@@ -630,21 +643,15 @@ impl PendingTransaction {
                 } = tx;
                 TxEnv {
                     caller,
-                    transact_to: transact_to(kind),
+                    transact_to: transact_to(chain_id, kind),
                     data: input.clone(),
-                    chain_id,
+                    chain_ids,
                     nonce: Some(*nonce),
                     value: *value,
                     gas_price: U256::ZERO,
                     gas_priority_fee: None,
                     gas_limit: *gas_limit as u64,
                     access_list: vec![],
-                    optimism: OptimismFields {
-                        source_hash: Some(*source_hash),
-                        mint: Some(mint.to::<u128>()),
-                        is_system_transaction: Some(*is_system_tx),
-                        enveloped_tx: None,
-                    },
                     ..Default::default()
                 }
             }
@@ -981,8 +988,8 @@ impl TypedTransaction {
     }
 
     /// Returns the callee if this transaction is a call
-    pub fn to(&self) -> Option<Address> {
-        self.kind().to().copied()
+    pub fn to(&self) -> Option<ChainAddress> {
+        self.kind().to().copied().map(|a| ChainAddress(self.chain_id().unwrap(), a))
     }
 
     /// Returns the Signature of the transaction
@@ -1242,9 +1249,9 @@ pub struct TransactionEssentials {
 pub struct TransactionInfo {
     pub transaction_hash: B256,
     pub transaction_index: u64,
-    pub from: Address,
-    pub to: Option<Address>,
-    pub contract_address: Option<Address>,
+    pub from: ChainAddress,
+    pub to: Option<ChainAddress>,
+    pub contract_address: Option<ChainAddress>,
     pub traces: Vec<CallTraceNode>,
     pub exit: InstructionResult,
     pub out: Option<Bytes>,

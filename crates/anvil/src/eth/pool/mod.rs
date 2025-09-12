@@ -41,6 +41,7 @@ use alloy_rpc_types::txpool::TxpoolStatus;
 use anvil_core::eth::transaction::PendingTransaction;
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use parking_lot::{Mutex, RwLock};
+use revm::primitives::ChainAddress;
 use std::{collections::VecDeque, fmt, sync::Arc};
 
 pub mod transactions;
@@ -142,7 +143,7 @@ impl Pool {
     }
 
     /// Remove transactions by sender
-    pub fn remove_transactions_by_address(&self, sender: Address) -> Vec<Arc<PoolTransaction>> {
+    pub fn remove_transactions_by_address(&self, sender: ChainAddress) -> Vec<Arc<PoolTransaction>> {
         self.inner.write().remove_transactions_by_address(sender)
     }
 
@@ -238,7 +239,7 @@ impl PoolInner {
     /// Returns an iterator over all transactions in the pool filtered by the sender
     pub fn transactions_by_sender(
         &self,
-        sender: Address,
+        sender: ChainAddress,
     ) -> impl Iterator<Item = Arc<PoolTransaction>> + '_ {
         let pending_txs = self
             .pending_transactions
@@ -379,7 +380,7 @@ impl PoolInner {
     }
 
     /// Remove transactions by sender address
-    pub fn remove_transactions_by_address(&mut self, sender: Address) -> Vec<Arc<PoolTransaction>> {
+    pub fn remove_transactions_by_address(&mut self, sender: ChainAddress) -> Vec<Arc<PoolTransaction>> {
         let tx_hashes =
             self.transactions_by_sender(sender).map(move |tx| tx.hash()).collect::<Vec<TxHash>>();
 

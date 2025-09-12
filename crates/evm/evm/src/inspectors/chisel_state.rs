@@ -1,7 +1,7 @@
 use alloy_primitives::U256;
 use revm::{
     interpreter::{InstructionResult, Interpreter},
-    Database, EvmContext, Inspector,
+    Database, EvmContext, Inspector, SyncDatabase,
 };
 
 /// An inspector for Chisel
@@ -21,7 +21,7 @@ impl ChiselState {
     }
 }
 
-impl<DB: Database> Inspector<DB> for ChiselState {
+impl<DB: SyncDatabase> Inspector<DB> for ChiselState {
     #[cold]
     fn step_end(&mut self, interp: &mut Interpreter, _context: &mut EvmContext<DB>) {
         // If we are at the final pc of the REPL contract execution, set the state.

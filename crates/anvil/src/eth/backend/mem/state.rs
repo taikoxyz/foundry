@@ -12,6 +12,7 @@ use foundry_evm::{
         primitives::{AccountInfo, Bytecode, HashMap},
     },
 };
+use revm::{primitives::ChainAddress, SyncDatabaseRef};
 
 pub fn build_root(values: impl IntoIterator<Item = (Nibbles, Vec<u8>)>) -> B256 {
     let mut builder = HashBuilder::default();
@@ -22,8 +23,8 @@ pub fn build_root(values: impl IntoIterator<Item = (Nibbles, Vec<u8>)>) -> B256 
 }
 
 /// Builds state root from the given accounts
-pub fn state_root(accounts: &HashMap<Address, DbAccount>) -> B256 {
-    build_root(trie_accounts(accounts))
+pub fn state_root(chain_id: u64, accounts: &HashMap<ChainAddress, DbAccount>) -> B256 {
+    build_root(trie_accounts(chain_id, accounts))
 }
 
 /// Builds storage root from the given storage
@@ -46,7 +47,9 @@ pub fn trie_storage(storage: &HashMap<U256, U256>) -> Vec<(Nibbles, Vec<u8>)> {
 }
 
 /// Builds iterator over stored key-value pairs ready for account trie root calculation.
-pub fn trie_accounts(accounts: &HashMap<Address, DbAccount>) -> Vec<(Nibbles, Vec<u8>)> {
+pub fn trie_accounts(chain_id: u64, accounts: &HashMap<ChainAddress, DbAccount>) -> Vec<(Nibbles, Vec<u8>)> {
+    let accounts: HashMap<Address, DbAccount> = accounts.iter().filter(|x| x.0.0 == chain_id).map(|(addr, account)| (addr.1, account.clone())).collect();
+
     let mut accounts = accounts
         .iter()
         .map(|(address, account)| {
@@ -72,14 +75,20 @@ pub fn trie_account_rlp(info: &AccountInfo, storage: &HashMap<U256, U256>) -> Ve
 
 /// Applies the given state overrides to the state, returning a new CacheDB state
 pub fn apply_state_override<D>(
+    chain_id: u64,
     overrides: StateOverride,
     state: D,
 ) -> Result<CacheDB<D>, BlockchainError>
 where
-    D: DatabaseRef<Error = DatabaseError>,
+    D: SyncDatabaseRef<Error = DatabaseError>,
 {
+    println!("apply_state_override");
+
     let mut cache_db = CacheDB::new(state);
     for (account, account_overrides) in overrides.iter() {
+
+        let account = &ChainAddress(chain_id, *account);
+
         let mut account_info = cache_db.basic_ref(*account)?.unwrap_or_default();
 
         if let Some(nonce) = account_overrides.nonce {

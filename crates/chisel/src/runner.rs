@@ -9,7 +9,7 @@ use foundry_evm::{
     executors::{DeployResult, Executor, RawCallResult},
     traces::{TraceKind, Traces},
 };
-use revm::interpreter::{return_ok, InstructionResult};
+use revm::{interpreter::{return_ok, InstructionResult}, primitives::ChainAddress};
 use std::collections::HashMap;
 
 /// The function selector of the REPL contract's entrypoint, the `run()` function.
@@ -26,7 +26,7 @@ pub struct ChiselRunner {
     /// An initial balance
     pub initial_balance: U256,
     /// The sender
-    pub sender: Address,
+    pub sender: ChainAddress,
     /// Input calldata appended to `RUN_SELECTOR`
     pub input: Option<Vec<u8>>,
 }
@@ -66,7 +66,7 @@ impl ChiselRunner {
     pub fn new(
         executor: Executor,
         initial_balance: U256,
-        sender: Address,
+        sender: ChainAddress,
         input: Option<Vec<u8>>,
     ) -> Self {
         Self { executor, initial_balance, sender, input }
@@ -104,7 +104,7 @@ impl ChiselRunner {
         }
 
         // Call the "run()" function of the REPL contract
-        let call_res = self.call(self.sender, address, Bytes::from(calldata), U256::from(0), true);
+        let call_res = self.call(self.sender, ChainAddress(self.sender.0, address), Bytes::from(calldata), U256::from(0), true);
 
         call_res.map(|res| (address, res))
     }
@@ -119,8 +119,8 @@ impl ChiselRunner {
     /// Taken from Forge's script runner.
     fn call(
         &mut self,
-        from: Address,
-        to: Address,
+        from: ChainAddress,
+        to: ChainAddress,
         calldata: Bytes,
         value: U256,
         commit: bool,

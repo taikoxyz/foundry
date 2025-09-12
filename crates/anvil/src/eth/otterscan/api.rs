@@ -23,6 +23,7 @@ use alloy_serde::WithOtherFields;
 use itertools::Itertools;
 
 use futures::future::join_all;
+use revm::primitives::ChainAddress;
 
 pub fn mentions_address(trace: LocalizedTransactionTrace, address: Address) -> Option<B256> {
     match (trace.trace.action, trace.trace.result) {
@@ -117,7 +118,7 @@ impl EthApi {
     }
 
     /// Check if an ETH address contains code at a certain block number.
-    pub async fn ots_has_code(&self, address: Address, block_number: BlockNumber) -> Result<bool> {
+    pub async fn ots_has_code(&self, address: ChainAddress, block_number: BlockNumber) -> Result<bool> {
         node_info!("ots_hasCode");
         let block_id = Some(BlockId::Number(block_number));
         Ok(self.get_code(address, block_id).await?.len() > 0)

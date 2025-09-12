@@ -5,6 +5,7 @@ use foundry_config::InvariantConfig;
 use foundry_evm_core::decode::RevertDecoder;
 use foundry_evm_fuzz::{invariant::FuzzRunIdentifiedContracts, Reason};
 use proptest::test_runner::TestError;
+use revm::primitives::ChainAddress;
 
 /// Stores information about failures and reverts of the invariant tests.
 #[derive(Clone, Default)]
@@ -56,7 +57,7 @@ pub struct FailedInvariantCaseData {
     /// The revert string of the offending call.
     pub revert_reason: String,
     /// Address of the invariant asserter.
-    pub addr: Address,
+    pub addr: ChainAddress,
     /// Function calldata for invariant check.
     pub calldata: Bytes,
     /// Inner fuzzing Sequence coming from overriding calls.

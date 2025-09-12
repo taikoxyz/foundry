@@ -9,7 +9,7 @@ use parking_lot::{lock_api::RwLockReadGuard, RawRwLock, RwLock};
 use revm::{
     db::{CacheDB, DatabaseRef, DbAccount},
     interpreter::opcode,
-    primitives::AccountInfo,
+    primitives::{AccountInfo, ChainAddress}, SyncDatabaseRef,
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -34,7 +34,7 @@ pub struct EvmFuzzState {
 }
 
 impl EvmFuzzState {
-    pub fn new<DB: DatabaseRef>(db: &CacheDB<DB>, config: FuzzDictionaryConfig) -> Self {
+    pub fn new<DB: SyncDatabaseRef>(db: &CacheDB<DB>, config: FuzzDictionaryConfig) -> Self {
         // Sort accounts to ensure deterministic dictionary generation from the same setUp state.
         let mut accs = db.accounts.iter().collect::<Vec<_>>();
         accs.sort_by_key(|(address, _)| *address);
@@ -137,12 +137,12 @@ impl FuzzDictionary {
 
     /// Insert values from initial db state into fuzz dictionary.
     /// These values are persisted across invariant runs.
-    fn insert_db_values(&mut self, db_state: Vec<(&Address, &DbAccount)>) {
+    fn insert_db_values(&mut self, db_state: Vec<(&ChainAddress, &DbAccount)>) {
         for (address, account) in db_state {
             // Insert basic account information
-            self.insert_value(address.into_word());
+            self.insert_value(address.1.into_word());
             // Insert push bytes
-            self.insert_push_bytes_values(address, &account.info);
+            self.insert_push_bytes_values(&address.1, &account.info);
             // Insert storage values.
             if self.config.include_storage {
                 // Sort storage values before inserting to ensure deterministic dictionary.
@@ -226,9 +226,9 @@ impl FuzzDictionary {
     fn insert_new_state_values(&mut self, state_changeset: &StateChangeset) {
         for (address, account) in state_changeset {
             // Insert basic account information.
-            self.insert_value(address.into_word());
+            self.insert_value(address.1.into_word());
             // Insert push bytes.
-            self.insert_push_bytes_values(address, &account.info);
+            self.insert_push_bytes_values(&address.1, &account.info);
             // Insert storage values.
             if self.config.include_storage {
                 for (slot, value) in &account.storage {

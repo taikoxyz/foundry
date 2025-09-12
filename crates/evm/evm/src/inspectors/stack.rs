@@ -17,14 +17,12 @@ use revm::{
         EOFCreateKind, Gas, InstructionResult, Interpreter, InterpreterResult,
     },
     primitives::{
-        BlockEnv, CreateScheme, Env, EnvWithHandlerCfg, ExecutionResult, Output, TransactTo,
+        BlockEnv, ChainAddress, CreateScheme, Env, EnvWithHandlerCfg, ExecutionResult, Output, TransactTo
     },
     EvmContext, Inspector,
 };
 use std::{
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-    sync::Arc,
+    collections::HashMap, num::NonZeroU16, ops::{Deref, DerefMut}, sync::Arc
 };
 
 #[derive(Clone, Debug, Default)]
@@ -259,11 +257,11 @@ pub struct InspectorData {
 pub struct InnerContextData {
     /// The sender of the inner EVM context.
     /// It is also an origin of the transaction that created the inner EVM context.
-    sender: Address,
+    sender: ChainAddress,
     /// Nonce of the sender before invocation of the inner EVM context.
     original_sender_nonce: u64,
     /// Origin of the transaction in the outer EVM context.
-    original_origin: Address,
+    original_origin: ChainAddress,
     /// Whether the inner context was created by a CREATE transaction.
     is_create: bool,
 }
@@ -359,7 +357,7 @@ impl InspectorStack {
     /// Set variables from an environment for the relevant inspectors.
     #[inline]
     pub fn set_env(&mut self, env: &Env) {
-        self.set_block(&env.block);
+        self.set_block(&env.blocks.get(&env.cfg.chain_id).unwrap());
         self.set_gas_price(env.tx.gas_price);
     }
 
@@ -370,6 +368,7 @@ impl InspectorStack {
             cheatcodes.block = Some(block.clone());
         }
     }
+
 
     /// Sets the gas price for the relevant inspectors.
     #[inline]
@@ -532,7 +531,7 @@ impl<'a> InspectorStackRefMut<'a> {
         &mut self,
         ecx: &mut EvmContext<DB>,
         transact_to: TransactTo,
-        caller: Address,
+        caller: ChainAddress,
         input: Bytes,
         gas_limit: u64,
         value: U256,
@@ -550,7 +549,9 @@ impl<'a> InspectorStackRefMut<'a> {
 
         let cached_env = ecx.env.clone();
 
-        ecx.env.block.basefee = U256::ZERO;
+        for (_, block) in ecx.env.blocks.iter_mut() {
+            block.basefee = U256::ZERO;
+        }
         ecx.env.tx.caller = caller;
         ecx.env.tx.transact_to = transact_to;
         ecx.env.tx.data = input;
@@ -562,7 +563,7 @@ impl<'a> InspectorStackRefMut<'a> {
         // exceed block gas limit.
         if !ecx.env.cfg.disable_block_gas_limit {
             ecx.env.tx.gas_limit =
-                std::cmp::min(ecx.env.tx.gas_limit, ecx.env.block.gas_limit.to());
+                std::cmp::min(ecx.env.tx.gas_limit, ecx.env.min_gas_limit().to());
         }
         ecx.env.tx.gas_price = U256::ZERO;
 
@@ -570,7 +571,7 @@ impl<'a> InspectorStackRefMut<'a> {
             sender: ecx.env.tx.caller,
             original_origin: cached_env.tx.caller,
             original_sender_nonce: nonce,
-            is_create: matches!(transact_to, TxKind::Create),
+            is_create: matches!(transact_to, TransactTo::Create),
         });
         self.in_inner_context = true;
 
@@ -592,14 +593,16 @@ impl<'a> InspectorStackRefMut<'a> {
         self.inner_context_data = None;
 
         ecx.env.tx = cached_env.tx;
-        ecx.env.block.basefee = cached_env.block.basefee;
+        for (chain_id, block) in ecx.env.blocks.iter_mut() {
+            block.basefee = cached_env.blocks.get(chain_id).unwrap().basefee;
+        }
 
         let mut gas = Gas::new(gas_limit);
 
         let Ok(mut res) = res else {
             // Should we match, encode and propagate error as a revert reason?
             let result =
-                InterpreterResult { result: InstructionResult::Revert, output: Bytes::new(), gas };
+                InterpreterResult { result: InstructionResult::Revert, output: Bytes::new(), gas, call_options: None };
             return (result, None);
         };
 
@@ -612,6 +615,7 @@ impl<'a> InspectorStackRefMut<'a> {
                 result: InstructionResult::Revert,
                 output: Bytes::from(e.to_string()),
                 gas,
+                call_options: None,
             };
             return (res, None);
         }
@@ -620,6 +624,7 @@ impl<'a> InspectorStackRefMut<'a> {
                 result: InstructionResult::Revert,
                 output: Bytes::from(e.to_string()),
                 gas,
+                call_options: None,
             };
             return (res, None);
         }
@@ -637,25 +642,25 @@ impl<'a> InspectorStackRefMut<'a> {
         }
 
         let (result, address, output) = match res.result {
-            ExecutionResult::Success { reason, gas_used, gas_refunded, logs: _, output } => {
+            ExecutionResult::Success { reason, gas_used, gas_refunded, logs: _, output, state_changes: _, gas_used_per_chain, gas_refunded_per_chain } => {
                 gas.set_refund(gas_refunded as i64);
-                let _ = gas.record_cost(gas_used);
+                let _ = gas.record_cost(ecx.env.cfg.chain_id, gas_used);
                 let address = match output {
                     Output::Create(_, address) => address,
                     Output::Call(_) => None,
                 };
                 (reason.into(), address, output.into_data())
             }
-            ExecutionResult::Halt { reason, gas_used } => {
-                let _ = gas.record_cost(gas_used);
+            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain } => {
+                let _ = gas.record_cost(ecx.env.cfg.chain_id, gas_used);
                 (reason.into(), None, Bytes::new())
             }
-            ExecutionResult::Revert { gas_used, output } => {
-                let _ = gas.record_cost(gas_used);
+            ExecutionResult::Revert { gas_used, output, gas_used_per_chain } => {
+                let _ = gas.record_cost(ecx.env.cfg.chain_id, gas_used);
                 (InstructionResult::Revert, None, output)
             }
         };
-        (InterpreterResult { result, output, gas }, address)
+        (InterpreterResult { result, output, gas, call_options: None }, address)
     }
 }
 
@@ -727,14 +732,14 @@ impl<'a, DB: DatabaseExt> Inspector<DB> for InspectorStackRefMut<'a> {
         ecx.journaled_state.depth += self.in_inner_context as usize;
         if let Some(cheatcodes) = self.cheatcodes.as_deref_mut() {
             // Handle mocked functions, replace bytecode address with mock if matched.
-            if let Some(mocks) = cheatcodes.mocked_functions.get(&call.target_address) {
+            if let Some(mocks) = cheatcodes.mocked_functions.get(&call.target_address.1) {
                 // Check if any mock function set for call data or if catch-all mock function set
                 // for selector.
                 if let Some(target) = mocks
                     .get(&call.input)
                     .or_else(|| call.input.get(..4).and_then(|selector| mocks.get(selector)))
                 {
-                    call.bytecode_address = *target;
+                    call.bytecode_address = ChainAddress(ecx.cfg().chain_id, *target);
                 }
             }
 
@@ -754,13 +759,13 @@ impl<'a, DB: DatabaseExt> Inspector<DB> for InspectorStackRefMut<'a> {
         {
             let (result, _) = self.transact_inner(
                 ecx,
-                TxKind::Call(call.target_address),
+                TransactTo::Call(call.target_address),
                 call.caller,
                 call.input.clone(),
                 call.gas_limit,
                 call.value.get(),
             );
-            return Some(CallOutcome { result, memory_offset: call.return_memory_offset.clone() });
+            return Some(CallOutcome { result, memory_offset: call.return_memory_offset.clone(), call_options: None });
         }
 
         None
@@ -816,7 +821,7 @@ impl<'a, DB: DatabaseExt> Inspector<DB> for InspectorStackRefMut<'a> {
         {
             let (result, address) = self.transact_inner(
                 ecx,
-                TxKind::Create,
+                TransactTo::Create,
                 create.caller,
                 create.init_code.clone(),
                 create.gas_limit,
@@ -892,7 +897,7 @@ impl<'a, DB: DatabaseExt> Inspector<DB> for InspectorStackRefMut<'a> {
 
             let (result, address) = self.transact_inner(
                 ecx,
-                TxKind::Create,
+                TransactTo::Create,
                 create.caller,
                 init_code,
                 create.gas_limit,
@@ -938,7 +943,7 @@ impl<'a, DB: DatabaseExt> Inspector<DB> for InspectorStackRefMut<'a> {
         outcome
     }
 
-    fn selfdestruct(&mut self, contract: Address, target: Address, value: U256) {
+    fn selfdestruct(&mut self, contract: ChainAddress, target: ChainAddress, value: U256) {
         call_inspectors!([&mut self.tracer, &mut self.printer], |inspector| {
             Inspector::<DB>::selfdestruct(inspector, contract, target, value)
         });
@@ -1043,7 +1048,7 @@ impl<DB: DatabaseExt> Inspector<DB> for InspectorStack {
         self.as_mut().log(interpreter, ecx, log)
     }
 
-    fn selfdestruct(&mut self, contract: Address, target: Address, value: U256) {
+    fn selfdestruct(&mut self, contract: ChainAddress, target: ChainAddress, value: U256) {
         Inspector::<DB>::selfdestruct(&mut self.as_mut(), contract, target, value)
     }
 }

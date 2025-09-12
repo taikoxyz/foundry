@@ -17,6 +17,7 @@ use foundry_test_utils::{
     util::{pretty_err, OutputExt, TestCommand, OTHER_SOLC_VERSION},
 };
 use path_slash::PathBufExt;
+use revm_primitives::ChainAddress;
 use similar_asserts::assert_eq;
 use std::{
     fs,
@@ -86,7 +87,7 @@ forgetest!(can_extract_config_values, |prj, cmd| {
         always_use_create_2_factory: false,
         prompt_timeout: 0,
         sender: "00a329c0648769A73afAc7F9381D08FB43dBEA72".parse().unwrap(),
-        tx_origin: "00a329c0648769A73afAc7F9F81E08FB43dBEA72".parse().unwrap(),
+        tx_origin: ChainAddress(1, "00a329c0648769A73afAc7F9F81E08FB43dBEA72".parse().unwrap()),
         initial_balance: U256::from(0xffffffffffffffffffffffffu128),
         block_number: 10,
         fork_block_number: Some(200),
@@ -95,7 +96,7 @@ forgetest!(can_extract_config_values, |prj, cmd| {
         code_size_limit: Some(100000),
         gas_price: Some(999),
         block_base_fee_per_gas: 10,
-        block_coinbase: Address::random(),
+        block_coinbase: ChainAddress(1, Address::random()),
         block_timestamp: 10,
         block_difficulty: 10,
         block_prevrandao: B256::random(),
@@ -407,7 +408,7 @@ Compiler run successful!
     // fails to use solc that does not exist
     cmd.forge_fuse().args(["build", "--use", "this/solc/does/not/exist"]);
     cmd.assert_failure().stderr_eq(str![[r#"
-Error: 
+Error:
 `solc` this/solc/does/not/exist does not exist
 
 "#]]);
@@ -444,7 +445,7 @@ contract Foo {
     .unwrap();
 
     cmd.arg("build").assert_failure().stderr_eq(str![[r#"
-Error: 
+Error:
 Compiler run failed:
 Error (6553): The msize instruction cannot be used when the Yul optimizer is activated because it can change its semantics. Either disable the Yul optimizer or do not use the instruction.
  [FILE]:6:8:

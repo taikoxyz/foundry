@@ -14,6 +14,7 @@ use foundry_common::{calc, contracts::ContractsByAddress, evm::Breakpoints};
 use foundry_evm_coverage::HitMaps;
 use foundry_evm_traces::{CallTraceArena, SparsedTraceArena};
 use itertools::Itertools;
+use revm::primitives::ChainAddress;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt, sync::Arc};
 
@@ -39,9 +40,9 @@ pub enum CounterExample {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BaseCounterExample {
     /// Address which makes the call
-    pub sender: Option<Address>,
+    pub sender: Option<ChainAddress>,
     /// Address to which to call to
-    pub addr: Option<Address>,
+    pub addr: Option<ChainAddress>,
     /// The data to provide
     pub calldata: Bytes,
     /// Contract name if it exists
@@ -58,13 +59,13 @@ pub struct BaseCounterExample {
 impl BaseCounterExample {
     /// Creates counter example representing a step from invariant call sequence.
     pub fn from_invariant_call(
-        sender: Address,
-        addr: Address,
+        sender: ChainAddress,
+        addr: ChainAddress,
         bytes: &Bytes,
         contracts: &ContractsByAddress,
         traces: Option<SparsedTraceArena>,
     ) -> Self {
-        if let Some((name, abi)) = &contracts.get(&addr) {
+        if let Some((name, abi)) = &contracts.get(&addr.1) {
             if let Some(func) = abi.functions().find(|f| f.selector() == bytes[..4]) {
                 // skip the function selector when decoding
                 if let Ok(args) = func.abi_decode_input(&bytes[4..], false) {

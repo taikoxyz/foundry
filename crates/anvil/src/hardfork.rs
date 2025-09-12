@@ -6,7 +6,7 @@ use std::str::FromStr;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ChainHardfork {
     Ethereum(EthereumHardfork),
-    Optimism(OptimismHardfork),
+    //Optimism(OptimismHardfork),
 }
 
 impl From<EthereumHardfork> for ChainHardfork {
@@ -15,17 +15,17 @@ impl From<EthereumHardfork> for ChainHardfork {
     }
 }
 
-impl From<OptimismHardfork> for ChainHardfork {
-    fn from(value: OptimismHardfork) -> Self {
-        Self::Optimism(value)
-    }
-}
+// impl From<OptimismHardfork> for ChainHardfork {
+//     fn from(value: OptimismHardfork) -> Self {
+//         Self::Optimism(value)
+//     }
+// }
 
 impl From<ChainHardfork> for SpecId {
     fn from(fork: ChainHardfork) -> Self {
         match fork {
             ChainHardfork::Ethereum(hardfork) => hardfork.into(),
-            ChainHardfork::Optimism(hardfork) => hardfork.into(),
+            //ChainHardfork::Optimism(hardfork) => hardfork.into(),
         }
     }
 }
@@ -168,50 +168,50 @@ impl<T: Into<BlockNumberOrTag>> From<T> for EthereumHardfork {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum OptimismHardfork {
-    Bedrock,
-    Regolith,
-    Canyon,
-    Ecotone,
-    Fjord,
-    Granite,
-    #[default]
-    Latest,
-}
+// #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+// pub enum OptimismHardfork {
+//     Bedrock,
+//     Regolith,
+//     Canyon,
+//     Ecotone,
+//     Fjord,
+//     Granite,
+//     #[default]
+//     Latest,
+// }
 
-impl FromStr for OptimismHardfork {
-    type Err = eyre::Report;
+// impl FromStr for OptimismHardfork {
+//     type Err = eyre::Report;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.to_lowercase();
-        let hardfork = match s.as_str() {
-            "bedrock" => Self::Bedrock,
-            "regolith" => Self::Regolith,
-            "canyon" => Self::Canyon,
-            "ecotone" => Self::Ecotone,
-            "fjord" => Self::Fjord,
-            "granite" => Self::Granite,
-            "latest" => Self::Latest,
-            _ => bail!("Unknown hardfork {s}"),
-        };
-        Ok(hardfork)
-    }
-}
+//     fn from_str(s: &str) -> Result<Self, Self::Err> {
+//         let s = s.to_lowercase();
+//         let hardfork = match s.as_str() {
+//             "bedrock" => Self::Bedrock,
+//             "regolith" => Self::Regolith,
+//             "canyon" => Self::Canyon,
+//             "ecotone" => Self::Ecotone,
+//             "fjord" => Self::Fjord,
+//             "granite" => Self::Granite,
+//             "latest" => Self::Latest,
+//             _ => bail!("Unknown hardfork {s}"),
+//         };
+//         Ok(hardfork)
+//     }
+// }
 
-impl From<OptimismHardfork> for SpecId {
-    fn from(fork: OptimismHardfork) -> Self {
-        match fork {
-            OptimismHardfork::Bedrock => Self::BEDROCK,
-            OptimismHardfork::Regolith => Self::REGOLITH,
-            OptimismHardfork::Canyon => Self::CANYON,
-            OptimismHardfork::Ecotone => Self::ECOTONE,
-            OptimismHardfork::Fjord => Self::FJORD,
-            OptimismHardfork::Granite => Self::GRANITE,
-            OptimismHardfork::Latest => Self::LATEST,
-        }
-    }
-}
+// impl From<OptimismHardfork> for SpecId {
+//     fn from(fork: OptimismHardfork) -> Self {
+//         match fork {
+//             OptimismHardfork::Bedrock => Self::BEDROCK,
+//             OptimismHardfork::Regolith => Self::REGOLITH,
+//             OptimismHardfork::Canyon => Self::CANYON,
+//             OptimismHardfork::Ecotone => Self::ECOTONE,
+//             OptimismHardfork::Fjord => Self::FJORD,
+//             OptimismHardfork::Granite => Self::GRANITE,
+//             OptimismHardfork::Latest => Self::LATEST,
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

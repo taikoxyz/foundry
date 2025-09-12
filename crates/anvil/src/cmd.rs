@@ -1,7 +1,6 @@
 use crate::{
     config::{ForkChoice, DEFAULT_MNEMONIC},
     eth::{backend::db::SerializableState, pool::transactions::TransactionOrder, EthApi},
-    hardfork::OptimismHardfork,
     AccountGenerator, EthereumHardfork, NodeConfig, CHAIN_ID,
 };
 use alloy_genesis::Genesis;
@@ -207,11 +206,11 @@ impl NodeArgs {
 
         let hardfork = match &self.hardfork {
             Some(hf) => {
-                if self.evm_opts.optimism {
-                    Some(OptimismHardfork::from_str(hf)?.into())
-                } else {
+                // if self.evm_opts.optimism {
+                //     Some(OptimismHardfork::from_str(hf)?.into())
+                // } else {
                     Some(EthereumHardfork::from_str(hf)?.into())
-                }
+                //}
             }
             None => None,
         };
@@ -795,10 +794,10 @@ mod tests {
 
     #[test]
     fn can_parse_optimism_hardfork() {
-        let args: NodeArgs =
-            NodeArgs::parse_from(["anvil", "--optimism", "--hardfork", "Regolith"]);
-        let config = args.into_node_config().unwrap();
-        assert_eq!(config.hardfork, Some(OptimismHardfork::Regolith.into()));
+        // let args: NodeArgs =
+        //     NodeArgs::parse_from(["anvil", "--optimism", "--hardfork", "Regolith"]);
+        // let config = args.into_node_config().unwrap();
+        //assert_eq!(config.hardfork, Some(OptimismHardfork::Regolith.into()));
     }
 
     #[test]

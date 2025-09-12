@@ -14,7 +14,7 @@ repository.workspace = true
 workspace = true
 
 [[bin]]
-name = "forge"
+name = "gforge"
 path = "bin/main.rs"
 
 [build-dependencies]
@@ -36,6 +36,7 @@ foundry-linking.workspace = true
 
 ethers-contract-abigen = { workspace = true, features = ["providers"] }
 
+revm-primitives.workspace = true
 revm-inspectors.workspace = true
 
 comfy-table.workspace = true

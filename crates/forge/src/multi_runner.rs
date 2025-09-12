@@ -25,6 +25,7 @@ use foundry_evm::{
 use foundry_linking::{LinkOutput, Linker};
 use rayon::prelude::*;
 use revm::primitives::SpecId;
+use revm_primitives::ChainAddress;
 use std::{
     borrow::Borrow,
     collections::BTreeMap,
@@ -57,7 +58,7 @@ pub struct MultiContractRunner {
     /// Revert decoder. Contains all known errors and their selectors.
     pub revert_decoder: RevertDecoder,
     /// The address which will be used as the `from` field in all EVM calls
-    pub sender: Option<Address>,
+    pub sender: Option<ChainAddress>,
     /// The fork to use at launch
     pub fork: Option<CreateFork>,
     /// Project config.
@@ -301,7 +302,7 @@ impl MultiContractRunner {
 pub struct MultiContractRunnerBuilder {
     /// The address which will be used to deploy the initial contracts and send all
     /// transactions
-    pub sender: Option<Address>,
+    pub sender: Option<ChainAddress>,
     /// The initial balance for each one of the deployed smart contracts
     pub initial_balance: U256,
     /// The EVM spec to use
@@ -341,7 +342,7 @@ impl MultiContractRunnerBuilder {
         }
     }
 
-    pub fn sender(mut self, sender: Address) -> Self {
+    pub fn sender(mut self, sender: ChainAddress) -> Self {
         self.sender = Some(sender);
         self
     }
@@ -415,7 +416,7 @@ impl MultiContractRunnerBuilder {
 
         let LinkOutput { libraries, libs_to_deploy } = linker.link_with_nonce_or_address(
             Default::default(),
-            LIBRARY_DEPLOYER,
+            ChainAddress(env.cfg.chain_id, LIBRARY_DEPLOYER),
             0,
             linker.contracts.keys(),
         )?;

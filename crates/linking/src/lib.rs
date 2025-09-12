@@ -11,6 +11,7 @@ use foundry_compilers::{
     contracts::ArtifactContracts,
     Artifact, ArtifactId,
 };
+use revm_primitives::ChainAddress;
 use semver::Version;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -141,7 +142,7 @@ impl<'a> Linker<'a> {
     pub fn link_with_nonce_or_address(
         &'a self,
         libraries: Libraries,
-        sender: Address,
+        sender: ChainAddress,
         mut nonce: u64,
         targets: impl IntoIterator<Item = &'a ArtifactId>,
     ) -> Result<LinkOutput, LinkerError> {
@@ -162,7 +163,7 @@ impl<'a> Linker<'a> {
             let (lib_path, lib_name) = self.convert_artifact_id_to_lib_path(id);
 
             libraries.libs.entry(lib_path).or_default().entry(lib_name).or_insert_with(|| {
-                let address = sender.create(nonce);
+                let address = sender.1.create(nonce);
                 libs_to_deploy.push((id, address));
                 nonce += 1;
 
@@ -329,7 +330,7 @@ mod tests {
             self
         }
 
-        fn test_with_sender_and_nonce(self, sender: Address, initial_nonce: u64) {
+        fn test_with_sender_and_nonce(self, sender: ChainAddress, initial_nonce: u64) {
             let linker = Linker::new(self.project.root(), self.output.artifact_ids().collect());
             for (id, identifier) in self.iter_linking_targets(&linker) {
                 let output = linker
@@ -433,7 +434,7 @@ mod tests {
                         Address::from_str("0x5a443704dd4b594b382c22a083e2bd3090a6fef3").unwrap(),
                     )],
                 )
-                .test_with_sender_and_nonce(Address::default(), 1);
+                .test_with_sender_and_nonce(ChainAddress(1, Address::default()), 1);
         });
     }
 
@@ -481,7 +482,7 @@ mod tests {
                         ),
                     ],
                 )
-                .test_with_sender_and_nonce(Address::default(), 1);
+                .test_with_sender_and_nonce(ChainAddress(1, Address::default()), 1);
         });
     }
 
@@ -587,7 +588,7 @@ mod tests {
                         ),
                     ],
                 )
-                .test_with_sender_and_nonce(Address::default(), 1);
+                .test_with_sender_and_nonce(ChainAddress(1, Address::default()), 1);
         });
     }
 
@@ -625,7 +626,7 @@ mod tests {
                         ),
                     ],
                 )
-                .test_with_sender_and_nonce(Address::default(), 1);
+                .test_with_sender_and_nonce(ChainAddress(1, Address::default()), 1);
         });
     }
 

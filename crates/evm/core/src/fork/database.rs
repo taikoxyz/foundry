@@ -9,9 +9,7 @@ use alloy_rpc_types::BlockId;
 use foundry_fork_db::{BlockchainDb, DatabaseError, SharedBackend};
 use parking_lot::Mutex;
 use revm::{
-    db::{CacheDB, DatabaseRef},
-    primitives::{Account, AccountInfo, Bytecode, HashMap as Map},
-    Database, DatabaseCommit,
+    db::{CacheDB, DatabaseRef}, primitives::{Account, AccountInfo, Bytecode, ChainAddress, HashMap as Map}, Database, DatabaseCommit, SyncDatabase, SyncDatabaseRef
 };
 use std::sync::Arc;
 
@@ -149,51 +147,52 @@ impl ForkedDatabase {
     }
 }
 
-impl Database for ForkedDatabase {
+impl SyncDatabase for ForkedDatabase {
     type Error = DatabaseError;
 
-    fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+    fn basic(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        println!("ForkedDatabase::basic: {:?}", address);
         // Note: this will always return Some, since the `SharedBackend` will always load the
         // account, this differs from `<CacheDB as Database>::basic`, See also
         // [MemDb::ensure_loaded](crate::backend::MemDb::ensure_loaded)
-        Database::basic(&mut self.cache_db, address)
+        SyncDatabase::basic(&mut self.cache_db, address)
     }
 
-    fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        Database::code_by_hash(&mut self.cache_db, code_hash)
+    fn code_by_hash(&mut self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        SyncDatabase::code_by_hash(&mut self.cache_db, chain_id, code_hash)
     }
 
-    fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
-        Database::storage(&mut self.cache_db, address, index)
+    fn storage(&mut self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
+        SyncDatabase::storage(&mut self.cache_db, address, index)
     }
 
-    fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
-        Database::block_hash(&mut self.cache_db, number)
+    fn block_hash(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        SyncDatabase::block_hash(&mut self.cache_db, chain_id, number)
     }
 }
 
-impl DatabaseRef for ForkedDatabase {
+impl SyncDatabaseRef for ForkedDatabase {
     type Error = DatabaseError;
 
-    fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+    fn basic_ref(&self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
         self.cache_db.basic_ref(address)
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        self.cache_db.code_by_hash_ref(code_hash)
+    fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        self.cache_db.code_by_hash_ref(chain_id, code_hash)
     }
 
-    fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
-        DatabaseRef::storage_ref(&self.cache_db, address, index)
+    fn storage_ref(&self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
+        SyncDatabaseRef::storage_ref(&self.cache_db, address, index)
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
-        self.cache_db.block_hash_ref(number)
+    fn block_hash_ref(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        self.cache_db.block_hash_ref(chain_id, number)
     }
 }
 
 impl DatabaseCommit for ForkedDatabase {
-    fn commit(&mut self, changes: Map<Address, Account>) {
+    fn commit(&mut self, changes: Map<ChainAddress, Account>) {
         self.database_mut().commit(changes)
     }
 }
@@ -208,7 +207,7 @@ pub struct ForkDbSnapshot {
 }
 
 impl ForkDbSnapshot {
-    fn get_storage(&self, address: Address, index: U256) -> Option<U256> {
+    fn get_storage(&self, address: ChainAddress, index: U256) -> Option<U256> {
         self.local.accounts.get(&address).and_then(|account| account.storage.get(&index)).copied()
     }
 }
@@ -216,10 +215,10 @@ impl ForkDbSnapshot {
 // This `DatabaseRef` implementation works similar to `CacheDB` which prioritizes modified elements,
 // and uses another db as fallback
 // We prioritize stored changed accounts/storage
-impl DatabaseRef for ForkDbSnapshot {
+impl SyncDatabaseRef for ForkDbSnapshot {
     type Error = DatabaseError;
 
-    fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+    fn basic_ref(&self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
         match self.local.accounts.get(&address) {
             Some(account) => Ok(Some(account.info.clone())),
             None => {
@@ -233,29 +232,29 @@ impl DatabaseRef for ForkDbSnapshot {
         }
     }
 
-    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        self.local.code_by_hash_ref(code_hash)
+    fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        self.local.code_by_hash_ref(chain_id, code_hash)
     }
 
-    fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
+    fn storage_ref(&self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
         match self.local.accounts.get(&address) {
             Some(account) => match account.storage.get(&index) {
                 Some(entry) => Ok(*entry),
                 None => match self.get_storage(address, index) {
-                    None => DatabaseRef::storage_ref(&self.local, address, index),
+                    None => SyncDatabaseRef::storage_ref(&self.local, address, index),
                     Some(storage) => Ok(storage),
                 },
             },
             None => match self.get_storage(address, index) {
-                None => DatabaseRef::storage_ref(&self.local, address, index),
+                None => SyncDatabaseRef::storage_ref(&self.local, address, index),
                 Some(storage) => Ok(storage),
             },
         }
     }
 
-    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
-        match self.snapshot.block_hashes.get(&U256::from(number)).copied() {
-            None => self.local.block_hash_ref(number),
+    fn block_hash_ref(&self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        match self.snapshot.block_hashes.get(&(chain_id, U256::from(number))).copied() {
+            None => self.local.block_hash_ref(chain_id, number),
             Some(block_hash) => Ok(block_hash),
         }
     }
@@ -284,9 +283,9 @@ mod tests {
         let backend = SharedBackend::spawn_backend(Arc::new(provider), db.clone(), None).await;
 
         let mut db = ForkedDatabase::new(backend, db);
-        let address = Address::random();
+        let address = ChainAddress(1, Address::random());
 
-        let info = Database::basic(&mut db, address).unwrap();
+        let info = SyncDatabase::basic(&mut db, address).unwrap();
         assert!(info.is_some());
         let mut info = info.unwrap();
         info.balance = U256::from(500u64);
@@ -294,7 +293,7 @@ mod tests {
         // insert the modified account info
         db.database_mut().insert_account_info(address, info.clone());
 
-        let loaded = Database::basic(&mut db, address).unwrap();
+        let loaded = SyncDatabase::basic(&mut db, address).unwrap();
         assert!(loaded.is_some());
         assert_eq!(loaded.unwrap(), info);
     }

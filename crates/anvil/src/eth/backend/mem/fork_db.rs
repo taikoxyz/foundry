@@ -10,26 +10,27 @@ use alloy_rpc_types::BlockId;
 use foundry_evm::{
     backend::{BlockchainDb, DatabaseResult, RevertSnapshotAction, StateSnapshot},
     fork::database::ForkDbSnapshot,
-    revm::Database,
+    revm::SyncDatabase,
 };
 
 pub use foundry_evm::fork::database::ForkedDatabase;
 use foundry_evm::revm::primitives::BlockEnv;
+use revm::primitives::ChainAddress;
 
 /// Implement the helper for the fork database
 impl Db for ForkedDatabase {
-    fn insert_account(&mut self, address: Address, account: AccountInfo) {
+    fn insert_account(&mut self, address: ChainAddress, account: AccountInfo) {
         self.database_mut().insert_account(address, account)
     }
 
-    fn set_storage_at(&mut self, address: Address, slot: U256, val: U256) -> DatabaseResult<()> {
+    fn set_storage_at(&mut self, address: ChainAddress, slot: U256, val: U256) -> DatabaseResult<()> {
         // this ensures the account is loaded first
-        let _ = Database::basic(self, address)?;
+        let _ = SyncDatabase::basic(self, address)?;
         self.database_mut().set_storage_at(address, slot, val)
     }
 
-    fn insert_block_hash(&mut self, number: U256, hash: B256) {
-        self.inner().block_hashes().write().insert(number, hash);
+    fn insert_block_hash(&mut self, chain_id: u64, number: U256, hash: B256) {
+        self.inner().block_hashes().write().insert((chain_id, number), hash);
     }
 
     fn dump_state(
@@ -49,7 +50,7 @@ impl Db for ForkedDatabase {
                 let code = if let Some(code) = v.info.code {
                     code
                 } else {
-                    db.code_by_hash(v.info.code_hash)?
+                    db.code_by_hash(k.0, v.info.code_hash)?
                 };
                 Ok((
                     k,

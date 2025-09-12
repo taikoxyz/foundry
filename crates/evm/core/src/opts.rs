@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::fork::environment;
 use crate::fork::CreateFork;
 use alloy_primitives::{Address, B256, U256};
@@ -6,7 +8,7 @@ use alloy_rpc_types::AnyNetworkBlock;
 use eyre::WrapErr;
 use foundry_common::{provider::ProviderBuilder, ALCHEMY_FREE_TIER_CUPS};
 use foundry_config::{Chain, Config};
-use revm::primitives::{BlockEnv, CfgEnv, TxEnv};
+use revm::primitives::{BlockEnv, CfgEnv, ChainAddress, TxEnv};
 use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -66,6 +68,9 @@ pub struct EvmOpts {
 
     /// whether to enable Alphanet features.
     pub alphanet: bool,
+
+    /// the supported chain ids
+    pub chain_ids: Option<Vec<u64>>,
 }
 
 impl EvmOpts {
@@ -91,13 +96,14 @@ impl EvmOpts {
         let provider = ProviderBuilder::new(fork_url)
             .compute_units_per_second(self.get_compute_units_per_second())
             .build()?;
+        let chain_id = provider.get_chain_id().await?;
         environment(
             &provider,
             self.memory_limit,
             self.env.gas_price.map(|v| v as u128),
             self.env.chain_id,
             self.fork_block_number,
-            self.sender,
+            ChainAddress(chain_id, self.sender),
             self.disable_block_gas_limit,
         )
         .await
@@ -108,6 +114,9 @@ impl EvmOpts {
 
     /// Returns the `revm::Env` configured with only local settings
     pub fn local_evm_env(&self) -> revm::primitives::Env {
+        println!("CORE!!!");
+        println!("chain_ids: {:?}", self.chain_ids);
+
         let mut cfg = CfgEnv::default();
         cfg.chain_id = self.env.chain_id.unwrap_or(foundry_common::DEV_CHAIN_ID);
         cfg.limit_contract_code_size = self.env.code_size_limit.or(Some(usize::MAX));
@@ -117,9 +126,13 @@ impl EvmOpts {
         // caller is a contract. So we disable the check by default.
         cfg.disable_eip3607 = true;
         cfg.disable_block_gas_limit = self.disable_block_gas_limit;
+        cfg.xchain = true;
+        cfg.allow_mocking = true;
+        cfg.parent_chain_id = Some(self.env.parent_chain_id.unwrap_or(cfg.chain_id));
 
-        revm::primitives::Env {
-            block: BlockEnv {
+        let mut blocks = HashMap::new();
+        for &chain_id in self.chain_ids.as_ref().unwrap().iter() {
+            blocks.insert(chain_id, BlockEnv {
                 number: U256::from(self.env.block_number),
                 coinbase: self.env.block_coinbase,
                 timestamp: U256::from(self.env.block_timestamp),
@@ -128,12 +141,17 @@ impl EvmOpts {
                 basefee: U256::from(self.env.block_base_fee_per_gas),
                 gas_limit: U256::from(self.gas_limit()),
                 ..Default::default()
-            },
-            cfg,
+            });
+        }
+
+        revm::primitives::Env {
+            blocks,
+            cfg: cfg.clone(),
             tx: TxEnv {
                 gas_price: U256::from(self.env.gas_price.unwrap_or_default()),
                 gas_limit: self.gas_limit(),
-                caller: self.sender,
+                caller: ChainAddress(cfg.chain_id, self.sender),
+                chain_ids: self.chain_ids.clone(),
                 ..Default::default()
             },
         }
@@ -232,10 +250,10 @@ pub struct Env {
     pub block_base_fee_per_gas: u64,
 
     /// the tx.origin value during EVM execution
-    pub tx_origin: Address,
+    pub tx_origin: ChainAddress,
 
     /// the block.coinbase value during EVM execution
-    pub block_coinbase: Address,
+    pub block_coinbase: ChainAddress,
 
     /// the block.timestamp value during EVM execution
     pub block_timestamp: u64,
@@ -260,6 +278,9 @@ pub struct Env {
     /// EIP-170: Contract code size limit in bytes. Useful to increase this because of tests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code_size_limit: Option<usize>,
+
+    // The parent chain id
+    pub parent_chain_id: Option<u64>,
 }
 
 #[derive(Deserialize)]

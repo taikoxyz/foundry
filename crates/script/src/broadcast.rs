@@ -10,7 +10,7 @@ use alloy_primitives::{utils::format_units, Address, TxHash};
 use alloy_provider::{utils::Eip1559Estimation, Provider};
 use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;
-use alloy_transport::Transport;
+use alloy_transport::{RpcError, Transport, TransportErrorKind};
 use eyre::{bail, Context, Result};
 use forge_verify::provider::VerificationProviderType;
 use foundry_cheatcodes::ScriptWallets;
@@ -22,10 +22,12 @@ use foundry_common::{
 use foundry_config::Config;
 use futures::{future::join_all, StreamExt};
 use itertools::Itertools;
+use revm_primitives::ChainAddress;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
+use alloy_provider::RootProvider;
 
 pub async fn estimate_gas<P, T>(
     tx: &mut WithOtherFields<TransactionRequest>,
@@ -48,10 +50,22 @@ where
     Ok(())
 }
 
-pub async fn next_nonce(caller: Address, provider_url: &str) -> eyre::Result<u64> {
+pub async fn next_nonce(caller: ChainAddress, provider_url: &str) -> eyre::Result<u64> {
     let provider = try_get_http_provider(provider_url)
         .wrap_err_with(|| format!("bad fork_url provider: {provider_url}"))?;
-    Ok(provider.get_transaction_count(caller).await?)
+
+    //println!("Provider: {:?}", provider_url);
+    let chain_id = provider.get_chain_id().await.unwrap();
+    //println!("current chain: {:?}, requested: {:?}", chain_id, caller.0);
+    if provider.get_chain_id().await.unwrap() != caller.0 {
+        let result: std::result::Result<bool, RpcError<TransportErrorKind>> = provider
+            .client()
+            .request("eth_setActiveChainId", (caller.0,))
+            .await;
+        assert!(result.is_ok(), "Couldn't switch to the expected chain on provider {:?}", provider_url);
+    }
+
+    Ok(provider.get_transaction_count(caller.1).await?)
 }
 
 pub async fn send_transaction(
@@ -66,11 +80,19 @@ pub async fn send_transaction(
         if sequential_broadcast {
             let from = tx.from.expect("no sender");
 
+            let chain_id = tx.chain_id.unwrap();
+            println!("Sending transaction on chain {:?}", chain_id);
+            let result: std::result::Result<bool, RpcError<TransportErrorKind>> = provider
+                .client()
+                .request("eth_setActiveChainId", (chain_id,))
+                .await;
+            assert!(result.unwrap(), "Couldn't switch to the expected chain");
+
             let nonce = provider.get_transaction_count(from).await?;
 
             let tx_nonce = tx.nonce.expect("no nonce");
             if nonce != tx_nonce {
-                bail!("EOA nonce changed unexpectedly while sending transactions. Expected {tx_nonce} got {nonce} from provider.")
+                bail!("EOA nonce changed unexpectedly while sending transactions. Expected {tx_nonce} got {nonce} from provider (on chain {chain_id}).")
             }
         }
 

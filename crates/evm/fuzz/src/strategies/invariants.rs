@@ -9,13 +9,14 @@ use alloy_primitives::Address;
 use parking_lot::RwLock;
 use proptest::prelude::*;
 use rand::seq::IteratorRandom;
+use revm::primitives::ChainAddress;
 use std::{rc::Rc, sync::Arc};
 
 /// Given a target address, we generate random calldata.
 pub fn override_call_strat(
     fuzz_state: EvmFuzzState,
     contracts: FuzzRunIdentifiedContracts,
-    target: Arc<RwLock<Address>>,
+    target: Arc<RwLock<ChainAddress>>,
     fuzz_fixtures: FuzzFixtures,
 ) -> impl Strategy<Value = CallDetails> + Send + Sync + 'static {
     let contracts_ref = contracts.targets.clone();
@@ -63,6 +64,7 @@ pub fn invariant_strat(
     dictionary_weight: u32,
     fuzz_fixtures: FuzzFixtures,
 ) -> impl Strategy<Value = BasicTxDetails> {
+    let chain_id: u64 = 1;
     let senders = Rc::new(senders);
     any::<prop::sample::Selector>()
         .prop_flat_map(move |selector| {
@@ -78,7 +80,7 @@ pub fn invariant_strat(
             );
             (sender, call_details)
         })
-        .prop_map(|(sender, call_details)| BasicTxDetails { sender, call_details })
+        .prop_map(move |(sender, call_details)| BasicTxDetails { sender: ChainAddress(chain_id, sender.clone()), call_details })
 }
 
 /// Strategy to select a sender address:
@@ -109,7 +111,7 @@ fn select_random_sender(
 pub fn fuzz_contract_with_calldata(
     fuzz_state: &EvmFuzzState,
     fuzz_fixtures: &FuzzFixtures,
-    target: Address,
+    target: ChainAddress,
     func: Function,
 ) -> impl Strategy<Value = CallDetails> {
     // We need to compose all the strategies generated for each parameter in all possible

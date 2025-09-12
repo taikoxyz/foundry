@@ -1,7 +1,6 @@
 use crate::{invariant::RandomCallGenerator, strategies::EvmFuzzState};
 use revm::{
-    interpreter::{CallInputs, CallOutcome, CallScheme, Interpreter},
-    Database, EvmContext, Inspector,
+    interpreter::{CallInputs, CallOutcome, CallScheme, Interpreter}, primitives::ChainAddress, Database, EvmContext, Inspector, SyncDatabase
 };
 
 /// An inspector that can fuzz and collect data for that effect.
@@ -15,7 +14,7 @@ pub struct Fuzzer {
     pub fuzz_state: EvmFuzzState,
 }
 
-impl<DB: Database> Inspector<DB> for Fuzzer {
+impl<DB: SyncDatabase> Inspector<DB> for Fuzzer {
     #[inline]
     fn step(&mut self, interp: &mut Interpreter, _context: &mut EvmContext<DB>) {
         // We only collect `stack` and `memory` data before and after calls.

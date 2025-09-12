@@ -35,6 +35,7 @@ use foundry_evm::{
 };
 use proptest::test_runner::TestRunner;
 use rayon::prelude::*;
+use revm_primitives::ChainAddress;
 use std::{
     borrow::Cow,
     cmp::min,
@@ -65,7 +66,7 @@ pub struct ContractRunner<'a> {
     /// The initial balance of the test contract.
     pub initial_balance: U256,
     /// The address which will be used as the `from` field in all EVM calls.
-    pub sender: Address,
+    pub sender: ChainAddress,
     /// Whether debug traces should be generated.
     pub debug: bool,
     /// Overall test run progress.
@@ -89,21 +90,25 @@ impl<'a> ContractRunner<'a> {
     fn _setup(&mut self, call_setup: bool) -> Result<TestSetup> {
         trace!(call_setup, "setting up");
 
+        println!("setting up ContractRunner");
+
+        let chain_id = self.executor.env().cfg.chain_id;
+
         // We max out their balance so that they can deploy and make calls.
         self.executor.set_balance(self.sender, U256::MAX)?;
-        self.executor.set_balance(CALLER, U256::MAX)?;
+        self.executor.set_balance(ChainAddress(chain_id, CALLER), U256::MAX)?;
 
         // We set the nonce of the deployer accounts to 1 to get the same addresses as DappTools
         self.executor.set_nonce(self.sender, 1)?;
 
         // Deploy libraries
-        self.executor.set_balance(LIBRARY_DEPLOYER, U256::MAX)?;
+        self.executor.set_balance(ChainAddress(chain_id, LIBRARY_DEPLOYER), U256::MAX)?;
 
         let mut logs = Vec::new();
         let mut traces = Vec::with_capacity(self.libs_to_deploy.len());
         for code in self.libs_to_deploy.iter() {
             match self.executor.deploy(
-                LIBRARY_DEPLOYER,
+                ChainAddress(chain_id, LIBRARY_DEPLOYER),
                 code.clone(),
                 U256::ZERO,
                 Some(self.revert_decoder),
@@ -118,11 +123,13 @@ impl<'a> ContractRunner<'a> {
             }
         }
 
-        let address = self.sender.create(self.executor.get_nonce(self.sender)?);
+        let address = self.sender.1.create(self.executor.get_nonce(self.sender)?);
+
+        let chain_id = self.sender.0;
 
         // Set the contracts initial balance before deployment, so it is available during
         // construction
-        self.executor.set_balance(address, self.initial_balance)?;
+        self.executor.set_balance(ChainAddress(chain_id, address), self.initial_balance)?;
 
         // Deploy the test contract
         match self.executor.deploy(
@@ -143,15 +150,15 @@ impl<'a> ContractRunner<'a> {
 
         // Reset `self.sender`s, `CALLER`s and `LIBRARY_DEPLOYER`'s balance to the initial balance.
         self.executor.set_balance(self.sender, self.initial_balance)?;
-        self.executor.set_balance(CALLER, self.initial_balance)?;
-        self.executor.set_balance(LIBRARY_DEPLOYER, self.initial_balance)?;
+        self.executor.set_balance(ChainAddress(chain_id, CALLER), self.initial_balance)?;
+        self.executor.set_balance(ChainAddress(chain_id, LIBRARY_DEPLOYER), self.initial_balance)?;
 
         self.executor.deploy_create2_deployer()?;
 
         // Optionally call the `setUp` function
         let result = if call_setup {
             trace!("calling setUp");
-            let res = self.executor.setup(None, address, Some(self.revert_decoder));
+            let res = self.executor.setup(None, ChainAddress(chain_id, address), Some(self.revert_decoder));
             let (setup_logs, setup_traces, labeled_addresses, reason, coverage) = match res {
                 Ok(RawCallResult { traces, labels, logs, coverage, .. }) => {
                     trace!(%address, "successfully called setUp");
@@ -172,22 +179,22 @@ impl<'a> ContractRunner<'a> {
             logs.extend(setup_logs);
 
             TestSetup {
-                address,
+                address: ChainAddress(chain_id, address),
                 logs,
                 traces,
                 labeled_addresses,
                 reason,
                 coverage,
-                fuzz_fixtures: self.fuzz_fixtures(address),
+                fuzz_fixtures: self.fuzz_fixtures(ChainAddress(chain_id, address)),
             }
         } else {
             TestSetup::success(
-                address,
+                ChainAddress(chain_id, address),
                 logs,
                 traces,
                 Default::default(),
                 None,
-                self.fuzz_fixtures(address),
+                self.fuzz_fixtures(ChainAddress(chain_id, address)),
             )
         };
 
@@ -209,14 +216,15 @@ impl<'a> ContractRunner<'a> {
     /// `function fixture_owner() public returns (address[] memory){}`
     /// returns an array of addresses to be used for fuzzing `owner` named parameter in scope of the
     /// current test.
-    fn fuzz_fixtures(&mut self, address: Address) -> FuzzFixtures {
+    fn fuzz_fixtures(&mut self, address: ChainAddress) -> FuzzFixtures {
+        let chain_id = address.0;
         let mut fixtures = HashMap::new();
         let fixture_functions = self.contract.abi.functions().filter(|func| func.is_fixture());
         for func in fixture_functions {
             if func.inputs.is_empty() {
                 // Read fixtures declared as functions.
                 if let Ok(CallResult { raw: _, decoded_result }) =
-                    self.executor.call(CALLER, address, func, &[], U256::ZERO, None)
+                    self.executor.call(ChainAddress(chain_id, CALLER), address, func, &[], U256::ZERO, None)
                 {
                     fixtures.insert(fixture_name(func.name.clone()), decoded_result);
                 }
@@ -227,7 +235,7 @@ impl<'a> ContractRunner<'a> {
                 let mut index = 0;
                 loop {
                     if let Ok(CallResult { raw: _, decoded_result }) = self.executor.call(
-                        CALLER,
+                        ChainAddress(chain_id, CALLER),
                         address,
                         func,
                         &[DynSolValue::Uint(U256::from(index), 256)],
@@ -650,6 +658,8 @@ impl<'a> ContractRunner<'a> {
             Err(res) => return res,
         };
 
+        let chain_id = executor.env().cfg.chain_id;
+
         // Run fuzz test.
         let fuzzed_executor =
             FuzzedExecutor::new(executor.into_owned(), runner, self.sender, fuzz_config);
@@ -683,7 +693,7 @@ impl<'a> ContractRunner<'a> {
         &self,
         func: &Function,
         setup: TestSetup,
-    ) -> Result<(Cow<'_, Executor>, TestResult, Address), TestResult> {
+    ) -> Result<(Cow<'_, Executor>, TestResult, ChainAddress), TestResult> {
         let address = setup.address;
         let mut executor = Cow::Borrowed(&self.executor);
         let mut test_result = TestResult::new(setup);

@@ -45,6 +45,7 @@ use std::{
     time::Instant,
 };
 use yansi::Paint;
+use revm_primitives::ChainAddress;
 
 mod filter;
 mod summary;
@@ -263,6 +264,8 @@ impl TestArgs {
     ///
     /// Returns the test results for all matching tests.
     pub async fn execute_tests(mut self) -> Result<TestOutcome> {
+        println!("execute_tests");
+
         // Merge all configs.
         let (mut config, mut evm_opts) = self.load_config_and_evm_opts_emit_warnings()?;
 
@@ -325,7 +328,12 @@ impl TestArgs {
             evm_opts.verbosity = 3;
         }
 
+        println!("opts chain id: {:?}", evm_opts.env.chain_id);
+
         let env = evm_opts.evm_env().await?;
+
+        let chain_id = env.cfg.chain_id;
+        println!("executing tests on chain id {}", chain_id);
 
         // Enable internal tracing for more informative flamegraph.
         if should_draw {
@@ -352,7 +360,7 @@ impl TestArgs {
             .set_decode_internal(decode_internal)
             .initial_balance(evm_opts.initial_balance)
             .evm_spec(config.evm_spec_id())
-            .sender(evm_opts.sender)
+            .sender(ChainAddress(chain_id, evm_opts.sender))
             .with_fork(evm_opts.get_fork(&config, env.clone()))
             .with_test_options(test_options)
             .enable_isolation(evm_opts.isolate)

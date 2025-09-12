@@ -6,7 +6,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 use auto_impl::auto_impl;
-use revm::{inspectors::NoOpInspector, interpreter::CreateInputs, Database, EvmContext, Inspector};
+use revm::{inspectors::NoOpInspector, interpreter::CreateInputs, Database, EvmContext, Inspector, SyncDatabase};
 use revm_inspectors::access_list::AccessListInspector;
 
 #[macro_use]
@@ -32,7 +32,7 @@ pub mod utils;
 /// An extension trait that allows us to add additional hooks to Inspector for later use in
 /// handlers.
 #[auto_impl(&mut, Box)]
-pub trait InspectorExt<DB: Database>: Inspector<DB> {
+pub trait InspectorExt<DB: SyncDatabase>: Inspector<DB> {
     /// Determines whether the `DEFAULT_CREATE2_DEPLOYER` should be used for a CREATE2 frame.
     ///
     /// If this function returns true, we'll replace CREATE2 frame with a CALL frame to CREATE2
@@ -53,5 +53,5 @@ pub trait InspectorExt<DB: Database>: Inspector<DB> {
     }
 }
 
-impl<DB: Database> InspectorExt<DB> for NoOpInspector {}
-impl<DB: Database> InspectorExt<DB> for AccessListInspector {}
+impl<DB: SyncDatabase> InspectorExt<DB> for NoOpInspector {}
+impl<DB: SyncDatabase> InspectorExt<DB> for AccessListInspector {}

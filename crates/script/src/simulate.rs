@@ -12,6 +12,7 @@ use crate::{
     sequence::get_commit_hash,
     ScriptArgs, ScriptConfig, ScriptResult,
 };
+use alloy_consensus::Transaction;
 use alloy_network::TransactionBuilder;
 use alloy_primitives::{utils::format_units, Address, Bytes, TxKind, U256};
 use eyre::{Context, Result};
@@ -21,6 +22,7 @@ use foundry_common::{get_contract_name, shell, ContractData};
 use foundry_evm::traces::{decode_trace_arena, render_trace_arena};
 use futures::future::{join_all, try_join_all};
 use parking_lot::RwLock;
+use revm_primitives::ChainAddress;
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
     sync::Arc,
@@ -78,6 +80,7 @@ impl PreSimulationState {
         transactions: BroadcastableTransactions,
     ) -> Result<VecDeque<TransactionWithMetadata>> {
         trace!(target: "script", "executing onchain simulation");
+        println!("executing onchain simulation");
 
         let runners = Arc::new(
             self.build_runners()
@@ -99,12 +102,13 @@ impl PreSimulationState {
                 let mut runner = runners.get(&rpc).expect("invalid rpc url").write();
 
                 let mut tx = transaction.transaction;
+                let chain_id = runner.executor.env().cfg.chain_id;
                 let to = if let Some(TxKind::Call(to)) = tx.to() { Some(to) } else { None };
                 let result = runner
                     .simulate(
-                        tx.from()
+                        tx.from().map(|a| ChainAddress(chain_id, a))
                             .expect("transaction doesn't have a `from` address at execution time"),
-                        to,
+                        to.map(|a| ChainAddress(chain_id, a)),
                         tx.input().map(Bytes::copy_from_slice),
                         tx.value(),
                     )
@@ -118,7 +122,9 @@ impl PreSimulationState {
 
                 // Simulate mining the transaction if the user passes `--slow`.
                 if self.args.slow {
-                    runner.executor.env_mut().block.number += U256::from(1);
+                    for (_, block) in runner.executor.env_mut().blocks.iter_mut() {
+                        block.number += U256::from(1);
+                    }
                 }
 
                 let is_fixed_gas_limit = if let Some(tx) = tx.as_unsigned_mut() {
@@ -278,10 +284,8 @@ impl FilledTransactionsState {
             let tx_rpc = tx.rpc.clone();
             let provider_info = manager.get_or_init_provider(&tx.rpc, self.args.legacy).await?;
 
-            if let Some(tx) = tx.transaction.as_unsigned_mut() {
-                // Handles chain specific requirements for unsigned transactions.
-                tx.set_chain_id(provider_info.chain);
-            }
+            let chain_id = tx.tx().chain_id().unwrap_or(provider_info.chain);
+            println!("tx chain id: {:?}", chain_id);
 
             if !self.args.skip_simulation {
                 let tx = tx.tx_mut();
@@ -322,17 +326,17 @@ impl FilledTransactionsState {
                 *total_gas += tx.gas().expect("gas is set");
             }
 
-            new_sequence.push_back(tx);
+            new_sequence.push_back(tx.clone());
             // We only create a [`ScriptSequence`] object when we collect all the rpc related
             // transactions.
             if let Some(next_tx) = txes_iter.peek() {
-                if next_tx.rpc == tx_rpc {
+                if next_tx.rpc == tx_rpc && next_tx.tx().chain_id() == tx.tx().chain_id() {
                     continue;
                 }
             }
 
             let sequence =
-                self.create_sequence(is_multi_deployment, provider_info.chain, new_sequence)?;
+                self.create_sequence(is_multi_deployment, chain_id, new_sequence)?;
 
             sequences.push(sequence);
 
@@ -401,6 +405,8 @@ impl FilledTransactionsState {
         chain: u64,
         transactions: VecDeque<TransactionWithMetadata>,
     ) -> Result<ScriptSequence> {
+        println!("create_sequence on {:?}", chain);
+
         // Paths are set to None for multi-chain sequences parts, because they don't need to be
         // saved to a separate file.
         let paths = if multi {

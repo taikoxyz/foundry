@@ -12,6 +12,7 @@ use foundry_evm::{
     revm::interpreter::{return_ok, InstructionResult},
     traces::{TraceKind, Traces},
 };
+use revm_primitives::ChainAddress;
 use std::collections::VecDeque;
 use yansi::Paint;
 
@@ -39,10 +40,14 @@ impl ScriptRunner {
     ) -> Result<(Address, ScriptResult)> {
         trace!(target: "script", "executing setUP()");
 
+        println!("setting up ScriptRunner");
+
+        let chain_id = self.executor.env().cfg.chain_id;
+
         if !is_broadcast {
             if self.evm_opts.sender == Config::DEFAULT_SENDER {
                 // We max out their balance so that they can deploy and make calls.
-                self.executor.set_balance(self.evm_opts.sender, U256::MAX)?;
+                self.executor.set_balance(ChainAddress(chain_id, self.evm_opts.sender), U256::MAX)?;
             }
 
             if need_create2_deployer {
@@ -50,10 +55,10 @@ impl ScriptRunner {
             }
         }
 
-        self.executor.set_nonce(self.evm_opts.sender, sender_nonce)?;
+        self.executor.set_nonce(ChainAddress(chain_id, self.evm_opts.sender), sender_nonce)?;
 
         // We max out their balance so that they can deploy and make calls.
-        self.executor.set_balance(CALLER, U256::MAX)?;
+        self.executor.set_balance(ChainAddress(chain_id, CALLER), U256::MAX)?;
 
         let mut library_transactions = VecDeque::new();
         let mut traces = Traces::default();
@@ -63,7 +68,7 @@ impl ScriptRunner {
             ScriptPredeployLibraries::Default(libraries) => libraries.iter().for_each(|code| {
                 let result = self
                     .executor
-                    .deploy(self.evm_opts.sender, code.clone(), U256::ZERO, None)
+                    .deploy(ChainAddress(chain_id, self.evm_opts.sender), code.clone(), U256::ZERO, None)
                     .expect("couldn't deploy library")
                     .raw;
 
@@ -83,19 +88,20 @@ impl ScriptRunner {
                 })
             }),
             ScriptPredeployLibraries::Create2(libraries, salt) => {
+                let chain_id = self.executor.env().cfg.chain_id;
                 for library in libraries {
                     let address =
                         DEFAULT_CREATE2_DEPLOYER.create2_from_code(salt, library.as_ref());
                     // Skip if already deployed
-                    if !self.executor.is_empty_code(address)? {
+                    if !self.executor.is_empty_code(ChainAddress(chain_id, address))? {
                         continue;
                     }
                     let calldata = [salt.as_ref(), library.as_ref()].concat();
                     let result = self
                         .executor
                         .transact_raw(
-                            self.evm_opts.sender,
-                            DEFAULT_CREATE2_DEPLOYER,
+                            ChainAddress(chain_id, self.evm_opts.sender),
+                            ChainAddress(chain_id, DEFAULT_CREATE2_DEPLOYER),
                             calldata.clone().into(),
                             U256::from(0),
                         )
@@ -121,17 +127,17 @@ impl ScriptRunner {
                 // Sender nonce is not incremented when performing CALLs. We need to manually
                 // increase it.
                 self.executor.set_nonce(
-                    self.evm_opts.sender,
+                    ChainAddress(chain_id, self.evm_opts.sender),
                     sender_nonce + library_transactions.len() as u64,
                 )?;
             }
         };
 
-        let address = CALLER.create(self.executor.get_nonce(CALLER)?);
+        let address = CALLER.create(self.executor.get_nonce(ChainAddress(chain_id, CALLER))?);
 
         // Set the contracts initial balance before deployment, so it is available during the
         // construction
-        self.executor.set_balance(address, self.evm_opts.initial_balance)?;
+        self.executor.set_balance(ChainAddress(chain_id, address), self.evm_opts.initial_balance)?;
 
         // Deploy an instance of the contract
         let DeployResult {
@@ -139,17 +145,17 @@ impl ScriptRunner {
             raw: RawCallResult { mut logs, traces: constructor_traces, .. },
         } = self
             .executor
-            .deploy(CALLER, code, U256::ZERO, None)
+            .deploy(ChainAddress(chain_id, CALLER), code, U256::ZERO, None)
             .map_err(|err| eyre::eyre!("Failed to deploy script:\n{}", err))?;
 
         traces.extend(constructor_traces.map(|traces| (TraceKind::Deployment, traces)));
 
         // Optionally call the `setUp` function
         let (success, gas_used, labeled_addresses, transactions) = if !setup {
-            self.executor.backend_mut().set_test_contract(address);
+            self.executor.backend_mut().set_test_contract(ChainAddress(chain_id, address));
             (true, 0, Default::default(), Some(library_transactions))
         } else {
-            match self.executor.setup(Some(self.evm_opts.sender), address, None) {
+            match self.executor.setup(Some(ChainAddress(chain_id, self.evm_opts.sender)), ChainAddress(chain_id, address), None) {
                 Ok(RawCallResult {
                     reverted,
                     traces: setup_traces,
@@ -208,15 +214,15 @@ impl ScriptRunner {
     }
 
     /// Executes the method that will collect all broadcastable transactions.
-    pub fn script(&mut self, address: Address, calldata: Bytes) -> Result<ScriptResult> {
-        self.call(self.evm_opts.sender, address, calldata, U256::ZERO, false)
+    pub fn script(&mut self, address: ChainAddress, calldata: Bytes) -> Result<ScriptResult> {
+        self.call(ChainAddress(address.0, self.evm_opts.sender), address, calldata, U256::ZERO, false)
     }
 
     /// Runs a broadcastable transaction locally and persists its state.
     pub fn simulate(
         &mut self,
-        from: Address,
-        to: Option<Address>,
+        from: ChainAddress,
+        to: Option<ChainAddress>,
         calldata: Option<Bytes>,
         value: Option<U256>,
     ) -> Result<ScriptResult> {
@@ -264,12 +270,15 @@ impl ScriptRunner {
     /// can be used as `gas_limit`.
     fn call(
         &mut self,
-        from: Address,
-        to: Address,
+        from: ChainAddress,
+        to: ChainAddress,
         calldata: Bytes,
         value: U256,
         commit: bool,
     ) -> Result<ScriptResult> {
+        println!("from: {:?}", from);
+        println!("to: {:?}", to);
+
         let mut res = self.executor.call_raw(from, to, calldata.clone(), value)?;
         let mut gas_used = res.gas_used;
 
@@ -278,6 +287,7 @@ impl ScriptRunner {
         // collected transactions.
         //
         // Otherwise don't re-execute, or some usecases might be broken: https://github.com/foundry-rs/foundry/issues/3921
+
         if commit {
             gas_used = self.search_optimal_gas_usage(&res, from, to, &calldata, value)?;
             res = self.executor.transact_raw(from, to, calldata, value)?;
@@ -314,8 +324,8 @@ impl ScriptRunner {
     fn search_optimal_gas_usage(
         &mut self,
         res: &RawCallResult,
-        from: Address,
-        to: Address,
+        from: ChainAddress,
+        to: ChainAddress,
         calldata: &Bytes,
         value: U256,
     ) -> Result<u64> {

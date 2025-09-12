@@ -26,7 +26,7 @@ use parking_lot::{
     lock_api::{RwLockReadGuard, RwLockWriteGuard},
     RawRwLock, RwLock,
 };
-use revm::primitives::BlobExcessGasAndPrice;
+use revm::primitives::{BlobExcessGasAndPrice, ChainAddress};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::RwLock as AsyncRwLock;
 
@@ -67,14 +67,15 @@ impl ClientFork {
                 .map_err(BlockchainError::Internal)?;
         }
 
+        let override_chain_id = self.config.read().override_chain_id;
+        let chain_id = if let Some(chain_id) = override_chain_id {
+            chain_id
+        } else {
+            self.provider().get_chain_id().await?
+        };
+
         if let Some(url) = url {
             self.config.write().update_url(url)?;
-            let override_chain_id = self.config.read().override_chain_id;
-            let chain_id = if let Some(chain_id) = override_chain_id {
-                chain_id
-            } else {
-                self.provider().get_chain_id().await?
-            };
             self.config.write().chain_id = chain_id;
         }
 
@@ -93,7 +94,7 @@ impl ClientFork {
 
         self.clear_cached_storage();
 
-        self.database.write().await.insert_block_hash(U256::from(number), block_hash);
+        self.database.write().await.insert_block_hash(chain_id, U256::from(number), block_hash);
 
         Ok(())
     }
@@ -171,11 +172,11 @@ impl ClientFork {
     /// Sends `eth_getProof`
     pub async fn get_proof(
         &self,
-        address: Address,
+        address: ChainAddress,
         keys: Vec<B256>,
         block_number: Option<BlockId>,
     ) -> Result<EIP1186AccountProofResponse, TransportError> {
-        self.provider().get_proof(address, keys).block_id(block_number.unwrap_or_default()).await
+        self.provider().get_proof(address.1, keys).block_id(block_number.unwrap_or_default()).await
     }
 
     /// Sends `eth_call`
@@ -213,12 +214,12 @@ impl ClientFork {
 
     pub async fn storage_at(
         &self,
-        address: Address,
+        address: ChainAddress,
         index: U256,
         number: Option<BlockNumber>,
     ) -> Result<StorageValue, TransportError> {
         self.provider()
-            .get_storage_at(address, index)
+            .get_storage_at(address.1, index)
             .block_id(number.unwrap_or_default().into())
             .await
     }
@@ -237,7 +238,7 @@ impl ClientFork {
 
     pub async fn get_code(
         &self,
-        address: Address,
+        address: ChainAddress,
         blocknumber: u64,
     ) -> Result<Bytes, TransportError> {
         trace!(target: "backend::fork", "get_code={:?}", address);
@@ -247,7 +248,7 @@ impl ClientFork {
 
         let block_id = BlockId::number(blocknumber);
 
-        let code = self.provider().get_code_at(address).block_id(block_id).await?;
+        let code = self.provider().get_code_at(address.1).block_id(block_id).await?;
 
         let mut storage = self.storage_write();
         storage.code_at.insert((address, blocknumber), code.clone().0.into());
@@ -264,18 +265,18 @@ impl ClientFork {
         self.provider().get_balance(address).block_id(blocknumber.into()).await
     }
 
-    pub async fn get_nonce(&self, address: Address, block: u64) -> Result<u64, TransportError> {
+    pub async fn get_nonce(&self, address: ChainAddress, block: u64) -> Result<u64, TransportError> {
         trace!(target: "backend::fork", "get_nonce={:?}", address);
-        self.provider().get_transaction_count(address).block_id(block.into()).await
+        self.provider().get_transaction_count(address.1).block_id(block.into()).await
     }
 
     pub async fn get_account(
         &self,
-        address: Address,
+        address: ChainAddress,
         blocknumber: u64,
     ) -> Result<Account, TransportError> {
         trace!(target: "backend::fork", "get_account={:?}", address);
-        self.provider().get_account(address).block_id(blocknumber.into()).await
+        self.provider().get_account(address.1).block_id(blocknumber.into()).await
     }
 
     pub async fn transaction_by_block_number_and_index(
@@ -685,7 +686,7 @@ pub struct ForkedStorage {
     pub geth_transaction_traces: HashMap<B256, GethTrace>,
     pub block_traces: HashMap<u64, Vec<Trace>>,
     pub block_receipts: HashMap<u64, Vec<ReceiptResponse>>,
-    pub code_at: HashMap<(Address, u64), Bytes>,
+    pub code_at: HashMap<(ChainAddress, u64), Bytes>,
 }
 
 impl ForkedStorage {

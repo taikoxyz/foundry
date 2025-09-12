@@ -15,9 +15,7 @@ use foundry_config::Config;
 use foundry_evm::{constants::DEFAULT_CREATE2_DEPLOYER, executors::TracingExecutor, opts::EvmOpts};
 use reqwest::Url;
 use revm_primitives::{
-    db::Database,
-    env::{EnvWithHandlerCfg, HandlerCfg},
-    Bytecode, Env, SpecId,
+    db::{Database, SyncDatabase}, env::{EnvWithHandlerCfg, HandlerCfg}, Bytecode, ChainAddress, Env, SpecId
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -347,12 +345,14 @@ pub async fn get_tracing_executor(
 }
 
 pub fn configure_env_block(env: &mut Env, block: &AnyNetworkBlock) {
-    env.block.timestamp = U256::from(block.header.timestamp);
-    env.block.coinbase = block.header.miner;
-    env.block.difficulty = block.header.difficulty;
-    env.block.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
-    env.block.basefee = U256::from(block.header.base_fee_per_gas.unwrap_or_default());
-    env.block.gas_limit = U256::from(block.header.gas_limit);
+    for (_, block_env) in env.blocks.iter_mut() {
+        block_env.timestamp = U256::from(block.header.timestamp);
+        block_env.coinbase = ChainAddress(env.cfg.chain_id, block.header.miner);
+        block_env.difficulty = block.header.difficulty;
+        block_env.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
+        block_env.basefee = U256::from(block.header.base_fee_per_gas.unwrap_or_default());
+        block_env.gas_limit = U256::from(block.header.gas_limit);
+    }
 }
 
 pub fn deploy_contract(
@@ -387,8 +387,8 @@ pub fn deploy_contract(
 pub async fn get_runtime_codes(
     executor: &mut TracingExecutor,
     provider: &RetryProvider,
-    address: Address,
-    fork_address: Address,
+    address: ChainAddress,
+    fork_address: ChainAddress,
     block: Option<u64>,
 ) -> Result<(Bytecode, Bytes)> {
     let fork_runtime_code = executor
@@ -397,21 +397,21 @@ pub async fn get_runtime_codes(
         .ok_or_else(|| {
             eyre::eyre!(
                 "Failed to get runtime code for contract deployed on fork at address {}",
-                fork_address
+                fork_address.1
             )
         })?
         .code
         .ok_or_else(|| {
             eyre::eyre!(
                 "Bytecode does not exist for contract deployed on fork at address {}",
-                fork_address
+                fork_address.1
             )
         })?;
 
     let onchain_runtime_code = if let Some(block) = block {
-        provider.get_code_at(address).block_id(BlockId::number(block)).await?
+        provider.get_code_at(address.1).block_id(BlockId::number(block)).await?
     } else {
-        provider.get_code_at(address).await?
+        provider.get_code_at(address.1).await?
     };
 
     Ok((fork_runtime_code, onchain_runtime_code))

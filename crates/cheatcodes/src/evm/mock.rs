@@ -1,6 +1,6 @@
 use crate::{Cheatcode, Cheatcodes, CheatsCtxt, DatabaseExt, Result, Vm::*};
 use alloy_primitives::{Address, Bytes, U256};
-use revm::{interpreter::InstructionResult, primitives::Bytecode};
+use revm::{interpreter::InstructionResult, primitives::{Bytecode, ChainAddress}};
 use std::cmp::Ordering;
 
 /// Mocked call data.
@@ -49,14 +49,15 @@ impl Cheatcode for clearMockedCallsCall {
 impl Cheatcode for mockCall_0Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { callee, data, returnData } = self;
-        let acc = ccx.ecx.load_account(*callee)?;
+        let chain_id = ccx.state.chain_id;
+        let acc = ccx.ecx.load_account(ChainAddress(chain_id, *callee))?;
 
         // Etches a single byte onto the account if it is empty to circumvent the `extcodesize`
         // check Solidity might perform.
         let empty_bytecode = acc.info.code.as_ref().map_or(true, Bytecode::is_empty);
         if empty_bytecode {
             let code = Bytecode::new_raw(Bytes::from_static(&[0u8]));
-            ccx.ecx.journaled_state.set_code(*callee, code);
+            ccx.ecx.journaled_state.set_code(ChainAddress(chain_id, *callee), code);
         }
 
         mock_call(ccx.state, callee, data, None, returnData, InstructionResult::Return);
@@ -67,7 +68,8 @@ impl Cheatcode for mockCall_0Call {
 impl Cheatcode for mockCall_1Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { callee, msgValue, data, returnData } = self;
-        ccx.ecx.load_account(*callee)?;
+        let chain_id = ccx.state.chain_id;
+        ccx.ecx.load_account(ChainAddress(chain_id, *callee))?;
         mock_call(ccx.state, callee, data, Some(msgValue), returnData, InstructionResult::Return);
         Ok(Default::default())
     }

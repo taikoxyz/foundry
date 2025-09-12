@@ -8,6 +8,7 @@ use crate::prelude::{
 use alloy_dyn_abi::{DynSolType, DynSolValue};
 use alloy_json_abi::EventParam;
 use alloy_primitives::{hex, Address, U256};
+use revm::primitives::ChainAddress;
 use core::fmt::Debug;
 use eyre::{Result, WrapErr};
 use foundry_compilers::Artifact;
@@ -187,6 +188,7 @@ impl SessionSource {
             return Ok((false, None))
         }
 
+        println!("inspect");
         let Some((stack, memory, _)) = &res.state else {
             // Show traces and logs, if there are any, and return an error
             if let Ok(decoder) = ChiselDispatcher::decode_traces(&source.config, &mut res).await {
@@ -320,7 +322,7 @@ impl SessionSource {
 
         // Create a [ChiselRunner] with a default balance of [U256::MAX] and
         // the sender [Address::zero].
-        ChiselRunner::new(executor, U256::MAX, Address::ZERO, self.config.calldata.clone())
+        ChiselRunner::new(executor, U256::MAX, ChainAddress(0, Address::ZERO), self.config.calldata.clone())
     }
 }
 

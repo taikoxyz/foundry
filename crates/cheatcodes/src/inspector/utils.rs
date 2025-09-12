@@ -2,29 +2,28 @@ use crate::inspector::Cheatcodes;
 use alloy_primitives::{Address, Bytes, U256};
 use foundry_evm_core::backend::DatabaseExt;
 use revm::{
-    interpreter::{CreateInputs, CreateScheme, EOFCreateInputs, EOFCreateKind},
-    InnerEvmContext,
+    interpreter::{CreateInputs, CreateScheme, EOFCreateInputs, EOFCreateKind}, primitives::ChainAddress, InnerEvmContext
 };
 
 /// Common behaviour of legacy and EOF create inputs.
 pub(crate) trait CommonCreateInput<DB: DatabaseExt> {
-    fn caller(&self) -> Address;
+    fn caller(&self) -> ChainAddress;
     fn gas_limit(&self) -> u64;
     fn value(&self) -> U256;
     fn init_code(&self) -> Bytes;
     fn scheme(&self) -> Option<CreateScheme>;
-    fn set_caller(&mut self, caller: Address);
+    fn set_caller(&mut self, caller: ChainAddress);
     fn log_debug(&self, cheatcode: &mut Cheatcodes, scheme: &CreateScheme);
     fn allow_cheatcodes(
         &self,
         cheatcodes: &mut Cheatcodes,
         ecx: &mut InnerEvmContext<DB>,
-    ) -> Address;
-    fn computed_created_address(&self) -> Option<Address>;
+    ) -> ChainAddress;
+    fn computed_created_address(&self) -> Option<ChainAddress>;
 }
 
 impl<DB: DatabaseExt> CommonCreateInput<DB> for &mut CreateInputs {
-    fn caller(&self) -> Address {
+    fn caller(&self) -> ChainAddress {
         self.caller
     }
     fn gas_limit(&self) -> u64 {
@@ -39,7 +38,7 @@ impl<DB: DatabaseExt> CommonCreateInput<DB> for &mut CreateInputs {
     fn scheme(&self) -> Option<CreateScheme> {
         Some(self.scheme)
     }
-    fn set_caller(&mut self, caller: Address) {
+    fn set_caller(&mut self, caller: ChainAddress) {
         self.caller = caller;
     }
     fn log_debug(&self, cheatcode: &mut Cheatcodes, scheme: &CreateScheme) {
@@ -53,24 +52,24 @@ impl<DB: DatabaseExt> CommonCreateInput<DB> for &mut CreateInputs {
         &self,
         cheatcodes: &mut Cheatcodes,
         ecx: &mut InnerEvmContext<DB>,
-    ) -> Address {
+    ) -> ChainAddress {
         let old_nonce = ecx
             .journaled_state
             .state
             .get(&self.caller)
             .map(|acc| acc.info.nonce)
             .unwrap_or_default();
-        let created_address = self.created_address(old_nonce);
+        let created_address = ChainAddress(self.caller.0, self.created_address(old_nonce));
         cheatcodes.allow_cheatcodes_on_create(ecx, self.caller, created_address);
         created_address
     }
-    fn computed_created_address(&self) -> Option<Address> {
+    fn computed_created_address(&self) -> Option<ChainAddress> {
         None
     }
 }
 
 impl<DB: DatabaseExt> CommonCreateInput<DB> for &mut EOFCreateInputs {
-    fn caller(&self) -> Address {
+    fn caller(&self) -> ChainAddress {
         self.caller
     }
     fn gas_limit(&self) -> u64 {
@@ -88,7 +87,7 @@ impl<DB: DatabaseExt> CommonCreateInput<DB> for &mut EOFCreateInputs {
     fn scheme(&self) -> Option<CreateScheme> {
         None
     }
-    fn set_caller(&mut self, caller: Address) {
+    fn set_caller(&mut self, caller: ChainAddress) {
         self.caller = caller;
     }
     fn log_debug(&self, cheatcode: &mut Cheatcodes, _scheme: &CreateScheme) {
@@ -98,14 +97,14 @@ impl<DB: DatabaseExt> CommonCreateInput<DB> for &mut EOFCreateInputs {
         &self,
         cheatcodes: &mut Cheatcodes,
         ecx: &mut InnerEvmContext<DB>,
-    ) -> Address {
+    ) -> ChainAddress {
         let created_address =
             <&mut EOFCreateInputs as CommonCreateInput<DB>>::computed_created_address(self)
                 .unwrap_or_default();
         cheatcodes.allow_cheatcodes_on_create(ecx, self.caller, created_address);
         created_address
     }
-    fn computed_created_address(&self) -> Option<Address> {
+    fn computed_created_address(&self) -> Option<ChainAddress> {
         self.kind.created_address().copied()
     }
 }

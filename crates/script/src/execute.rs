@@ -31,6 +31,7 @@ use foundry_evm::{
 };
 use futures::future::join_all;
 use itertools::Itertools;
+use revm_primitives::ChainAddress;
 use std::collections::{HashMap, HashSet};
 use yansi::Paint;
 
@@ -111,10 +112,12 @@ impl PreExecutionState {
             .await?;
         let result = self.execute_with_runner(&mut runner).await?;
 
+        let chain_id = runner.executor.env().cfg.chain_id;
+
         // If we have a new sender from execution, we need to use it to deploy libraries and relink
         // contracts.
         if let Some(new_sender) = self.maybe_new_sender(result.transactions.as_ref())? {
-            self.script_config.update_sender(new_sender).await?;
+            self.script_config.update_sender(ChainAddress(chain_id, new_sender)).await?;
 
             // Rollback to rerun linking with the new sender.
             let state = CompiledState {
@@ -149,7 +152,8 @@ impl PreExecutionState {
         )?;
 
         if setup_result.success {
-            let script_result = runner.script(address, self.execution_data.calldata.clone())?;
+            let chain_id = runner.executor.env().cfg.chain_id;
+            let script_result = runner.script(ChainAddress(chain_id, address), self.execution_data.calldata.clone())?;
 
             setup_result.success &= script_result.success;
             setup_result.gas_used = script_result.gas_used;
@@ -422,6 +426,9 @@ impl PreSimulationState {
 
             shell::println("Traces:")?;
             for (kind, trace) in &result.traces {
+
+                //println!("{:?}", trace);
+
                 let should_include = match kind {
                     TraceKind::Setup => verbosity >= 5,
                     TraceKind::Execution => verbosity > 3,

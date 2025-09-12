@@ -6,6 +6,7 @@ use alloy_sol_types::SolValue;
 use foundry_common::ens::namehash;
 use foundry_evm_core::{backend::DatabaseExt, constants::DEFAULT_CREATE2_DEPLOYER};
 use rand::Rng;
+use revm::primitives::ChainAddress;
 use std::collections::HashMap;
 
 /// Contains locations of traces ignored via cheatcodes.
@@ -153,6 +154,7 @@ impl Cheatcode for resumeTracingCall {
 impl Cheatcode for setArbitraryStorageCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { target } = self;
+        let target = &ChainAddress(ccx.cfg().chain_id, *target);
         ccx.state.arbitrary_storage.mark_arbitrary(target);
 
         Ok(Default::default())
@@ -162,6 +164,8 @@ impl Cheatcode for setArbitraryStorageCall {
 impl Cheatcode for copyStorageCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { from, to } = self;
+        let from = &ChainAddress(ccx.cfg().chain_id, *from);
+        let to = &ChainAddress(ccx.cfg().chain_id, *to);
         ensure!(
             !ccx.state.arbitrary_storage.is_arbitrary(to),
             "target address cannot have arbitrary storage"

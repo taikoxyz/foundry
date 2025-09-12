@@ -76,12 +76,12 @@ impl ExecutorBuilder {
     pub fn build(self, env: Env, db: Backend) -> Executor {
         let Self { mut stack, gas_limit, spec_id, legacy_assertions } = self;
         if stack.block.is_none() {
-            stack.block = Some(env.block.clone());
+            stack.block = Some(env.blocks.get(&env.cfg.chain_id).unwrap().clone());
         }
         if stack.gas_price.is_none() {
             stack.gas_price = Some(env.tx.gas_price);
         }
-        let gas_limit = gas_limit.unwrap_or_else(|| env.block.gas_limit.saturating_to());
+        let gas_limit = gas_limit.unwrap_or_else(|| env.blocks.get(&env.cfg.chain_id).unwrap().gas_limit.saturating_to());
         let env = EnvWithHandlerCfg::new_with_spec_id(Box::new(env), spec_id);
         Executor::new(db, env, stack.build(), gas_limit, legacy_assertions)
     }

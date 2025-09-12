@@ -164,8 +164,11 @@ impl InMemoryBlockStates {
     /// Returns the state for the given `hash` if present
     pub fn get(&mut self, hash: &B256) -> Option<&StateDb> {
         self.states.get(hash).or_else(|| {
+            println!("readding from disk");
             if let Some(state) = self.on_disk_states.get_mut(hash) {
+                println!("reading from disk cache");
                 if let Some(cached) = self.disk_cache.read(*hash) {
+                    println!("found state");
                     state.init_from_snapshot(cached);
                     return Some(state);
                 }
@@ -233,14 +236,15 @@ impl BlockchainStorage {
     /// Creates a new storage with a genesis block
     pub fn new(env: &Env, base_fee: Option<u128>, timestamp: u64) -> Self {
         // create a dummy genesis block
+        let block = env.blocks.get(&env.cfg.chain_id).unwrap();
         let partial_header = PartialHeader {
             timestamp,
             base_fee,
-            gas_limit: env.block.gas_limit.to::<u128>(),
-            beneficiary: env.block.coinbase,
-            difficulty: env.block.difficulty,
-            blob_gas_used: env.block.blob_excess_gas_and_price.as_ref().map(|_| 0),
-            excess_blob_gas: env.block.get_blob_excess_gas().map(|v| v as u128),
+            gas_limit: block.gas_limit.to::<u128>(),
+            beneficiary: block.coinbase.1,
+            difficulty: block.difficulty,
+            blob_gas_used: block.blob_excess_gas_and_price.as_ref().map(|_| 0),
+            excess_blob_gas: block.get_blob_excess_gas().map(|v| v as u128),
             ..Default::default()
         };
         let block = Block::new::<MaybeImpersonatedTransaction>(partial_header, vec![], vec![]);
@@ -554,6 +558,7 @@ mod tests {
             primitives::{AccountInfo, U256},
         },
     };
+    use revm::{primitives::ChainAddress, SyncDatabaseRef};
 
     #[test]
     fn test_interval_update() {
@@ -587,12 +592,13 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn can_read_write_cached_state() {
+        let chain_id = 1;
         let mut storage = InMemoryBlockStates::new(1, MAX_ON_DISK_HISTORY_LIMIT);
         let one = B256::from(U256::from(1));
         let two = B256::from(U256::from(2));
 
         let mut state = MemDb::default();
-        let addr = Address::random();
+        let addr = ChainAddress(chain_id, Address::random());
         let info = AccountInfo::from_balance(U256::from(1337));
         state.insert_account(addr, info);
         storage.insert(one, StateDb::new(state));
@@ -604,6 +610,8 @@ mod tests {
         assert_eq!(storage.on_disk_states.len(), 1);
         assert!(storage.on_disk_states.contains_key(&one));
 
+        //println!("{:?}", storage);
+
         let loaded = storage.get(&one).unwrap();
 
         let acc = loaded.basic_ref(addr).unwrap().unwrap();
@@ -612,6 +620,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn can_decrease_state_cache_size() {
+        let chain_id = 1;
         let limit = 15;
         let mut storage = InMemoryBlockStates::new(limit, MAX_ON_DISK_HISTORY_LIMIT);
 
@@ -619,7 +628,7 @@ mod tests {
         for idx in 0..num_states {
             let mut state = MemDb::default();
             let hash = B256::from(U256::from(idx));
-            let addr = Address::from_word(hash);
+            let addr = ChainAddress(chain_id, Address::from_word(hash));
             let balance = (idx * 2) as u64;
             let info = AccountInfo::from_balance(U256::from(balance));
             state.insert_account(addr, info);
@@ -634,7 +643,7 @@ mod tests {
 
         for idx in 0..num_states {
             let hash = B256::from(U256::from(idx));
-            let addr = Address::from_word(hash);
+            let addr = ChainAddress(chain_id, Address::from_word(hash));
             let loaded = storage.get(&hash).unwrap();
             let acc = loaded.basic_ref(addr).unwrap().unwrap();
             let balance = (idx * 2) as u64;

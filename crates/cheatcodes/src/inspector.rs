@@ -41,7 +41,7 @@ use revm::{
         EOFCreateInputs, EOFCreateKind, Gas, InstructionResult, Interpreter, InterpreterAction,
         InterpreterResult,
     },
-    primitives::{BlockEnv, CreateScheme, EVMError, EvmStorageSlot, SpecId, EOF_MAGIC_BYTES},
+    primitives::{BlockEnv, ChainAddress, CreateScheme, EVMError, EvmStorageSlot, SpecId, TransactTo, EOF_MAGIC_BYTES},
     EvmContext, InnerEvmContext, Inspector,
 };
 use rustc_hash::FxHashMap;
@@ -87,7 +87,7 @@ pub trait CheatcodesExecutor {
     {
         let mut inspector = self.get_inspector(ccx.state);
         let error = std::mem::replace(&mut ccx.ecx.error, Ok(()));
-        let l1_block_info = std::mem::take(&mut ccx.ecx.l1_block_info);
+        //let l1_block_info = std::mem::take(&mut ccx.ecx.l1_block_info);
 
         let inner = revm::InnerEvmContext {
             env: ccx.ecx.env.clone(),
@@ -97,7 +97,7 @@ pub trait CheatcodesExecutor {
             ),
             db: &mut ccx.ecx.db as &mut dyn DatabaseExt,
             error,
-            l1_block_info,
+            //l1_block_info,
         };
 
         let mut evm = new_evm_with_existing_context(inner, &mut inspector as _);
@@ -106,7 +106,7 @@ pub trait CheatcodesExecutor {
 
         ccx.ecx.journaled_state = evm.context.evm.inner.journaled_state;
         ccx.ecx.env = evm.context.evm.inner.env;
-        ccx.ecx.l1_block_info = evm.context.evm.inner.l1_block_info;
+        //ccx.ecx.l1_block_info = evm.context.evm.inner.l1_block_info;
         ccx.ecx.error = evm.context.evm.inner.error;
 
         Ok(res)
@@ -120,6 +120,7 @@ pub trait CheatcodesExecutor {
     ) -> Result<CreateOutcome, EVMError<DB::Error>> {
         self.with_evm(ccx, |evm| {
             evm.context.evm.inner.journaled_state.depth += 1;
+            let chain_id = inputs.caller.0;
 
             // Handle EOF bytecode
             let first_frame_or_result = if evm.handler.cfg.spec_id.is_enabled_in(SpecId::PRAGUE_EOF)
@@ -140,7 +141,7 @@ pub trait CheatcodesExecutor {
                 revm::FrameOrResult::Result(result) => result,
             };
 
-            evm.handler.execution().last_frame_return(&mut evm.context, &mut result)?;
+            evm.handler.execution().last_frame_return(&mut evm.context, &mut result, chain_id)?;
 
             let outcome = match result {
                 revm::FrameResult::Call(_) => unreachable!(),
@@ -260,29 +261,29 @@ pub struct ArbitraryStorage {
     /// Mapping of arbitrary storage addresses to generated values (slot, arbitrary value).
     /// (SLOADs return random value if storage slot wasn't accessed).
     /// Changed values are recorded and used to copy storage to different addresses.
-    pub values: HashMap<Address, HashMap<U256, U256>>,
+    pub values: HashMap<ChainAddress, HashMap<U256, U256>>,
     /// Mapping of address with storage copied to arbitrary storage address source.
-    pub copies: HashMap<Address, Address>,
+    pub copies: HashMap<ChainAddress, ChainAddress>,
 }
 
 impl ArbitraryStorage {
     /// Whether the given address has arbitrary storage.
-    pub fn is_arbitrary(&self, address: &Address) -> bool {
+    pub fn is_arbitrary(&self, address: &ChainAddress) -> bool {
         self.values.contains_key(address)
     }
 
     /// Whether the given address is a copy of an address with arbitrary storage.
-    pub fn is_copy(&self, address: &Address) -> bool {
+    pub fn is_copy(&self, address: &ChainAddress) -> bool {
         self.copies.contains_key(address)
     }
 
     /// Marks an address with arbitrary storage.
-    pub fn mark_arbitrary(&mut self, address: &Address) {
+    pub fn mark_arbitrary(&mut self, address: &ChainAddress) {
         self.values.insert(*address, HashMap::default());
     }
 
     /// Maps an address that copies storage with the arbitrary storage address.
-    pub fn mark_copy(&mut self, from: &Address, to: &Address) {
+    pub fn mark_copy(&mut self, from: &ChainAddress, to: &ChainAddress) {
         if self.is_arbitrary(from) {
             self.copies.insert(*to, *from);
         }
@@ -294,7 +295,7 @@ impl ArbitraryStorage {
     pub fn save<DB: DatabaseExt>(
         &mut self,
         ecx: &mut InnerEvmContext<DB>,
-        address: Address,
+        address: ChainAddress,
         slot: U256,
         data: U256,
     ) {
@@ -312,7 +313,7 @@ impl ArbitraryStorage {
     pub fn copy<DB: DatabaseExt>(
         &mut self,
         ecx: &mut InnerEvmContext<DB>,
-        target: Address,
+        target: ChainAddress,
         slot: U256,
         new_value: U256,
     ) -> U256 {
@@ -445,6 +446,9 @@ pub struct Cheatcodes {
 
     /// The current program counter.
     pub pc: usize,
+    /// The current chain id.
+    pub chain_id: u64,
+
     /// Breakpoints supplied by the `breakpoint` cheatcode.
     /// `char -> (address, pc)`
     pub breakpoints: Breakpoints,
@@ -497,6 +501,7 @@ impl Cheatcodes {
             gas_metering: Default::default(),
             mapping_slots: Default::default(),
             pc: Default::default(),
+            chain_id: Default::default(),
             breakpoints: Default::default(),
             rng: Default::default(),
             ignored_traces: Default::default(),
@@ -516,6 +521,7 @@ impl Cheatcodes {
         call: &CallInputs,
         executor: &mut E,
     ) -> Result {
+        println!("apply_cheatcode");
         // decode the cheatcode call
         let decoded = Vm::VmCalls::abi_decode(&call.input, false).map_err(|e| {
             if let alloy_sol_types::Error::UnknownSelector { name: _, selector } = e {
@@ -556,9 +562,10 @@ impl Cheatcodes {
     fn allow_cheatcodes_on_create<DB: DatabaseExt>(
         &self,
         ecx: &mut InnerEvmContext<DB>,
-        caller: Address,
-        created_address: Address,
+        caller: ChainAddress,
+        created_address: ChainAddress,
     ) {
+        println!("allow_cheatcodes_on_create: {:?}, {:?}", caller, created_address);
         if ecx.journaled_state.depth <= 1 || ecx.db.has_cheatcode_access(&caller) {
             ecx.db.allow_cheatcode_access(created_address);
         }
@@ -632,6 +639,7 @@ impl Cheatcodes {
                             result: InstructionResult::Revert,
                             output: Error::encode(err),
                             gas,
+                            call_options: None,
                         },
                         address: None,
                     });
@@ -643,11 +651,13 @@ impl Cheatcodes {
                     input.set_caller(broadcast.new_origin);
                     let is_fixed_gas_limit = check_if_fixed_gas_limit(ecx, input.gas_limit());
 
+                    println!("Broadcasting from {:?}[{:?}]", broadcast.new_origin, broadcast.chain_id);
+
                     let account = &ecx.journaled_state.state()[&broadcast.new_origin];
                     self.broadcastable_transactions.push_back(BroadcastableTransaction {
                         rpc: ecx.db.active_fork_url(),
                         transaction: TransactionRequest {
-                            from: Some(broadcast.new_origin),
+                            from: Some(broadcast.new_origin.1),
                             to: None,
                             value: Some(input.value()),
                             input: TransactionInput::new(input.init_code()),
@@ -657,6 +667,7 @@ impl Cheatcodes {
                             } else {
                                 None
                             },
+                            chain_id: Some(broadcast.chain_id),
                             ..Default::default()
                         }
                         .into(),
@@ -677,8 +688,8 @@ impl Cheatcodes {
                     forkId: ecx.db.active_fork_id().unwrap_or_default(),
                     chainId: U256::from(ecx.env.cfg.chain_id),
                 },
-                accessor: input.caller(),
-                account: address,
+                accessor: input.caller().1,
+                account: address.1,
                 kind: crate::Vm::AccountAccessKind::Create,
                 initialized: true,
                 oldBalance: U256::ZERO, // updated on (eof)create_end
@@ -790,7 +801,7 @@ impl Cheatcodes {
                     );
                     if let Some(address) = outcome.address {
                         if let Ok(created_acc) =
-                            ecx.journaled_state.load_account(address, &mut ecx.db)
+                            ecx.journaled_state.load_account(ChainAddress(ecx.cfg().chain_id, address), &mut ecx.db)
                         {
                             create_access.newBalance = created_acc.info.balance;
                             create_access.deployedCode =
@@ -819,12 +830,14 @@ impl Cheatcodes {
     ) -> Option<CallOutcome> {
         let gas = Gas::new(call.gas_limit);
 
+        println!("[{:?}] call_with_executor: {:?}", call, self.chain_id);
+
         // At the root call to test function or script `run()`/`setUp()` functions, we are
         // decreasing sender nonce to ensure that it matches on-chain nonce once we start
         // broadcasting.
         if ecx.journaled_state.depth == 0 {
             let sender = ecx.env.tx.caller;
-            if sender != Config::DEFAULT_SENDER {
+            if sender.1 != Config::DEFAULT_SENDER {
                 let account = match super::evm::journaled_account(ecx, sender) {
                     Ok(account) => account,
                     Err(err) => {
@@ -833,8 +846,10 @@ impl Cheatcodes {
                                 result: InstructionResult::Revert,
                                 output: err.abi_encode().into(),
                                 gas,
+                                call_options: None,
                             },
                             memory_offset: call.return_memory_offset.clone(),
+                            call_options: None,
                         })
                     }
                 };
@@ -845,37 +860,41 @@ impl Cheatcodes {
             }
         }
 
-        if call.target_address == CHEATCODE_ADDRESS {
+        if call.target_address.1 == CHEATCODE_ADDRESS {
             return match self.apply_cheatcode(ecx, call, executor) {
                 Ok(retdata) => Some(CallOutcome {
                     result: InterpreterResult {
                         result: InstructionResult::Return,
                         output: retdata.into(),
                         gas,
+                        call_options: None,
                     },
                     memory_offset: call.return_memory_offset.clone(),
+                    call_options: None,
                 }),
                 Err(err) => Some(CallOutcome {
                     result: InterpreterResult {
                         result: InstructionResult::Revert,
                         output: err.abi_encode().into(),
                         gas,
+                        call_options: None,
                     },
                     memory_offset: call.return_memory_offset.clone(),
+                    call_options: None,
                 }),
             };
         }
 
         let ecx = &mut ecx.inner;
 
-        if call.target_address == HARDHAT_CONSOLE_ADDRESS {
+        if call.target_address.1 == HARDHAT_CONSOLE_ADDRESS {
             return None;
         }
 
         // Handle expected calls
 
         // Grab the different calldatas expected.
-        if let Some(expected_calls_for_target) = self.expected_calls.get_mut(&call.bytecode_address)
+        if let Some(expected_calls_for_target) = self.expected_calls.get_mut(&call.bytecode_address.1)
         {
             // Match every partial/full calldata
             for (calldata, (expected, actual_count)) in expected_calls_for_target {
@@ -899,7 +918,7 @@ impl Cheatcodes {
         }
 
         // Handle mocked calls
-        if let Some(mocks) = self.mocked_calls.get(&call.bytecode_address) {
+        if let Some(mocks) = self.mocked_calls.get(&call.bytecode_address.1) {
             let ctx =
                 MockCallDataContext { calldata: call.input.clone(), value: call.transfer_value() };
             if let Some(return_data) = mocks.get(&ctx).or_else(|| {
@@ -916,8 +935,10 @@ impl Cheatcodes {
                         result: return_data.ret_type,
                         output: return_data.data.clone(),
                         gas,
+                        call_options: None,
                     },
                     memory_offset: call.return_memory_offset.clone(),
+                    call_options: None,
                 });
             }
         }
@@ -926,6 +947,8 @@ impl Cheatcodes {
         if let Some(prank) = &self.prank {
             if ecx.journaled_state.depth() >= prank.depth && call.caller == prank.prank_caller {
                 let mut prank_applied = false;
+
+                println!("Applying prank: {:?} -> {:?}", call.caller, prank.new_caller);
 
                 // At the target depth we set `msg.sender`
                 if ecx.journaled_state.depth() == prank.depth {
@@ -950,6 +973,10 @@ impl Cheatcodes {
 
         // Apply our broadcast
         if let Some(broadcast) = &self.broadcast {
+
+            let mut broadcast = broadcast.clone();
+            broadcast.new_origin = ChainAddress(broadcast.chain_id, broadcast.new_origin.1);
+
             // We only apply a broadcast *to a specific depth*.
             //
             // We do this because any subsequent contract calls *must* exist on chain and
@@ -961,6 +988,8 @@ impl Cheatcodes {
                 // We are simulating the caller as being an EOA, so *both* must be set to the
                 // broadcast.origin.
                 ecx.env.tx.caller = broadcast.new_origin;
+
+                println!("broadcast.new_origin: {:?}", broadcast.new_origin);
 
                 call.caller = broadcast.new_origin;
                 // Add a `legacy` transaction to the VecDeque. We use a legacy transaction here
@@ -974,8 +1003,10 @@ impl Cheatcodes {
                                 result: InstructionResult::Revert,
                                 output: Error::encode(err),
                                 gas,
+                                call_options: None,
                             },
                             memory_offset: call.return_memory_offset.clone(),
+                            call_options: None,
                         });
                     }
 
@@ -984,11 +1015,13 @@ impl Cheatcodes {
                     let account =
                         ecx.journaled_state.state().get_mut(&broadcast.new_origin).unwrap();
 
+                    println!("call_with_executor:: Broadcasting from {:?} (nonce: {})", broadcast.new_origin, account.info.nonce);
+
                     self.broadcastable_transactions.push_back(BroadcastableTransaction {
                         rpc: ecx.db.active_fork_url(),
                         transaction: TransactionRequest {
-                            from: Some(broadcast.new_origin),
-                            to: Some(TxKind::from(Some(call.target_address))),
+                            from: Some(broadcast.new_origin.1),
+                            to: Some(TxKind::from(Some(call.target_address.1))),
                             value: call.transfer_value(),
                             input: TransactionInput::new(call.input.clone()),
                             nonce: Some(account.info.nonce),
@@ -997,6 +1030,7 @@ impl Cheatcodes {
                             } else {
                                 None
                             },
+                            chain_id: Some(broadcast.chain_id),
                             ..Default::default()
                         }
                         .into(),
@@ -1017,8 +1051,10 @@ impl Cheatcodes {
                             result: InstructionResult::Revert,
                             output: Error::encode(msg),
                             gas,
+                            call_options: None,
                         },
                         memory_offset: call.return_memory_offset.clone(),
+                        call_options: None,
                     });
                 }
             }
@@ -1056,8 +1092,8 @@ impl Cheatcodes {
                     forkId: ecx.db.active_fork_id().unwrap_or_default(),
                     chainId: U256::from(ecx.env.cfg.chain_id),
                 },
-                accessor: call.caller,
-                account: call.bytecode_address,
+                accessor: call.caller.1,
+                account: call.bytecode_address.1,
                 kind,
                 initialized,
                 oldBalance: old_balance,
@@ -1088,7 +1124,8 @@ impl<DB: DatabaseExt> Inspector<DB> for Cheatcodes {
         // When the first interpreter is initialized we've circumvented the balance and gas checks,
         // so we apply our actual block data with the correct fees and all.
         if let Some(block) = self.block.take() {
-            ecx.env.block = block;
+            let chain_id = ecx.env.cfg.chain_id;
+            *ecx.env.blocks.get_mut(&chain_id).unwrap() = block;
         }
         if let Some(gas_price) = self.gas_price.take() {
             ecx.env.tx.gas_price = gas_price;
@@ -1096,13 +1133,14 @@ impl<DB: DatabaseExt> Inspector<DB> for Cheatcodes {
 
         // Record gas for current frame.
         if self.gas_metering.paused {
-            self.gas_metering.paused_frames.push(interpreter.gas);
+            self.gas_metering.paused_frames.push(interpreter.gas.clone());
         }
     }
 
     #[inline]
     fn step(&mut self, interpreter: &mut Interpreter, ecx: &mut EvmContext<DB>) {
         self.pc = interpreter.program_counter();
+        self.chain_id = interpreter.chain_id;
 
         // `pauseGasMetering`: pause / resume interpreter gas.
         if self.gas_metering.paused {
@@ -1180,8 +1218,8 @@ impl<DB: DatabaseExt> Inspector<DB> for Cheatcodes {
         mut outcome: CallOutcome,
     ) -> CallOutcome {
         let ecx = &mut ecx.inner;
-        let cheatcode_call = call.target_address == CHEATCODE_ADDRESS ||
-            call.target_address == HARDHAT_CONSOLE_ADDRESS;
+        let cheatcode_call = call.target_address.1 == CHEATCODE_ADDRESS ||
+            call.target_address.1 == HARDHAT_CONSOLE_ADDRESS;
 
         // Clean up pranks/broadcasts if it's not a cheatcode call end. We shouldn't do
         // it for cheatcode calls because they are not appplied for cheatcodes in the `call` hook.
@@ -1280,7 +1318,7 @@ impl<DB: DatabaseExt> Inspector<DB> for Cheatcodes {
 
         // Record the gas usage of the call, this allows the `lastCallGas` cheatcode to
         // retrieve the gas usage of the last call.
-        let gas = outcome.result.gas;
+        let gas = outcome.result.gas.clone();
         self.gas_metering.last_call_gas = Some(crate::Vm::Gas {
             gasLimit: gas.limit(),
             gasTotalUsed: gas.spent(),
@@ -1374,7 +1412,7 @@ impl<DB: DatabaseExt> Inspector<DB> for Cheatcodes {
 
         // try to diagnose reverts in multi-fork mode where a call is made to an address that does
         // not exist
-        if let TxKind::Call(test_contract) = ecx.env.tx.transact_to {
+        if let TransactTo::Call(test_contract) = ecx.env.tx.transact_to {
             // if a call to a different contract than the original test contract returned with
             // `Stop` we check if the contract actually exists on the active fork
             if ecx.db.is_forked_mode() &&
@@ -1529,10 +1567,10 @@ impl Cheatcodes {
     fn meter_gas(&mut self, interpreter: &mut Interpreter) {
         if let Some(paused_gas) = self.gas_metering.paused_frames.last() {
             // Keep gas constant if paused.
-            interpreter.gas = *paused_gas;
+            interpreter.gas = paused_gas.clone();
         } else {
             // Record frame paused gas.
-            self.gas_metering.paused_frames.push(interpreter.gas);
+            self.gas_metering.paused_frames.push(interpreter.gas.clone());
         }
     }
 
@@ -1608,11 +1646,11 @@ impl Cheatcodes {
         match interpreter.current_opcode() {
             op::SLOAD => {
                 let key = try_or_return!(interpreter.stack().peek(0));
-                access.record_read(interpreter.contract().target_address, key);
+                access.record_read(interpreter.contract().target_address.1, key);
             }
             op::SSTORE => {
                 let key = try_or_return!(interpreter.stack().peek(0));
-                access.record_write(interpreter.contract().target_address, key);
+                access.record_write(interpreter.contract().target_address.1, key);
             }
             _ => {}
         }
@@ -1632,7 +1670,7 @@ impl Cheatcodes {
 
                 // get previous balance and initialized status of the target account
                 let target = try_or_return!(interpreter.stack().peek(0));
-                let target = Address::from_word(B256::from(target));
+                let target = ChainAddress(ecx.cfg().chain_id, Address::from_word(B256::from(target)));
                 let (initialized, old_balance) = ecx
                     .load_account(target)
                     .map(|account| (account.info.exists(), account.info.balance))
@@ -1650,8 +1688,8 @@ impl Cheatcodes {
                         forkId: ecx.db.active_fork_id().unwrap_or_default(),
                         chainId: U256::from(ecx.env.cfg.chain_id),
                     },
-                    accessor: interpreter.contract().target_address,
-                    account: target,
+                    accessor: interpreter.contract().target_address.1,
+                    account: target.1,
                     kind: crate::Vm::AccountAccessKind::SelfDestruct,
                     initialized,
                     oldBalance: old_balance,
@@ -1681,7 +1719,7 @@ impl Cheatcodes {
                     }
                 }
                 let access = crate::Vm::StorageAccess {
-                    account: interpreter.contract().target_address,
+                    account: interpreter.contract().target_address.1,
                     slot: key.into(),
                     isWrite: false,
                     previousValue: present_value.into(),
@@ -1706,7 +1744,7 @@ impl Cheatcodes {
                 }
 
                 let access = crate::Vm::StorageAccess {
-                    account: address,
+                    account: address.1,
                     slot: key.into(),
                     isWrite: true,
                     previousValue: previous_value.into(),
@@ -1726,7 +1764,7 @@ impl Cheatcodes {
                     _ => unreachable!(),
                 };
                 let address =
-                    Address::from_word(B256::from(try_or_return!(interpreter.stack().peek(0))));
+                    ChainAddress(ecx.cfg().chain_id, Address::from_word(B256::from(try_or_return!(interpreter.stack().peek(0)))));
                 let initialized;
                 let balance;
                 if let Ok(acc) = ecx.load_account(address) {
@@ -1741,8 +1779,8 @@ impl Cheatcodes {
                         forkId: ecx.db.active_fork_id().unwrap_or_default(),
                         chainId: U256::from(ecx.env.cfg.chain_id),
                     },
-                    accessor: interpreter.contract().target_address,
-                    account: address,
+                    accessor: interpreter.contract().target_address.1,
+                    account: address.1,
                     kind,
                     initialized,
                     oldBalance: balance,
@@ -1962,8 +2000,9 @@ fn disallowed_mem_write(
     interpreter.next_action = InterpreterAction::Return {
         result: InterpreterResult {
             output: Error::encode(revert_string),
-            gas: interpreter.gas,
+            gas: interpreter.gas.clone(),
             result: InstructionResult::Revert,
+            call_options: None,
         },
     };
 }
@@ -1978,8 +2017,8 @@ fn check_if_fixed_gas_limit<DB: DatabaseExt>(
     // time of the call, which should be rather close to configured gas limit.
     // TODO: Find a way to reliably make this determination.
     // For example by generating it in the compilation or EVM simulation process
-    U256::from(ecx.env.tx.gas_limit) > ecx.env.block.gas_limit &&
-        U256::from(call_gas_limit) <= ecx.env.block.gas_limit
+    U256::from(ecx.env.tx.gas_limit) > ecx.env.blocks.get(&ecx.env.cfg.chain_id).unwrap().gas_limit &&
+        U256::from(call_gas_limit) <= ecx.env.blocks.get(&ecx.env.cfg.chain_id).unwrap().gas_limit
         // Transfers in forge scripts seem to be estimated at 2300 by revm leading to "Intrinsic
         // gas too low" failure when simulated on chain
         && call_gas_limit > 2300

@@ -32,6 +32,7 @@ use std::{
     sync::Arc,
 };
 use yansi::Paint;
+use revm_primitives::ChainAddress;
 
 // Loads project's figment and merges the build cli arguments into it
 foundry_config::impl_figment_convert!(CoverageArgs, test);
@@ -235,12 +236,14 @@ impl CoverageArgs {
         let root = project.paths.root;
         let verbosity = evm_opts.verbosity;
 
+        let chain_id = config.chain.unwrap().id();
+
         // Build the contract runner
         let env = evm_opts.evm_env().await?;
         let runner = MultiContractRunnerBuilder::new(config.clone())
             .initial_balance(evm_opts.initial_balance)
             .evm_spec(config.evm_spec_id())
-            .sender(evm_opts.sender)
+            .sender(ChainAddress(chain_id, evm_opts.sender))
             .with_fork(evm_opts.get_fork(&config, env.clone()))
             .with_test_options(TestOptions {
                 fuzz: config.fuzz.clone(),

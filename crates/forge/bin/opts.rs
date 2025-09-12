@@ -10,6 +10,7 @@ use forge_verify::{VerifyArgs, VerifyBytecodeArgs, VerifyCheckArgs};
 use std::path::PathBuf;
 
 const VERSION_MESSAGE: &str = concat!(
+    "Gwyneth ",
     env!("CARGO_PKG_VERSION"),
     " (",
     env!("VERGEN_GIT_SHA"),
