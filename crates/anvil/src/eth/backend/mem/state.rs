@@ -2,6 +2,7 @@
 
 use crate::eth::error::BlockchainError;
 use alloy_primitives::{Address, B256, U256, keccak256, map::HashMap};
+use revm::primitives::ChainAddress;
 use alloy_rlp::Encodable;
 use alloy_rpc_types::{BlockOverrides, state::StateOverride};
 use alloy_trie::{HashBuilder, Nibbles};
@@ -160,7 +161,9 @@ pub fn apply_block_overrides<DB>(
         env.gas_limit = gas_limit;
     }
     if let Some(coinbase) = coinbase {
-        env.beneficiary = coinbase;
+        // Preserve existing chain_id or use default (1 for mainnet)
+        let chain_id = env.beneficiary.0.max(1);
+        env.beneficiary = ChainAddress::new(chain_id, coinbase);
     }
     if let Some(random) = random {
         env.prevrandao = Some(random);

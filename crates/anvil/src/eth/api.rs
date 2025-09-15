@@ -2196,7 +2196,10 @@ impl EthApi {
 
         Ok(NodeInfo {
             current_block_number: self.backend.best_number(),
-            current_block_timestamp: env.evm_env.block_env.timestamp,
+            current_block_timestamp: {
+                let chain_id = env.evm_env.cfg_env.chain_id;
+                env.evm_env.block_env.get(&chain_id).map(|block_env| block_env.timestamp).unwrap_or_default()
+            },
             current_block_hash: self.backend.best_hash(),
             hard_fork: hard_fork.to_string(),
             transaction_order: match *tx_order {

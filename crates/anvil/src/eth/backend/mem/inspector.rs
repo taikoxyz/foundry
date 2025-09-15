@@ -110,7 +110,7 @@ fn print_traces(tracer: TracingInspector) {
 
 impl<CTX, D> Inspector<CTX, EthInterpreter> for AnvilInspector
 where
-    D: Database<Error = DatabaseError>,
+    D: Database<Error = DatabaseError> + revm::context_interface::MultiChainDatabase<Error = DatabaseError>,
     CTX: ContextTr<Db = D>,
     CTX::Journal: JournalExt,
 {

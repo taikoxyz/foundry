@@ -68,6 +68,8 @@ pub mod server;
 mod shutdown;
 /// additional task management
 mod tasks;
+/// orphan rule implementations for multi-chain support  
+mod orphan_impls;
 
 /// contains cli command
 #[cfg(feature = "cmd")]

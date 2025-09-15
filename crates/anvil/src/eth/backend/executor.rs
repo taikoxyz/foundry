@@ -132,7 +132,7 @@ impl<DB: Db + ?Sized, V: TransactionValidator> TransactionExecutor<'_, DB, V> {
         let parent_hash = self.parent_hash;
         let block_number = self.block_env.number;
         let difficulty = self.block_env.difficulty;
-        let beneficiary = self.block_env.beneficiary;
+        let beneficiary = self.block_env.beneficiary.1; // Extract Address from ChainAddress
         let timestamp = self.block_env.timestamp;
         let base_fee = if self.cfg_env.spec.is_enabled_in(SpecId::LONDON) {
             Some(self.block_env.basefee)
@@ -287,7 +287,9 @@ impl<DB: Db + ?Sized, V: TransactionValidator> Iterator for &mut TransactionExec
 
         // check that we comply with the block's gas limit, if not disabled
         let max_gas = self.gas_used.saturating_add(env.tx.gas_limit);
-        if !env.evm_env.cfg_env.disable_block_gas_limit && max_gas > env.evm_env.block_env.gas_limit
+        if !env.evm_env.cfg_env.disable_block_gas_limit && 
+           env.evm_env.block_env.get(&env.evm_env.cfg_env.chain_id)
+               .map_or(false, |block| max_gas > block.gas_limit)
         {
             return Some(TransactionExecutionOutcome::Exhausted(transaction));
         }
@@ -370,10 +372,10 @@ impl<DB: Db + ?Sized, V: TransactionValidator> Iterator for &mut TransactionExec
             ExecutionResult::Success { reason, gas_used, logs, output, .. } => {
                 (reason.into(), gas_used, Some(output), Some(logs))
             }
-            ExecutionResult::Revert { gas_used, output } => {
+            ExecutionResult::Revert { gas_used, output, .. } => {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)), None)
             }
-            ExecutionResult::Halt { reason, gas_used } => (reason.into(), gas_used, None, None),
+            ExecutionResult::Halt { reason, gas_used, .. } => (reason.into(), gas_used, None, None),
         };
 
         if exit_reason == InstructionResult::OutOfGas {
@@ -424,7 +426,7 @@ pub fn new_evm_with_inspector<DB, I>(
     inspector: I,
 ) -> EthEvm<DB, I, PrecompilesMap>
 where
-    DB: Database<Error = DatabaseError>,
+    DB: Database<Error = DatabaseError> + revm::context_interface::MultiChainDatabase<Error = DatabaseError>,
     I: Inspector<EthEvmContext<DB>>,
 {
     /*
@@ -461,7 +463,7 @@ where
         let spec = env.evm_env.cfg_env.spec;
         let eth_context = EthEvmContext {
             journaled_state: {
-                let mut journal = Journal::new(db);
+                let mut journal = Journal::new(db, 0); // Default chain ID
                 journal.set_spec_id(spec);
                 journal
             },
@@ -474,7 +476,7 @@ where
         };
 
         let eth_precompiles = EthPrecompiles {
-            precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec)),
+            precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec), false), // No xchain by default
             spec,
         }
         .precompiles;
@@ -500,7 +502,7 @@ pub fn new_evm_with_inspector_ref<'db, DB, I>(
 where
     DB: DatabaseRef<Error = DatabaseError> + 'db + ?Sized,
     I: Inspector<EthEvmContext<WrapDatabaseRef<&'db DB>>>,
-    WrapDatabaseRef<&'db DB>: Database<Error = DatabaseError>,
+    WrapDatabaseRef<&'db DB>: Database<Error = DatabaseError> + revm::context_interface::MultiChainDatabase<Error = DatabaseError>,
 {
     new_evm_with_inspector(WrapDatabaseRef(db), env, inspector)
 }

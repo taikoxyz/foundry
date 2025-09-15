@@ -422,3 +422,4 @@ zip-extract = "=0.2.1"
 # solar-interface = { git = "https://github.com/paradigmxyz/solar.git", branch = "main" }
 # solar-sema = { git = "https://github.com/paradigmxyz/solar.git", branch = "main" }
 # solar-data-structures = { git = "https://github.com/paradigmxyz/solar.git", branch = "main" }
+

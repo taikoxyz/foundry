@@ -116,11 +116,13 @@ tokio = { workspace = true, features = ["full"] }
 op-alloy-rpc-types.workspace = true
 
 [features]
-default = ["cli", "jemalloc"]
+default = ["cli", "jemalloc", "multichain", "allow-orphan-impls"]
 asm-keccak = ["alloy-primitives/asm-keccak"]
 jemalloc = ["foundry-cli/jemalloc"]
 mimalloc = ["foundry-cli/mimalloc"]
 tracy-allocator = ["foundry-cli/tracy-allocator"]
+multichain = []  # Enable multi-chain database support
+allow-orphan-impls = []  # Allow orphan rule violations for multi-chain fork
 cli = ["tokio/full", "cmd"]
 cmd = [
     "clap",

@@ -20,7 +20,7 @@ use bytes::BufMut;
 use foundry_evm::traces::CallTraceNode;
 use op_alloy_consensus::{DEPOSIT_TX_TYPE_ID, TxDeposit};
 //use op_revm::{OpTransaction, transaction::deposit::DepositTransactionParts};
-use revm::{context::TxEnv, interpreter::InstructionResult};
+use revm::{context::TxEnv, interpreter::InstructionResult, primitives::{ChainAddress, MultiChainTxKind}};
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, Mul};
 
@@ -398,23 +398,23 @@ impl PendingTransaction {
     ///
     /// Base [`TxEnv`] is encapsulated in the [`op_revm::OpTransaction`]
     pub fn to_revm_tx_env(&self) -> TxEnv {
-        fn transact_to(kind: &TxKind) -> TxKind {
+        fn transact_to(kind: &TxKind, chain_id: u64) -> MultiChainTxKind {
             match kind {
-                TxKind::Call(c) => TxKind::Call(*c),
-                TxKind::Create => TxKind::Create,
+                TxKind::Call(c) => MultiChainTxKind::Call(ChainAddress(chain_id, *c)),
+                TxKind::Create => MultiChainTxKind::Create,
             }
         }
 
         let caller = *self.sender();
         match &self.transaction.transaction {
             TypedTransaction::Legacy(tx) => {
-                let chain_id = tx.tx().chain_id;
+                let chain_id = tx.tx().chain_id.unwrap_or(1);
                 let TxLegacy { nonce, gas_price, gas_limit, value, to, input, .. } = tx.tx();
                 TxEnv {
-                    caller,
-                    kind: transact_to(to),
+                    caller: ChainAddress(chain_id, caller),
+                    kind: transact_to(to, chain_id),
                     data: input.clone(),
-                    chain_id,
+                    chain_id: tx.tx().chain_id,
                     nonce: *nonce,
                     value: (*value),
                     gas_price: *gas_price,
@@ -438,8 +438,8 @@ impl PendingTransaction {
                     ..
                 } = tx.tx();
                 TxEnv {
-                    caller,
-                    kind: transact_to(to),
+                    caller: ChainAddress(*chain_id, caller),
+                    kind: transact_to(to, *chain_id),
                     data: input.clone(),
                     chain_id: Some(*chain_id),
                     nonce: *nonce,
@@ -466,8 +466,8 @@ impl PendingTransaction {
                     ..
                 } = tx.tx();
                 TxEnv {
-                    caller,
-                    kind: transact_to(to),
+                    caller: ChainAddress(*chain_id, caller),
+                    kind: transact_to(to, *chain_id),
                     data: input.clone(),
                     chain_id: Some(*chain_id),
                     nonce: *nonce,
@@ -496,8 +496,8 @@ impl PendingTransaction {
                     ..
                 } = tx.tx().tx();
                 TxEnv {
-                    caller,
-                    kind: TxKind::Call(*to),
+                    caller: ChainAddress(*chain_id, caller),
+                    kind: MultiChainTxKind::Call(ChainAddress(*chain_id, *to)),
                     data: input.clone(),
                     chain_id: Some(*chain_id),
                     nonce: *nonce,
@@ -527,8 +527,8 @@ impl PendingTransaction {
                 } = tx.tx();
 
                 let mut tx = TxEnv {
-                    caller,
-                    kind: TxKind::Call(*to),
+                    caller: ChainAddress(*chain_id, caller),
+                    kind: MultiChainTxKind::Call(ChainAddress(*chain_id, *to)),
                     data: input.clone(),
                     chain_id: Some(*chain_id),
                     nonce: *nonce,
