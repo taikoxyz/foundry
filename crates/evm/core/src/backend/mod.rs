@@ -596,6 +596,7 @@ impl Backend {
     /// This will also grant cheatcode access to the test account
     pub fn set_test_contract(&mut self, acc: ChainAddress) -> &mut Self {
         trace!(?acc, "setting test account");
+        println!("set_test_contract: {:?}", acc);
         self.add_persistent_account(acc);
         self.allow_cheatcode_access(acc);
         self
@@ -781,6 +782,9 @@ impl Backend {
         env: &mut Env,
         inspector: &mut I,
     ) -> eyre::Result<ResultAndState> {
+        println!("backend::inspect");
+        //println!("env pre: {:?}", env);
+
         self.initialize(env);
 
         let chain_id = env.evm_env.cfg_env.chain_id;
@@ -793,6 +797,7 @@ impl Backend {
         );
 
         let res = evm.transact(env.tx.clone()).wrap_err("EVM error")?;
+        println!("YSG evm::inspect res: {:?}", res);
 
         *env = evm.as_env_mut().to_owned();
 
@@ -1584,6 +1589,7 @@ impl DatabaseCommit for Backend {
 impl Database for Backend {
     type Error = DatabaseError;
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+        println!("Backend::basic: {:?}", address);
         if let Some(db) = self.active_fork_db_mut() {
             Ok(db.basic(address)?)
         } else {
@@ -1592,6 +1598,7 @@ impl Database for Backend {
     }
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        println!("Backend::code_by_hash: {:?}", code_hash);
         if let Some(db) = self.active_fork_db_mut() {
             Ok(db.code_by_hash(code_hash)?)
         } else {
@@ -2670,6 +2677,7 @@ impl BackendInner {
 
     /// Returns a new, empty, `JournaledState` with set precompiles
     pub fn new_journaled_state(&self) -> JournaledState {
+        println!("new_journaled_state");
         let mut journal = {
             let mut journal_inner = JournalInner::new();
             journal_inner.set_spec_id(self.spec_id);

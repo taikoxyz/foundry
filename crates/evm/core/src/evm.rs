@@ -33,7 +33,7 @@ pub fn new_evm_with_inspector<'i, 'db, I: InspectorExt + ?Sized>(
 ) -> FoundryEvm<'db, &'i mut I> {
     let ctx = EthEvmContext {
         journaled_state: {
-            let mut journal = Journal::new(db, 1);
+            let mut journal = Journal::new(db, env.evm_env.cfg_env.chain_id);
             journal.set_spec_id(env.evm_env.cfg_env.spec);
             journal
         },

@@ -13,9 +13,53 @@ use revm::{
     context::{BlockEnv, TxEnv},
     primitives::{ChainAddress, HashMap},
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt::Write;
 use url::Url;
+
+/// Helper module for deserializing ChainAddress from string addresses
+mod chain_address_serde {
+    use super::*;
+    use serde::de::{self, Unexpected, Visitor};
+    use std::fmt;
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<ChainAddress, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct ChainAddressVisitor;
+
+        impl<'de> Visitor<'de> for ChainAddressVisitor {
+            type Value = ChainAddress;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an address string or a tuple (chain_id, address)")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                // Parse address string and use chain_id 1 as default (Ethereum mainnet)
+                let address = value.parse::<Address>().map_err(|e| {
+                    E::invalid_value(Unexpected::Str(value), &format!("valid address: {}", e).as_str())
+                })?;
+                Ok(ChainAddress(1, address))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::SeqAccess<'de>,
+            {
+                let chain_id = seq.next_element::<u64>()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let address = seq.next_element::<Address>()?.ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                Ok(ChainAddress(chain_id, address))
+            }
+        }
+
+        deserializer.deserialize_any(ChainAddressVisitor)
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EvmOpts {
@@ -154,6 +198,9 @@ impl EvmOpts {
 
     /// Returns the `revm::Env` configured with only local settings
     pub fn local_evm_env(&self) -> crate::Env {
+        println!("CORE!!!");
+        println!("chain_ids: {:?}", self.chain_ids);
+
         let mut cfg = configure_env(
             self.env.chain_id.unwrap_or(foundry_common::DEV_CHAIN_ID),
             self.memory_limit,
@@ -186,6 +233,7 @@ impl EvmOpts {
                 gas_price: self.env.gas_price.unwrap_or_default().into(),
                 gas_limit: self.gas_limit(),
                 caller: ChainAddress(chain_id, self.sender),
+                chain_ids: Some(self.chain_ids.clone().unwrap_or_default()),
                 ..Default::default()
             },
         }
@@ -268,7 +316,7 @@ impl EvmOpts {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Env {
     /// The block gas limit.
     pub gas_limit: GasLimit,
@@ -287,9 +335,11 @@ pub struct Env {
     pub block_base_fee_per_gas: u64,
 
     /// the tx.origin value during EVM execution
+    #[serde(deserialize_with = "chain_address_serde::deserialize")]
     pub tx_origin: ChainAddress,
 
     /// the block.coinbase value during EVM execution
+    #[serde(deserialize_with = "chain_address_serde::deserialize")]
     pub block_coinbase: ChainAddress,
 
     /// the block.timestamp value during EVM execution
@@ -314,4 +364,24 @@ pub struct Env {
 
     // The parent chain id
     pub parent_chain_id: Option<u64>,
+}
+
+impl Default for Env {
+    fn default() -> Self {
+        Self {
+            gas_limit: GasLimit::default(),
+            chain_id: None,
+            gas_price: None,
+            block_base_fee_per_gas: 0,
+            tx_origin: ChainAddress(1, Address::ZERO),
+            block_coinbase: ChainAddress(1, Address::ZERO),
+            block_timestamp: 0,
+            block_number: 0,
+            block_difficulty: 0,
+            block_prevrandao: B256::ZERO,
+            block_gas_limit: None,
+            code_size_limit: None,
+            parent_chain_id: None,
+        }
+    }
 }

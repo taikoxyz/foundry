@@ -390,6 +390,7 @@ impl Executor {
             .set_test_contract(ChainAddress(chain_id, to))
             .set_caller(ChainAddress(chain_id, from));
         let calldata = Bytes::from_static(&ITest::setUpCall::SELECTOR);
+        println!("setup::calldata: {:?}", calldata);
         let mut res = self.transact_raw(from, to, calldata, U256::ZERO)?;
         res = res.into_result(rd)?;
 
@@ -507,6 +508,7 @@ impl Executor {
     /// Execute the transaction configured in `env.tx`.
     #[instrument(name = "transact", level = "debug", skip_all)]
     pub fn transact_with_env(&mut self, mut env: Env) -> eyre::Result<RawCallResult> {
+        println!("transact_with_env");
         let mut inspector = self.inspector().clone();
         let backend = self.backend_mut();
         let result = backend.clone().inspect(&mut env, &mut inspector)?;
