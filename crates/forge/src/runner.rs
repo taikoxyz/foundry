@@ -10,6 +10,7 @@ use crate::{
 use alloy_dyn_abi::{DynSolValue, JsonAbiExt};
 use alloy_json_abi::Function;
 use alloy_primitives::{Address, Bytes, U256, address, map::HashMap};
+use revm::primitives::ChainAddress;
 use eyre::Result;
 use foundry_common::{TestFunctionExt, TestFunctionKind, contracts::ContractsByAddress};
 use foundry_compilers::utils::canonicalized;
@@ -713,7 +714,7 @@ impl<'a> FunctionRunner<'a> {
             &self.cr.mcr.known_contracts,
         );
         let invariant_contract = InvariantContract {
-            address: self.address,
+            address: ChainAddress(self.executor.env().evm_env.cfg_env.chain_id, self.address),
             invariant_function: func,
             call_after_invariant,
             abi: &self.cr.contract.abi,
@@ -748,7 +749,7 @@ impl<'a> FunctionRunner<'a> {
                 self.clone_executor(),
                 &txes,
                 (0..min(txes.len(), invariant_config.depth as usize)).collect(),
-                invariant_contract.address,
+                invariant_contract.address.1,
                 invariant_contract.invariant_function.selector().to_vec().into(),
                 invariant_config.fail_on_revert,
                 invariant_contract.call_after_invariant,
