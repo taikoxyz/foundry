@@ -797,7 +797,6 @@ impl Backend {
         );
 
         let res = evm.transact(env.tx.clone()).wrap_err("EVM error")?;
-        println!("YSG evm::inspect res: {:?}", res);
 
         *env = evm.as_env_mut().to_owned();
 
@@ -2941,7 +2940,10 @@ mod tests {
         }
         drop(backend);
 
-        let meta = BlockchainDbMeta { block_env: env.evm_env.block_env, hosts: Default::default() };
+        let meta = BlockchainDbMeta {
+            block_env: env.evm_env.block_env.get(&env.evm_env.cfg_env.chain_id).unwrap().clone(),
+            hosts: Default::default()
+        };
 
         let db = BlockchainDb::new(
             meta,
