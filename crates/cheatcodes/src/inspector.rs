@@ -915,13 +915,27 @@ impl Cheatcodes {
     ) -> Option<CallOutcome> {
         let gas = Gas::new(call.gas_limit);
 
-        println!("[{:?}] call_with_executor: {:?}", call, self.chain_id);
-        
+        let input_bytes = call.input.bytes(ecx);
+        let input_hex = format!("0x{}", hex::encode(&input_bytes));
+        println!("[CallInputs {{ input: {}, return_memory_offset: {}..{}, gas_limit: {}, bytecode_address: {:?}, target_address: {:?}, caller: {:?}, value: {:?}, scheme: {:?}, is_static: {}, is_eof: {} }}] call_with_executor: {:?}",
+            input_hex,
+            call.return_memory_offset.start,
+            call.return_memory_offset.end,
+            call.gas_limit,
+            call.bytecode_address,
+            call.target_address,
+            call.caller,
+            call.value,
+            call.scheme,
+            call.is_static,
+            call.is_eof,
+            self.chain_id
+        );
+
         // Extract needed data early to avoid borrowing conflicts later
         let fork_id = ecx.journaled_state.database.active_fork_id().unwrap_or_default();
         let chain_id = ecx.cfg.chain_id;
         let depth = ecx.journaled_state.inner.depth;
-        let input_bytes = call.input.bytes(ecx);
 
         // At the root call to test function or script `run()`/`setUp()` functions, we are
         // decreasing sender nonce to ensure that it matches on-chain nonce once we start
