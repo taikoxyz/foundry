@@ -499,6 +499,7 @@ impl Executor {
     #[instrument(name = "call", level = "debug", skip_all)]
     pub fn call_with_env(&self, mut env: Env) -> eyre::Result<RawCallResult> {
         let mut inspector = self.inspector().clone();
+        #[allow(unused_mut)]
         let mut backend = CowBackend::new_borrowed(self.backend());
         let has_state_snapshot_failure = backend.has_state_snapshot_failure();
         let result = backend.inspect(&mut env, &mut inspector)?;

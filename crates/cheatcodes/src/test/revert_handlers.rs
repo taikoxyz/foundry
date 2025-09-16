@@ -116,6 +116,7 @@ fn handle_revert(
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn handle_assume_no_revert(
     assume_no_revert: &AssumeNoRevert,
     status: InstructionResult,

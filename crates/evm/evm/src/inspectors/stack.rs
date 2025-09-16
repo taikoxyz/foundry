@@ -10,7 +10,7 @@ use alloy_primitives::{
 use foundry_cheatcodes::{CheatcodesExecutor, Wallets};
 use foundry_evm_core::{
     ContextExt, Env, InspectorExt,
-    backend::{DatabaseExt, JournaledState, MultiChainDatabaseExt},
+    backend::{JournaledState, MultiChainDatabaseExt},
     evm::new_evm_with_inspector,
 };
 use foundry_evm_coverage::HitMaps;
@@ -197,9 +197,9 @@ impl InspectorStackBuilder {
 
         // inspectors
         if let Some(config) = cheatcodes {
-            let mut cheatcodes = Cheatcodes::new(config);
+            let cheatcodes = Cheatcodes::new(config);
             // Set wallets if they are provided
-            if let Some(wallets) = wallets {
+            if let Some(_wallets) = wallets {
                 // TODO: Implement set_wallets method in cheatcodes
                 // cheatcodes.set_wallets(wallets);
             }
@@ -327,8 +327,8 @@ pub struct InspectorStackRefMut<'a> {
 }
 
 impl CheatcodesExecutor for InspectorStackInner {
-    fn get_inspector<'a>(&'a mut self, cheats: &'a mut Cheatcodes) -> Box<dyn InspectorExt + 'a> {
-        Box::new(InspectorStackRefMut { cheatcodes: Some(cheats), inner: self })
+    fn get_inspector<'a>(&'a mut self, cheats: &'a mut Cheatcodes) -> impl InspectorExt + 'a {
+        InspectorStackRefMut { cheatcodes: Some(cheats), inner: self }
     }
 
     fn tracing_inspector(&mut self) -> Option<&mut Option<TracingInspector>> {
@@ -613,6 +613,7 @@ impl InspectorStackRefMut<'_> {
         let cached_env = Env::from(ecx.cfg.clone(), current_block, ecx.tx.clone());
 
         // Set basefee to 0 for current chain
+        #[allow(unused_mut)]
         if let Some(mut block) = ecx.block.get_mut(&ecx.cfg.chain_id) {
             block.basefee = 0u64.into();
         }

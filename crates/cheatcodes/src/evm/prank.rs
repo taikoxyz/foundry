@@ -47,34 +47,34 @@ impl Prank {
 impl Cheatcode for prank_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
         let Self { msgSender } = self;
-        let msgSender = &ChainAddress(ccx.state.chain_id, *msgSender);
-        prank(ccx, msgSender, None, true)
+        let msg_sender = &ChainAddress(ccx.state.chain_id, *msgSender);
+        prank(ccx, msg_sender, None, true)
     }
 }
 
 impl Cheatcode for startPrank_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
         let Self { msgSender } = self;
-        let msgSender = &ChainAddress(ccx.state.chain_id, *msgSender);
-        prank(ccx, msgSender, None, false)
+        let msg_sender = &ChainAddress(ccx.state.chain_id, *msgSender);
+        prank(ccx, msg_sender, None, false)
     }
 }
 
 impl Cheatcode for prank_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
         let Self { msgSender, txOrigin } = self;
-        let msgSender = &ChainAddress(ccx.state.chain_id, *msgSender);
-        let txOrigin = &ChainAddress(ccx.state.chain_id, *txOrigin);
-        prank(ccx, msgSender, Some(txOrigin), true)
+        let msg_sender = &ChainAddress(ccx.state.chain_id, *msgSender);
+        let tx_origin = &ChainAddress(ccx.state.chain_id, *txOrigin);
+        prank(ccx, msg_sender, Some(tx_origin), true)
     }
 }
 
 impl Cheatcode for startPrank_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
         let Self { msgSender, txOrigin } = self;
-        let msgSender = &ChainAddress(ccx.state.chain_id, *msgSender);
-        let txOrigin = &ChainAddress(ccx.state.chain_id, *txOrigin);
-        prank(ccx, msgSender, Some(txOrigin), false)
+        let msg_sender = &ChainAddress(ccx.state.chain_id, *msgSender);
+        let tx_origin = &ChainAddress(ccx.state.chain_id, *txOrigin);
+        prank(ccx, msg_sender, Some(tx_origin), false)
     }
 }
 

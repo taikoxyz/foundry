@@ -39,17 +39,16 @@ use foundry_evm_traces::TracingInspector;
 use itertools::Itertools;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use revm::{
-    bytecode::{opcode as op, EOF_MAGIC_BYTES},
-    context::{block::BlockEnv, Evm, JournalTr},
-    context_interface::{cfg::{CreateScheme, TransactTo}, result::EVMError},
-    handler::{FrameOrResult, FrameResult},
+    bytecode::opcode as op,
+    context::{block::BlockEnv, JournalTr},
+    context_interface::result::EVMError,
     interpreter::{
-        CallInputs, CallOutcome, CallScheme, CreateInputs, CreateOutcome,
-        EOFCreateInputs, EOFCreateKind, Gas, InstructionResult, Interpreter, InterpreterAction,
+        CallInputs, CallOutcome, CallScheme, CreateInputs, CreateOutcome, CreateScheme, EOFCreateInputs,
+        Gas, InstructionResult, Interpreter,
         InterpreterResult,
         interpreter_types::Jumps,
     },
-    primitives::{ChainAddress, hardfork::SpecId},
+    primitives::ChainAddress,
     state::EvmStorageSlot,
     Inspector, Journal,
 };
@@ -146,7 +145,7 @@ pub trait CheatcodesExecutor {
     ) -> Result<CreateOutcome, EVMError<foundry_evm_core::DatabaseError>> {
         self.with_evm(ccx, |evm| {
             evm.ctx.journaled_state.inner.depth += 1;
-            let chain_id = inputs.caller.0;
+            let _chain_id = inputs.caller.0;
 
             // TODO: Handle EOF bytecode - API changed in new revm version
             // let first_frame_or_result = if evm.ctx.cfg.spec.is_enabled_in(SpecId::PRAGUE)
@@ -1688,7 +1687,7 @@ impl Cheatcodes {
         let target_address = interpreter.input.target_address;
         if let Ok(value) = ecx.journaled_state.sload(target_address, key) {
             if value.is_cold && value.data.is_zero() {
-                let arbitrary_value = self.rng().r#gen();
+                let arbitrary_value = self.rng().random();
                 if self.arbitrary_storage.is_copy(&target_address) {
                     self.arbitrary_storage.copy(
                         ecx,
@@ -2058,7 +2057,7 @@ fn disallowed_mem_write(
     interpreter: &mut Interpreter,
     ranges: &[Range<u64>],
 ) {
-    let revert_string = format!(
+    let _revert_string = format!(
         "memory write at offset 0x{:02X} of size 0x{:02X} not allowed; safe range: {}",
         dest_offset,
         size,

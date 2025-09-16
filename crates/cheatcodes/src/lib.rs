@@ -11,6 +11,12 @@ pub extern crate foundry_cheatcodes_spec as spec;
 #[macro_use]
 extern crate tracing;
 
+// Silence unused crate dependency warnings for optional external crates
+use alloy_network as _;
+use forge_script_sequence as _;
+use revm_inspectors as _;
+use serde as _;
+
 use alloy_evm::eth::EthEvmContext;
 use foundry_evm_core::backend::MultiChainDatabaseExt;
 use revm::{primitives::ChainAddress};

@@ -29,7 +29,7 @@ pub fn replay_run(
     logs: &mut Vec<Log>,
     traces: &mut Traces,
     line_coverage: &mut Option<HitMaps>,
-    deprecated_cheatcodes: &mut HashMap<&'static str, Option<&'static str>>,
+    _deprecated_cheatcodes: &mut HashMap<&'static str, Option<&'static str>>,
     inputs: &[BasicTxDetails],
     show_solidity: bool,
 ) -> Result<Vec<BaseCounterExample>> {

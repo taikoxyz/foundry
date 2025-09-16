@@ -230,7 +230,7 @@ impl Cheatcode for attachBlobCall {
              see EIP-4844: https://eips.ethereum.org/EIPS/eip-4844"
         );
         let sidecar: SidecarBuilder<SimpleCoder> = SidecarBuilder::from_slice(blob);
-        let sidecar = sidecar.build().map_err(|e| format!("{e}"))?;
+        let _sidecar = sidecar.build().map_err(|e| format!("{e}"))?;
         // Note: active_blob_sidecar field needs SidecarBlob import fix
         // ccx.state.active_blob_sidecar = Some(sidecar);
         Ok(Default::default())

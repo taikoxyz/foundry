@@ -1,7 +1,6 @@
 use super::Ecx;
 use crate::inspector::Cheatcodes;
 use alloy_primitives::{Address, Bytes, U256};
-use foundry_evm_core::backend::MultiChainDatabaseExt;
 use revm::interpreter::{CreateInputs, CreateScheme, EOFCreateInputs};
 use revm::primitives::ChainAddress;
 

@@ -96,7 +96,7 @@ impl Cheatcode for randomUint_2Call {
 }
 
 impl Cheatcode for randomAddressCall {
-    fn apply(&self, state: &mut Cheatcodes) -> Result {
+    fn apply(&self, _state: &mut Cheatcodes) -> Result {
         Ok(DynSolValue::type_strategy(&DynSolType::Address)
             .new_tree(&mut proptest::test_runner::TestRunner::default())
             .unwrap()
@@ -222,7 +222,7 @@ impl Cheatcode for setArbitraryStorage_0Call {
 
 impl Cheatcode for setArbitraryStorage_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
-        let Self { target, overwrite } = self;
+        let Self { target, overwrite: _ } = self;
         let target = &ChainAddress(ccx.ecx.cfg.chain_id, *target);
         ccx.state.arbitrary_storage.mark_arbitrary(target);
 
@@ -320,7 +320,7 @@ fn random_uint(state: &mut Cheatcodes, bits: Option<U256>, bounds: Option<(U256,
 }
 
 /// Helper to generate a random `int` value (with given bits if specified) from type strategy.
-fn random_int(state: &mut Cheatcodes, bits: Option<U256>) -> Result {
+fn random_int(_state: &mut Cheatcodes, bits: Option<U256>) -> Result {
     let no_bits = bits.unwrap_or(U256::from(256));
     ensure!(no_bits <= U256::from(256), "number of bits cannot exceed 256");
     Ok(DynSolValue::type_strategy(&DynSolType::Int(no_bits.to::<usize>()))

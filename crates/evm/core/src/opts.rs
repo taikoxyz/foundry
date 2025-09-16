@@ -32,7 +32,7 @@ mod chain_address_serde {
         impl<'de> Visitor<'de> for ChainAddressVisitor {
             type Value = ChainAddress;
 
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 formatter.write_str("an address string or a tuple (chain_id, address)")
             }
 
