@@ -4,7 +4,7 @@ use crate::{
     constants::DEFAULT_CREATE2_DEPLOYER,
     fork::{CreateFork, configure_env},
 };
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{Address, B256, U256, address};
 use alloy_provider::{Provider, network::AnyRpcBlock};
 use eyre::WrapErr;
 use foundry_common::{ALCHEMY_FREE_TIER_CUPS, provider::ProviderBuilder};
@@ -209,6 +209,7 @@ impl EvmOpts {
         cfg.xchain = true;
         cfg.allow_mocking = true;
         cfg.parent_chain_id = Some(self.env.parent_chain_id.unwrap_or(cfg.chain_id));
+        cfg.extension_oracle = Some(address!("1ADB9959EB142bE128E6dfEcc8D571f07cd66DeE"));
 
         let chain_id = cfg.chain_id;
 
