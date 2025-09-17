@@ -23,7 +23,7 @@ use revm::{
         return_ok,
     },
     precompile::{PrecompileSpecId, Precompiles},
-    primitives::{ChainAddress, hardfork::SpecId},
+    primitives::{ChainAddress, hardfork::SpecId, HashMap},
 };
 
 pub fn new_evm_with_inspector<'i, 'db, I: InspectorExt + ?Sized>(
@@ -33,7 +33,7 @@ pub fn new_evm_with_inspector<'i, 'db, I: InspectorExt + ?Sized>(
 ) -> FoundryEvm<'db, &'i mut I> {
     let ctx = EthEvmContext {
         journaled_state: {
-            let mut journal = Journal::new(db, env.evm_env.cfg_env.chain_id);
+            let mut journal = Journal::new(db);
             journal.set_spec_id(env.evm_env.cfg_env.spec);
             journal
         },
@@ -168,6 +168,10 @@ impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
         self.inner.ctx.cfg.chain_id
     }
 
+     fn blocks(&self) -> &HashMap<u64, BlockEnv> {
+        &self.inner.ctx.block
+     }
+
     fn block(&self) -> &BlockEnv {
         let chain_id = self.chain_id();
         &self
@@ -216,8 +220,8 @@ impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
 
     fn transact_system_call(
         &mut self,
-        _caller: Address,
-        _contract: Address,
+        _caller: ChainAddress,
+        _contract: ChainAddress,
         _data: Bytes,
     ) -> Result<ResultAndState<Self::HaltReason>, Self::Error> {
         unimplemented!()

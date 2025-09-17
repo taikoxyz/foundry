@@ -105,7 +105,7 @@ pub trait CheatcodesExecutor {
         // Create a temporary journal with a default database to satisfy the borrow checker
         let temp_journal = {
             let db_ptr = &mut ccx.ecx.journaled_state.database as *mut dyn foundry_evm_core::backend::MultiChainDatabaseExt;
-            unsafe { Journal::new(&mut *db_ptr, 1) }
+            unsafe { Journal::new(&mut *db_ptr) }
         };
         
         let inner = alloy_evm::eth::EthEvmContext {
