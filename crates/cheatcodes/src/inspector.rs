@@ -937,6 +937,11 @@ impl Cheatcodes {
         let chain_id = ecx.cfg.chain_id;
         let depth = ecx.journaled_state.inner.depth;
 
+        // `expectRevert`: track the max call depth during `expectRevert`
+        if let Some(expected_revert) = &mut self.expected_revert {
+            expected_revert.max_depth = expected_revert.max_depth.max(depth);
+        }
+
         // At the root call to test function or script `run()`/`setUp()` functions, we are
         // decreasing sender nonce to ensure that it matches on-chain nonce once we start
         // broadcasting.
