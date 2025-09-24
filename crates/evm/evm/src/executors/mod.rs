@@ -382,6 +382,8 @@ impl Executor {
         to: Address,
         rd: Option<&RevertDecoder>,
     ) -> Result<RawCallResult, EvmError> {
+        let chain_id = self.env().evm_env.cfg_env.chain_id;
+        println!("setting up contract {:?} {:?}", from, ChainAddress(chain_id, to));
         trace!(?from, ?to, "setting up contract");
 
         let from = from.unwrap_or(CALLER);
@@ -390,7 +392,7 @@ impl Executor {
             .set_test_contract(ChainAddress(chain_id, to))
             .set_caller(ChainAddress(chain_id, from));
         let calldata = Bytes::from_static(&ITest::setUpCall::SELECTOR);
-        println!("setup::calldata: {:?}", calldata);
+        // println!("setup::calldata: {:?}", calldata);
         let mut res = self.transact_raw(from, to, calldata, U256::ZERO)?;
         res = res.into_result(rd)?;
 
