@@ -533,9 +533,13 @@ impl Executor {
     fn commit(&mut self, result: &mut RawCallResult) {
         // Persist changes to db.
         // Convert ChainAddress keys to Address keys for commit
-        let address_changeset: HashMap<Address, _> = result.state_changeset
+        let active_chain_id = result.env.evm_env.cfg_env.chain_id;
+        let address_changeset: HashMap<Address, _> = result
+            .state_changeset
             .iter()
-            .map(|(chain_addr, account)| (chain_addr.1, account.clone()))
+            .filter_map(|(chain_addr, account)| {
+                (chain_addr.0 == active_chain_id).then_some((chain_addr.1, account.clone()))
+            })
             .collect();
         self.backend_mut().commit(address_changeset);
 
