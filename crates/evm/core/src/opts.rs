@@ -211,18 +211,28 @@ impl EvmOpts {
         cfg.parent_chain_id = Some(self.env.parent_chain_id.unwrap_or(cfg.chain_id));
         cfg.extension_oracle = Some(address!("1ADB9959EB142bE128E6dfEcc8D571f07cd66DeE"));
 
-        let chain_id = cfg.chain_id;
+        let canonical_chain_id = cfg.chain_id;
+        let mut block_chain_ids = self.chain_ids.clone().unwrap_or_default();
+        if block_chain_ids.is_empty() {
+            block_chain_ids.push(canonical_chain_id);
+        } else if !block_chain_ids.contains(&canonical_chain_id) {
+            block_chain_ids.push(canonical_chain_id);
+        }
 
+        let tx_chain_ids = Some(block_chain_ids.clone());
+        let coinbase = self.env.block_coinbase;
         let mut blocks = HashMap::default();
-        for &chain_id in self.chain_ids.as_ref().unwrap().iter() {
+        for &chain_id in &block_chain_ids {
             blocks.insert(
                 chain_id,
                 BlockEnv {
                     number: self.env.block_number,
-                    beneficiary: self.env.block_coinbase,
+                    beneficiary: ChainAddress(chain_id, coinbase.address()),
                     timestamp: self.env.block_timestamp,
-                    basefee: self.env.block_base_fee_per_gas,
                     gas_limit: self.gas_limit(),
+                    basefee: self.env.block_base_fee_per_gas,
+                    difficulty: U256::from(self.env.block_difficulty),
+                    prevrandao: Some(self.env.block_prevrandao),
                     ..Default::default()
                 },
             );
@@ -233,8 +243,8 @@ impl EvmOpts {
             tx: TxEnv {
                 gas_price: self.env.gas_price.unwrap_or_default().into(),
                 gas_limit: self.gas_limit(),
-                caller: ChainAddress(chain_id, self.sender),
-                chain_ids: Some(self.chain_ids.clone().unwrap_or_default()),
+                caller: ChainAddress(canonical_chain_id, self.sender),
+                chain_ids: tx_chain_ids,
                 ..Default::default()
             },
         }
