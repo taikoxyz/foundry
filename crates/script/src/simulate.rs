@@ -140,7 +140,9 @@ impl PreSimulationState {
                 // Simulate mining the transaction if the user passes `--slow`.
                 if self.args.slow {
                     let chain_id = runner.executor.env().evm_env.cfg_env.chain_id;
-                    if let Some(block_env) = runner.executor.env_mut().evm_env.block_env.get_mut(&chain_id) {
+                    if let Some(block_env) =
+                        runner.executor.env_mut().evm_env.block_env.get_mut(&chain_id)
+                    {
                         block_env.number += 1;
                     }
                 }

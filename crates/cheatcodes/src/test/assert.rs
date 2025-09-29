@@ -2,13 +2,12 @@ use crate::{CheatcodesExecutor, CheatsCtxt, Result, Vm::*};
 use alloy_primitives::{I256, U256, U512, hex};
 use foundry_evm_core::{
     abi::console::{format_units_int, format_units_uint},
-    backend::{GLOBAL_FAIL_SLOT},
+    backend::GLOBAL_FAIL_SLOT,
     constants::CHEATCODE_ADDRESS,
 };
 use itertools::Itertools;
-use revm::context::JournalTr;
+use revm::{context::JournalTr, primitives::ChainAddress};
 use std::fmt::{Debug, Display};
-use revm::primitives::ChainAddress;
 
 const EQ_REL_DELTA_RESOLUTION: U256 = U256::from_limbs([18, 0, 0, 0]);
 

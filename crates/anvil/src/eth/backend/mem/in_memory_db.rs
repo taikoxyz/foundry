@@ -12,11 +12,8 @@ use alloy_rpc_types::BlockId;
 use foundry_evm::backend::{BlockchainDb, DatabaseResult, StateSnapshot};
 use revm::{
     context::BlockEnv,
-    context_interface::MultiChainDatabase,
-    database_interface::MultiChainDatabaseCommit,
     database::{DatabaseRef, DbAccount},
-    primitives::ChainAddress,
-    state::{AccountInfo, Account},
+    state::AccountInfo,
 };
 
 // reexport for convenience
@@ -111,7 +108,7 @@ impl Db for MemDb {
 // Multi-chain database implementations for MemDb
 // These are orphan rule violations but necessary for the multi-chain fork architecture.
 
-// Multi-chain database implementations for MemDb 
+// Multi-chain database implementations for MemDb
 // These are orphan rule violations but necessary for the multi-chain fork architecture.
 
 impl MaybeFullDatabase for MemDb {

@@ -1,10 +1,6 @@
 use std::fmt::Debug;
 
-use alloy_evm::{
-    EthEvm, Evm,
-    eth::EthEvmContext,
-    precompiles::PrecompilesMap,
-};
+use alloy_evm::{EthEvm, Evm, eth::EthEvmContext, precompiles::PrecompilesMap};
 // use revm::Database; // Unused after multi-chain migration
 //use foundry_evm_core::either_evm::EitherEvm;
 //use op_revm::OpContext;
@@ -27,29 +23,36 @@ pub fn inject_precompiles<DB, I>(
 {
     for p in precompiles {
         let precompile_fn = *p.precompile();
-        evm.precompiles_mut()
-            .apply_precompile(p.address(), |_| {
-                
-                // We'll use unsafe to create DynPrecompile since the constructor is private
-                // but this is the same pattern used in the alloy-evm codebase itself
-                struct PrecompileWrapper {
-                    inner: fn(&[u8], u64, &revm::precompile::PrecompileContext) -> revm::precompile::PrecompileResult,
+        evm.precompiles_mut().apply_precompile(p.address(), |_| {
+            // We'll use unsafe to create DynPrecompile since the constructor is private
+            // but this is the same pattern used in the alloy-evm codebase itself
+            struct PrecompileWrapper {
+                inner: fn(
+                    &[u8],
+                    u64,
+                    &mut revm::precompile::PrecompileContext,
+                ) -> revm::precompile::PrecompileResult,
+            }
+
+            impl alloy_evm::precompiles::Precompile for PrecompileWrapper {
+                fn call(
+                    &self,
+                    data: &[u8],
+                    gas: u64,
+                    context: &mut revm::precompile::PrecompileContext,
+                ) -> revm::precompile::PrecompileResult {
+                    (self.inner)(data, gas, context)
                 }
-                
-                impl alloy_evm::precompiles::Precompile for PrecompileWrapper {
-                    fn call(&self, data: &[u8], gas: u64, context: &revm::precompile::PrecompileContext) -> revm::precompile::PrecompileResult {
-                        (self.inner)(data, gas, context)
-                    }
-                }
-                
-                let _wrapper = PrecompileWrapper { inner: precompile_fn };
-                
-                // Unfortunately, we can't easily create DynPrecompile due to private constructor
-                // For now, let's return None until we find another approach
-                // TODO: Find a way to inject custom precompiles with the new alloy-evm API
-                
-                None
-            });
+            }
+
+            let _wrapper = PrecompileWrapper { inner: precompile_fn };
+
+            // Unfortunately, we can't easily create DynPrecompile due to private constructor
+            // For now, let's return None until we find another approach
+            // TODO: Find a way to inject custom precompiles with the new alloy-evm API
+
+            None
+        });
     }
 }
 
@@ -121,7 +124,13 @@ mod tests {
         };
 
         let eth_evm_context = EthEvmContext {
-            journaled_state: Journal::new(EmptyDB::default(), 0), // Default chain ID
+            journaled_state: {
+                let mut journal = Journal::new(EmptyDB::default());
+                journal.set_spec_id(spec);
+                journal.set_tx_origin_chain_id(0);
+                journal.set_parent_chain_id(Some(0));
+                journal
+            },
             block: eth_env.evm_env.block_env.clone(),
             cfg: eth_env.evm_env.cfg_env.clone(),
             tx: eth_env.tx.clone(),
@@ -131,16 +140,16 @@ mod tests {
         };
 
         let eth_precompiles = EthPrecompiles {
-            precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec), false), // No xchain by default
+            precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec), false),
             spec,
-        }
-        .precompiles;
+            xchain: false,
+        };
         let eth_evm = EthEvm::new(
             RevmEvm::new_with_inspector(
                 eth_evm_context,
                 NoOpInspector,
                 EthInstructions::<EthInterpreter, EthEvmContext<EmptyDB>>::default(),
-                PrecompilesMap::from_static(eth_precompiles),
+                PrecompilesMap::from_static(eth_precompiles.precompiles),
             ),
             true,
         );
@@ -180,9 +189,11 @@ mod tests {
         let op_cfg = op_env.evm_env.cfg_env.clone().with_spec(op_spec);
         let op_evm_context = OpContext {
             journaled_state: {
-                let mut journal = Journal::new(EmptyDB::default(), 0); // Default chain ID
+                let mut journal = Journal::new(EmptyDB::default());
                 // Converting SpecId into OpSpecId
                 journal.set_spec_id(op_env.evm_env.cfg_env.spec);
+                journal.set_tx_origin_chain_id(0);
+                journal.set_parent_chain_id(Some(0));
                 journal
             },
             block: op_env.evm_env.block_env.clone(),

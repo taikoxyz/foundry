@@ -20,7 +20,11 @@ use foundry_evm::{
     traces::TraceMode,
 };
 use reqwest::Url;
-use revm::{bytecode::Bytecode, database::Database, primitives::hardfork::SpecId, primitives::ChainAddress};
+use revm::{
+    bytecode::Bytecode,
+    database::Database,
+    primitives::{ChainAddress, hardfork::SpecId},
+};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use yansi::Paint;

@@ -287,9 +287,12 @@ impl<DB: Db + ?Sized, V: TransactionValidator> Iterator for &mut TransactionExec
 
         // check that we comply with the block's gas limit, if not disabled
         let max_gas = self.gas_used.saturating_add(env.tx.gas_limit);
-        if !env.evm_env.cfg_env.disable_block_gas_limit && 
-           env.evm_env.block_env.get(&env.evm_env.cfg_env.chain_id)
-               .map_or(false, |block| max_gas > block.gas_limit)
+        if !env.evm_env.cfg_env.disable_block_gas_limit
+            && env
+                .evm_env
+                .block_env
+                .get(&env.evm_env.cfg_env.chain_id)
+                .map_or(false, |block| max_gas > block.gas_limit)
         {
             return Some(TransactionExecutionOutcome::Exhausted(transaction));
         }
@@ -426,7 +429,8 @@ pub fn new_evm_with_inspector<DB, I>(
     inspector: I,
 ) -> EthEvm<DB, I, PrecompilesMap>
 where
-    DB: Database<Error = DatabaseError> + revm::context_interface::MultiChainDatabase<Error = DatabaseError>,
+    DB: Database<Error = DatabaseError>
+        + revm::context_interface::MultiChainDatabase<Error = DatabaseError>,
     I: Inspector<EthEvmContext<DB>>,
 {
     /*
@@ -463,8 +467,10 @@ where
         let spec = env.evm_env.cfg_env.spec;
         let eth_context = EthEvmContext {
             journaled_state: {
-                let mut journal = Journal::new(db, 0); // Default chain ID
+                let mut journal = Journal::new(db);
                 journal.set_spec_id(spec);
+                journal.set_tx_origin_chain_id(env.evm_env.cfg_env.chain_id);
+                journal.set_parent_chain_id(Some(env.evm_env.cfg_env.chain_id));
                 journal
             },
             block: env.evm_env.block_env.clone(),
@@ -476,15 +482,15 @@ where
         };
 
         let eth_precompiles = EthPrecompiles {
-            precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec), false), // No xchain by default
+            precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec), false),
             spec,
-        }
-        .precompiles;
+            xchain: false,
+        };
         let eth_evm = RevmEvm::new_with_inspector(
             eth_context,
             inspector,
             EthInstructions::default(),
-            PrecompilesMap::from_static(eth_precompiles),
+            PrecompilesMap::from_static(eth_precompiles.precompiles),
         );
 
         let eth = EthEvm::new(eth_evm, true);
@@ -502,7 +508,8 @@ pub fn new_evm_with_inspector_ref<'db, DB, I>(
 where
     DB: DatabaseRef<Error = DatabaseError> + 'db + ?Sized,
     I: Inspector<EthEvmContext<WrapDatabaseRef<&'db DB>>>,
-    WrapDatabaseRef<&'db DB>: Database<Error = DatabaseError> + revm::context_interface::MultiChainDatabase<Error = DatabaseError>,
+    WrapDatabaseRef<&'db DB>: Database<Error = DatabaseError>
+        + revm::context_interface::MultiChainDatabase<Error = DatabaseError>,
 {
     new_evm_with_inspector(WrapDatabaseRef(db), env, inspector)
 }

@@ -75,7 +75,11 @@ impl RevertDiagnostic {
     /// Returns the effective target address whose code would be executed.
     /// For delegate calls, this is the `bytecode_address`. Otherwise, it's the `target_address`.
     fn code_target_address(&self, inputs: &mut CallInputs) -> Address {
-        if is_delegatecall(inputs.scheme) { inputs.bytecode_address.1 } else { inputs.target_address.1 }
+        if is_delegatecall(inputs.scheme) {
+            inputs.bytecode_address.1
+        } else {
+            inputs.target_address.1
+        }
     }
 
     /// Derives the revert reason based on the cached data. Should only be called after a revert.
@@ -162,7 +166,9 @@ impl RevertDiagnostic {
         // EXTCODESIZE (address)
         if let Ok(word) = interp.stack.peek(0) {
             let addr = Address::from_word(word.into());
-            if IGNORE.contains(&addr) || ctx.journal_ref().precompile_addresses().contains(&ChainAddress(1, addr)) {
+            if IGNORE.contains(&addr)
+                || ctx.journal_ref().precompile_addresses().contains(&ChainAddress(1, addr))
+            {
                 return;
             }
 
@@ -197,7 +203,9 @@ where
     fn call(&mut self, ctx: &mut CTX, inputs: &mut CallInputs) -> Option<CallOutcome> {
         let target = self.code_target_address(inputs);
 
-        if IGNORE.contains(&target) || ctx.journal_ref().precompile_addresses().contains(&ChainAddress(1, target)) {
+        if IGNORE.contains(&target)
+            || ctx.journal_ref().precompile_addresses().contains(&ChainAddress(1, target))
+        {
             return None;
         }
 

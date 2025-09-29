@@ -86,20 +86,15 @@ impl ExecutorBuilder {
         }
         let gas_limit = gas_limit.unwrap_or_else(|| {
             let chain_id = env.evm_env.cfg_env.chain_id;
-            env.evm_env.block_env.get(&chain_id)
+            env.evm_env
+                .block_env
+                .get(&chain_id)
                 .map(|block| block.gas_limit)
                 .unwrap_or(u64::MAX.into())
         });
         let chain_id = env.evm_env.cfg_env.chain_id;
-        let block_env = env.evm_env.block_env.get(&chain_id)
-            .cloned()
-            .unwrap_or_default();
-        let env = Env::new_with_spec_id(
-            env.evm_env.cfg_env.clone(),
-            block_env,
-            env.tx,
-            spec_id,
-        );
+        let block_env = env.evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
+        let env = Env::new_with_spec_id(env.evm_env.cfg_env.clone(), block_env, env.tx, spec_id);
         Executor::new(db, env, stack.build(), gas_limit, legacy_assertions)
     }
 }

@@ -42,7 +42,10 @@ mod chain_address_serde {
             {
                 // Parse address string and use chain_id 1 as default (Ethereum mainnet)
                 let address = value.parse::<Address>().map_err(|e| {
-                    E::invalid_value(Unexpected::Str(value), &format!("valid address: {}", e).as_str())
+                    E::invalid_value(
+                        Unexpected::Str(value),
+                        &format!("valid address: {}", e).as_str(),
+                    )
                 })?;
                 Ok(ChainAddress(1, address))
             }
@@ -51,8 +54,12 @@ mod chain_address_serde {
             where
                 A: de::SeqAccess<'de>,
             {
-                let chain_id = seq.next_element::<u64>()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                let address = seq.next_element::<Address>()?.ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                let chain_id = seq
+                    .next_element::<u64>()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let address = seq
+                    .next_element::<Address>()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
                 Ok(ChainAddress(chain_id, address))
             }
         }

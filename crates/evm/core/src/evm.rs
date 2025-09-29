@@ -1,6 +1,8 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::{Env, InspectorExt, backend::MultiChainDatabaseExt, constants::DEFAULT_CREATE2_DEPLOYER_CODEHASH};
+use crate::{
+    Env, InspectorExt, backend::MultiChainDatabaseExt, constants::DEFAULT_CREATE2_DEPLOYER_CODEHASH,
+};
 use alloy_consensus::constants::KECCAK_EMPTY;
 use alloy_evm::{Evm, EvmEnv, eth::EthEvmContext, precompiles::PrecompilesMap};
 use alloy_primitives::{Address, Bytes, U256};
@@ -8,8 +10,7 @@ use foundry_fork_db::DatabaseError;
 use revm::{
     Context, ExecuteEvm, Journal,
     context::{
-        BlockEnv, CfgEnv, ContextTr, CreateScheme, Evm as RevmEvm, JournalTr, LocalContext,
-        TxEnv,
+        BlockEnv, CfgEnv, ContextTr, CreateScheme, Evm as RevmEvm, JournalTr, LocalContext, TxEnv,
         result::{EVMError, HaltReason, ResultAndState},
     },
     handler::{
@@ -23,7 +24,7 @@ use revm::{
         return_ok,
     },
     precompile::{PrecompileSpecId, Precompiles},
-    primitives::{ChainAddress, hardfork::SpecId, HashMap},
+    primitives::{ChainAddress, HashMap, hardfork::SpecId},
 };
 
 pub fn new_evm_with_inspector<'i, 'db, I: InspectorExt + ?Sized>(
@@ -98,6 +99,7 @@ fn get_precompiles(spec: SpecId) -> PrecompilesMap {
         EthPrecompiles {
             precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec), false),
             spec,
+            xchain: false,
         }
         .precompiles,
     )
@@ -121,6 +123,7 @@ fn get_create2_factory_call_inputs(
         is_static: false,
         return_memory_offset: 0..0,
         is_eof: false,
+        is_direct: false,
     }
 }
 
@@ -129,10 +132,7 @@ pub struct FoundryEvm<'db, I: InspectorExt> {
     pub inner: RevmEvm<
         EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
         I,
-        EthInstructions<
-            EthInterpreter,
-            EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
-        >,
+        EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn MultiChainDatabaseExt>>,
         PrecompilesMap,
     >,
 }
@@ -168,9 +168,9 @@ impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
         self.inner.ctx.cfg.chain_id
     }
 
-     fn blocks(&self) -> &HashMap<u64, BlockEnv> {
+    fn blocks(&self) -> &HashMap<u64, BlockEnv> {
         &self.inner.ctx.block
-     }
+    }
 
     fn block(&self) -> &BlockEnv {
         let chain_id = self.chain_id();
@@ -238,8 +238,7 @@ impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
 }
 
 impl<'db, I: InspectorExt> Deref for FoundryEvm<'db, I> {
-    type Target =
-        Context<BlockEnv, TxEnv, CfgEnv, &'db mut dyn MultiChainDatabaseExt>;
+    type Target = Context<BlockEnv, TxEnv, CfgEnv, &'db mut dyn MultiChainDatabaseExt>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner.ctx
@@ -258,10 +257,7 @@ pub struct FoundryHandler<'db, I: InspectorExt> {
         RevmEvm<
             EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
             I,
-            EthInstructions<
-                EthInterpreter,
-                EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
-            >,
+            EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn MultiChainDatabaseExt>>,
             PrecompilesMap,
         >,
         EVMError<DatabaseError>,
@@ -269,10 +265,7 @@ pub struct FoundryHandler<'db, I: InspectorExt> {
             RevmEvm<
                 EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
                 I,
-                EthInstructions<
-                    EthInterpreter,
-                    EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
-                >,
+                EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn MultiChainDatabaseExt>>,
                 PrecompilesMap,
             >,
             EVMError<DatabaseError>,
@@ -292,10 +285,7 @@ impl<'db, I: InspectorExt> Handler for FoundryHandler<'db, I> {
     type Evm = RevmEvm<
         EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
         I,
-        EthInstructions<
-            EthInterpreter,
-            EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
-        >,
+        EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn MultiChainDatabaseExt>>,
         PrecompilesMap,
     >;
     type Error = EVMError<DatabaseError>;
@@ -303,10 +293,7 @@ impl<'db, I: InspectorExt> Handler for FoundryHandler<'db, I> {
         RevmEvm<
             EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
             I,
-            EthInstructions<
-                EthInterpreter,
-                EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
-            >,
+            EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn MultiChainDatabaseExt>>,
             PrecompilesMap,
         >,
         EVMError<DatabaseError>,

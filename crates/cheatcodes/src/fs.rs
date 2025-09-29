@@ -4,12 +4,12 @@ use super::string::parse;
 use crate::{Cheatcode, Cheatcodes, CheatcodesExecutor, CheatsCtxt, Result, Vm::*};
 use alloy_dyn_abi::DynSolType;
 use alloy_json_abi::ContractObject;
-use alloy_primitives::{hex, Bytes, U256};
+use alloy_primitives::{Bytes, U256, hex};
 use alloy_sol_types::SolValue;
 use dialoguer::{Input, Password};
 use foundry_common::fs;
 use foundry_config::fs_permissions::FsAccessKind;
-use revm::{interpreter::CreateInputs};
+use revm::interpreter::CreateInputs;
 use semver::Version;
 use std::{
     collections::hash_map::Entry,
@@ -377,9 +377,9 @@ fn get_artifact_code(state: &Cheatcodes, path: &str, deployed: bool) -> Result<B
                         }
                     }
                     if let Some(ref version) = version {
-                        if id.version.minor != version.minor ||
-                            id.version.major != version.major ||
-                            id.version.patch != version.patch
+                        if id.version.minor != version.minor
+                            || id.version.major != version.major
+                            || id.version.patch != version.patch
                         {
                             return false;
                         }
@@ -394,8 +394,7 @@ fn get_artifact_code(state: &Cheatcodes, path: &str, deployed: bool) -> Result<B
                 filtered => {
                     // If we know the current script/test contract solc version, try to filter by it
                     // TODO: running_version field removed from config, fallback to first match
-                    filtered.get(0)
-                        .ok_or_else(|| fmt_err!("no matching artifacts found"))
+                    filtered.get(0).ok_or_else(|| fmt_err!("no matching artifacts found"))
                 }
             }?;
 

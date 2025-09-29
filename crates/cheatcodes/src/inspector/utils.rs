@@ -1,8 +1,10 @@
 use super::Ecx;
 use crate::inspector::Cheatcodes;
 use alloy_primitives::{Address, Bytes, U256};
-use revm::interpreter::{CreateInputs, CreateScheme, EOFCreateInputs};
-use revm::primitives::ChainAddress;
+use revm::{
+    interpreter::{CreateInputs, CreateScheme, EOFCreateInputs},
+    primitives::ChainAddress,
+};
 
 /// Common behaviour of legacy and EOF create inputs.
 pub(crate) trait CommonCreateInput {
@@ -54,9 +56,9 @@ impl CommonCreateInput for &mut CreateInputs {
         let created_address = self.created_address(old_nonce);
         let created_chain_address = ChainAddress(ecx.cfg.chain_id, created_address);
         // SAFETY: Transmute to bypass lifetime variance restrictions - ecx outlives this call
-        let ecx_transmuted: &mut alloy_evm::eth::EthEvmContext<&mut dyn foundry_evm_core::backend::MultiChainDatabaseExt> = unsafe {
-            std::mem::transmute(ecx)
-        };
+        let ecx_transmuted: &mut alloy_evm::eth::EthEvmContext<
+            &mut dyn foundry_evm_core::backend::MultiChainDatabaseExt,
+        > = unsafe { std::mem::transmute(ecx) };
         cheatcodes.allow_cheatcodes_on_create(ecx_transmuted, self.caller, created_chain_address);
         created_chain_address
     }
@@ -76,7 +78,8 @@ impl CommonCreateInput for &mut EOFCreateInputs {
     }
 
     fn init_code(&self) -> Bytes {
-        // For EOF creates, we approximate with empty bytes since the initcode is in a different format
+        // For EOF creates, we approximate with empty bytes since the initcode is in a different
+        // format
         Bytes::new()
     }
 
@@ -97,9 +100,9 @@ impl CommonCreateInput for &mut EOFCreateInputs {
         let created_address = *self.kind.created_address().unwrap_or(&Address::ZERO);
         let created_chain_address = ChainAddress(ecx.cfg.chain_id, created_address);
         // SAFETY: Transmute to bypass lifetime variance restrictions - ecx outlives this call
-        let ecx_transmuted: &mut alloy_evm::eth::EthEvmContext<&mut dyn foundry_evm_core::backend::MultiChainDatabaseExt> = unsafe {
-            std::mem::transmute(ecx)
-        };
+        let ecx_transmuted: &mut alloy_evm::eth::EthEvmContext<
+            &mut dyn foundry_evm_core::backend::MultiChainDatabaseExt,
+        > = unsafe { std::mem::transmute(ecx) };
         cheatcodes.allow_cheatcodes_on_create(ecx_transmuted, self.caller, created_chain_address);
         created_chain_address
     }

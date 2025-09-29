@@ -19,15 +19,15 @@ use serde as _;
 
 use alloy_evm::eth::EthEvmContext;
 use foundry_evm_core::backend::MultiChainDatabaseExt;
-use revm::{primitives::ChainAddress};
+use revm::primitives::ChainAddress;
 
+pub use Vm::ForgeContext;
 pub use config::CheatsConfig;
 pub use error::{Error, ErrorKind, Result};
 pub use inspector::{
     BroadcastableTransaction, BroadcastableTransactions, Cheatcodes, CheatcodesExecutor, Context,
 };
 pub use spec::{CheatcodeDef, Vm};
-pub use Vm::ForgeContext;
 
 #[macro_use]
 mod error;
@@ -143,6 +143,8 @@ impl<'cheats, 'evm> CheatsCtxt<'cheats, 'evm> {
     pub fn is_precompile(&self, address: ChainAddress) -> bool {
         // Check if the address is in the precompile range
         // Precompiles are typically in the range 0x01 to 0x09 for Ethereum mainnet
-        address.1.lt(&revm::primitives::Address::from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10]))
+        address.1.lt(&revm::primitives::Address::from([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10,
+        ]))
     }
 }

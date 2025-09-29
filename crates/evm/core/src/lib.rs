@@ -10,9 +10,7 @@ use alloy_evm::eth::EthEvmContext;
 use alloy_primitives::Address;
 use auto_impl::auto_impl;
 pub use foundry_fork_db::DatabaseError;
-use revm::{
-    Inspector, inspector::NoOpInspector, interpreter::CreateInputs,
-};
+use revm::{Inspector, inspector::NoOpInspector, interpreter::CreateInputs};
 use revm_inspectors::access_list::AccessListInspector;
 
 #[macro_use]

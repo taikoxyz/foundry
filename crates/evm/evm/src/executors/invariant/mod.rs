@@ -3,7 +3,6 @@ use crate::{
     inspectors::Fuzzer,
 };
 use alloy_primitives::{Address, Bytes, FixedBytes, Selector, U256, map::HashMap};
-use revm::primitives::ChainAddress;
 use alloy_sol_types::{SolCall, sol};
 use eyre::{ContextCompat, Result, eyre};
 use foundry_common::contracts::{ContractsByAddress, ContractsByArtifact};
@@ -27,7 +26,7 @@ use indicatif::ProgressBar;
 use parking_lot::RwLock;
 use proptest::{strategy::Strategy, test_runner::TestRunner};
 use result::{assert_after_invariant, assert_invariants, can_continue};
-use revm::state::Account;
+use revm::{primitives::ChainAddress, state::Account};
 use shrink::shrink_sequence;
 use std::{
     cell::RefCell,
@@ -567,7 +566,10 @@ impl<'a> InvariantExecutor<'a> {
         // EVM execution.
         let mut call_generator = None;
         if self.config.call_override {
-            let target_contract_ref = Arc::new(RwLock::new(ChainAddress(self.executor.env().evm_env.cfg_env.chain_id, Address::ZERO)));
+            let target_contract_ref = Arc::new(RwLock::new(ChainAddress(
+                self.executor.env().evm_env.cfg_env.chain_id,
+                Address::ZERO,
+            )));
 
             call_generator = Some(RandomCallGenerator::new(
                 invariant_contract.address,
@@ -760,7 +762,10 @@ impl<'a> InvariantExecutor<'a> {
                     && self.artifact_filters.matches(identifier)
             })
             .map(|(addr, (identifier, abi))| {
-                (ChainAddress(self.executor.env().evm_env.cfg_env.chain_id, *addr), TargetedContract::new(identifier.clone(), abi.clone()))
+                (
+                    ChainAddress(self.executor.env().evm_env.cfg_env.chain_id, *addr),
+                    TargetedContract::new(identifier.clone(), abi.clone()),
+                )
             })
             .collect();
         let mut contracts = TargetedContracts { inner: contracts };
@@ -831,7 +836,9 @@ impl<'a> InvariantExecutor<'a> {
         address: Address,
         targeted_contracts: &mut TargetedContracts,
     ) -> Result<()> {
-        if let Some(target) = targeted_contracts.get(&ChainAddress(self.executor.env().evm_env.cfg_env.chain_id, address)) {
+        if let Some(target) = targeted_contracts
+            .get(&ChainAddress(self.executor.env().evm_env.cfg_env.chain_id, address))
+        {
             // If test contract is a target, then include only state-changing functions
             // that are not reserved.
             let selectors: Vec<_> = target
@@ -889,7 +896,9 @@ impl<'a> InvariantExecutor<'a> {
             return Ok(());
         }
 
-        let contract = match targeted_contracts.entry(ChainAddress(self.executor.env().evm_env.cfg_env.chain_id, address)) {
+        let contract = match targeted_contracts
+            .entry(ChainAddress(self.executor.env().evm_env.cfg_env.chain_id, address))
+        {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
                 let (identifier, abi) = self.setup_contracts.get(&address).ok_or_else(|| {

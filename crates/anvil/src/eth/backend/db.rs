@@ -16,19 +16,15 @@ use revm::{
     Database, DatabaseCommit,
     bytecode::Bytecode,
     context::BlockEnv,
-    context_interface::MultiChainDatabase,
-    database_interface::MultiChainDatabaseCommit,
-    database::{CacheDB, DatabaseRef, DbAccount, WrapDatabaseRef},
-    primitives::{KECCAK_EMPTY, ChainAddress},
-    state::{AccountInfo, Account},
+    database::{CacheDB, DatabaseRef, DbAccount},
+    primitives::KECCAK_EMPTY,
+    state::AccountInfo,
 };
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{MapAccess, Visitor},
 };
 use std::{collections::BTreeMap, fmt, path::Path};
-
-
 
 /// Helper trait get access to the full state data of the database
 pub trait MaybeFullDatabase: DatabaseRef<Error = DatabaseError> {
@@ -317,13 +313,12 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
 // Multi-chain database implementations for CacheDB
 // ORPHAN RULE VIOLATION: These implementations violate Rust's orphan rule (E0117) because:
 // - MultiChainDatabase/MultiChainDatabaseCommit traits are defined in revm-private crate
-// - CacheDB<T> type is defined in revm crate  
+// - CacheDB<T> type is defined in revm crate
 // - This implementation is in anvil crate
 //
 // JUSTIFICATION: This is an INTENTIONAL architectural decision for the multi-chain Foundry fork.
 // The Db trait (lines 94-95) requires these bounds, making these implementations essential.
 // Until upstream changes are made, these violations are necessary for the fork to function.
-
 
 impl<T: DatabaseRef<Error = DatabaseError>> MaybeForkedDatabase for CacheDB<T> {
     fn maybe_reset(&mut self, _url: Option<String>, _block_number: BlockId) -> Result<(), String> {
@@ -633,13 +628,3 @@ mod test {
         let _block: SerializableBlock = serde_json::from_str(block).unwrap();
     }
 }
-
-// Implement MultiChainDatabase for WrapDatabaseRef to support multi-chain operations
-// ORPHAN RULE VIOLATION: This implementation violates Rust's orphan rule (E0117) because:
-// - MultiChainDatabase trait is defined in revm-private crate
-// - WrapDatabaseRef<T> type is defined in revm crate
-// - This implementation is in anvil crate
-//
-// JUSTIFICATION: This is necessary for multi-chain fork architecture. WrapDatabaseRef is used
-// throughout the EVM execution pipeline and must support multi-chain operations.
-

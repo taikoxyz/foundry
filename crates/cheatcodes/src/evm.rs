@@ -3,10 +3,9 @@
 use crate::{
     BroadcastableTransaction, Cheatcode, Cheatcodes, CheatcodesExecutor, CheatsCtxt, Result, Vm::*,
 };
-use revm::{context_interface::JournalTr, context_interface::block::Block};
 use alloy_consensus::TxEnvelope;
 use alloy_genesis::{Genesis, GenesisAccount};
-use alloy_primitives::{Address, Bytes, B256, U256};
+use alloy_primitives::{Address, B256, Bytes, U256};
 use alloy_rlp::Decodable;
 use alloy_sol_types::SolValue;
 use foundry_common::fs::{read_json_file, write_json_file};
@@ -17,6 +16,7 @@ use foundry_evm_core::{
 };
 use rand::Rng;
 use revm::{
+    context_interface::{JournalTr, block::Block},
     primitives::{ChainAddress, KECCAK_EMPTY, hardfork::SpecId},
     state::{Account, Bytecode},
 };
@@ -137,12 +137,13 @@ impl Cheatcode for loadAllocsCall {
         };
 
         let chain_id = ccx.caller.0;
-        let allocs = allocs.into_iter().map(|alloc| {
-            (ChainAddress(chain_id, alloc.0), alloc.1)
-        }).collect();
+        let allocs =
+            allocs.into_iter().map(|alloc| (ChainAddress(chain_id, alloc.0), alloc.1)).collect();
 
         // Then, load the allocs into the database.
-        ccx.ecx.journaled_state.database
+        ccx.ecx
+            .journaled_state
+            .database
             .load_allocs(&allocs, &mut ccx.ecx.journaled_state.inner)
             .map(|()| Vec::default())
             .map_err(|e| fmt_err!("failed to load allocs: {e}"))
@@ -156,13 +157,13 @@ impl Cheatcode for dumpStateCall {
 
         // Do not include system account or empty accounts in the dump.
         let skip = |key: &Address, val: &Account| {
-            key == &CHEATCODE_ADDRESS ||
-                key == &CALLER ||
-                key == &HARDHAT_CONSOLE_ADDRESS ||
-                key == &TEST_CONTRACT_ADDRESS ||
-                key == &ccx.caller.1 ||
-                key == &ccx.state.config.evm_opts.sender ||
-                val.is_empty()
+            key == &CHEATCODE_ADDRESS
+                || key == &CALLER
+                || key == &HARDHAT_CONSOLE_ADDRESS
+                || key == &TEST_CONTRACT_ADDRESS
+                || key == &ccx.caller.1
+                || key == &ccx.state.config.evm_opts.sender
+                || val.is_empty()
         };
 
         let alloc = ccx
@@ -283,7 +284,8 @@ impl Cheatcode for coinbaseCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
         let Self { newCoinbase } = self;
         let chain_id = ccx.caller.0;
-        ccx.ecx.block.get_mut(&chain_id).unwrap().beneficiary = ChainAddress(chain_id, *newCoinbase);
+        ccx.ecx.block.get_mut(&chain_id).unwrap().beneficiary =
+            ChainAddress(chain_id, *newCoinbase);
         Ok(Default::default())
     }
 }
@@ -415,7 +417,10 @@ impl Cheatcode for blobBaseFeeCall {
              see EIP-4844: https://eips.ethereum.org/EIPS/eip-4844"
         );
         let chain_id = ccx.caller.0;
-        ccx.ecx.block.get_mut(&chain_id).unwrap().set_blob_excess_gas_and_price((*newBlobBaseFee).to(), ccx.ecx.cfg.spec.is_enabled_in(SpecId::PRAGUE));
+        ccx.ecx.block.get_mut(&chain_id).unwrap().set_blob_excess_gas_and_price(
+            (*newBlobBaseFee).to(),
+            ccx.ecx.cfg.spec.is_enabled_in(SpecId::PRAGUE),
+        );
         Ok(Default::default())
     }
 }
@@ -434,7 +439,8 @@ impl Cheatcode for dealCall {
         let chain_id = ccx.caller.0;
         let account = journaled_account(ccx.ecx, ChainAddress(chain_id, address))?;
         let old_balance = std::mem::replace(&mut account.info.balance, new_balance);
-        let record = DealRecord { address: ChainAddress(chain_id, address), old_balance, new_balance };
+        let record =
+            DealRecord { address: ChainAddress(chain_id, address), old_balance, new_balance };
         ccx.state.eth_deals.push(record);
         Ok(Default::default())
     }
@@ -512,7 +518,9 @@ impl Cheatcode for coolCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
         let Self { target } = self;
         let chain_id = ccx.caller.0;
-        if let Some(account) = ccx.ecx.journaled_state.inner.state.get_mut(&ChainAddress(chain_id, *target)) {
+        if let Some(account) =
+            ccx.ecx.journaled_state.inner.state.get_mut(&ChainAddress(chain_id, *target))
+        {
             account.unmark_touch();
             account.storage.clear();
         }
@@ -530,14 +538,19 @@ impl Cheatcode for readCallersCall {
 impl Cheatcode for snapshotCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
         let Self {} = self;
-        Ok(ccx.ecx.journaled_state.database.snapshot_state(
-            &ccx.ecx.journaled_state.inner, 
-            &mut EnvMut {
-                block: &mut ccx.ecx.block,
-                cfg: &mut ccx.ecx.cfg,
-                tx: &mut ccx.ecx.tx,
-            }
-        ).abi_encode())
+        Ok(ccx
+            .ecx
+            .journaled_state
+            .database
+            .snapshot_state(
+                &ccx.ecx.journaled_state.inner,
+                &mut EnvMut {
+                    block: &mut ccx.ecx.block,
+                    cfg: &mut ccx.ecx.cfg,
+                    tx: &mut ccx.ecx.tx,
+                },
+            )
+            .abi_encode())
     }
 }
 
@@ -547,11 +560,7 @@ impl Cheatcode for revertToCall {
         let result = if let Some(journaled_state) = ccx.ecx.journaled_state.database.revert_state(
             *snapshotId,
             &ccx.ecx.journaled_state.inner,
-            &mut EnvMut {
-                block: &mut ccx.ecx.block,
-                cfg: &mut ccx.ecx.cfg,
-                tx: &mut ccx.ecx.tx,
-            },
+            &mut EnvMut { block: &mut ccx.ecx.block, cfg: &mut ccx.ecx.cfg, tx: &mut ccx.ecx.tx },
             RevertStateSnapshotAction::RevertKeep,
         ) {
             // we reset the evm's journaled_state to the state of the snapshot previous state
@@ -570,11 +579,7 @@ impl Cheatcode for revertToAndDeleteCall {
         let result = if let Some(journaled_state) = ccx.ecx.journaled_state.database.revert_state(
             *snapshotId,
             &ccx.ecx.journaled_state.inner,
-            &mut EnvMut {
-                block: &mut ccx.ecx.block,
-                cfg: &mut ccx.ecx.cfg,
-                tx: &mut ccx.ecx.tx,
-            },
+            &mut EnvMut { block: &mut ccx.ecx.block, cfg: &mut ccx.ecx.cfg, tx: &mut ccx.ecx.tx },
             RevertStateSnapshotAction::RevertRemove,
         ) {
             // we reset the evm's journaled_state to the state of the snapshot previous state
@@ -630,10 +635,7 @@ impl Cheatcode for broadcastRawTransactionCall {
         ccx.ecx.journaled_state.database.transact_from_tx(
             &tx.clone().into(),
             Env {
-                evm_env: EvmEnv {
-                    block_env: ccx.ecx.block.clone(),
-                    cfg_env: ccx.ecx.cfg.clone(),
-                },
+                evm_env: EvmEnv { block_env: ccx.ecx.block.clone(), cfg_env: ccx.ecx.cfg.clone() },
                 tx: ccx.ecx.tx.clone(),
             },
             &mut ccx.ecx.journaled_state.inner,
@@ -721,7 +723,9 @@ fn read_callers(state: &Cheatcodes, default_sender: &Address) -> Result {
 
 /// Ensures the `Account` is loaded and touched.
 pub(super) fn journaled_account<'a>(
-    ecx: &'a mut alloy_evm::eth::EthEvmContext<&'a mut dyn foundry_evm_core::backend::MultiChainDatabaseExt>,
+    ecx: &'a mut alloy_evm::eth::EthEvmContext<
+        &'a mut dyn foundry_evm_core::backend::MultiChainDatabaseExt,
+    >,
     addr: ChainAddress,
 ) -> Result<&'a mut Account> {
     ecx.journaled_state.load_account(addr)?;

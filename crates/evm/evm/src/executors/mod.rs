@@ -18,7 +18,6 @@ use alloy_primitives::{
     Address, Bytes, Log, TxKind, U256, keccak256,
     map::{AddressHashMap, HashMap},
 };
-use revm::primitives::{ChainAddress, MultiChainTxKind};
 use alloy_sol_types::{SolCall, sol};
 use foundry_evm_core::{
     EvmEnv, InspectorExt,
@@ -41,7 +40,7 @@ use revm::{
     },
     database::{DatabaseCommit, DatabaseRef},
     interpreter::{InstructionResult, return_ok},
-    primitives::hardfork::SpecId,
+    primitives::{ChainAddress, MultiChainTxKind, hardfork::SpecId},
 };
 use std::{
     borrow::Cow,
@@ -134,7 +133,9 @@ impl Executor {
     fn clone_with_backend(&self, backend: Backend) -> Self {
         let env = Env::new_with_spec_id(
             self.env.evm_env.cfg_env.clone(),
-            self.env.evm_env.block_env
+            self.env
+                .evm_env
+                .block_env
                 .get(&self.env.evm_env.cfg_env.chain_id)
                 .cloned()
                 .unwrap_or_default(),
@@ -646,7 +647,8 @@ impl Executor {
         }
 
         // Check the global failure slot.
-        if let Some(acc) = state_changeset.get(&ChainAddress(self.env().evm_env.cfg_env.chain_id, CHEATCODE_ADDRESS))
+        if let Some(acc) = state_changeset
+            .get(&ChainAddress(self.env().evm_env.cfg_env.chain_id, CHEATCODE_ADDRESS))
             && let Some(failed_slot) = acc.storage.get(&GLOBAL_FAIL_SLOT)
             && !failed_slot.present_value().is_zero()
         {
@@ -719,23 +721,23 @@ impl Executor {
                 // by the cheatcode handler if it is enabled
                 block_env: {
                     let chain_id = self.env().evm_env.cfg_env.chain_id;
-                    let base_block = self.env().evm_env.block_env
-                        .get(&chain_id)
-                        .cloned()
-                        .unwrap_or_default();
+                    let base_block =
+                        self.env().evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
                     let mut block_env_map = HashMap::default();
-                    block_env_map.insert(chain_id, BlockEnv {
-                        basefee: 0_u64,
-                        gas_limit: self.gas_limit.into(),
-                        ..base_block
-                    });
+                    block_env_map.insert(
+                        chain_id,
+                        BlockEnv { basefee: 0_u64, gas_limit: self.gas_limit.into(), ..base_block },
+                    );
                     block_env_map
                 },
             },
             tx: TxEnv {
                 caller: ChainAddress(self.env().evm_env.cfg_env.chain_id, caller),
                 kind: match kind {
-                    TxKind::Call(addr) => MultiChainTxKind::Call(ChainAddress(self.env().evm_env.cfg_env.chain_id, addr)),
+                    TxKind::Call(addr) => MultiChainTxKind::Call(ChainAddress(
+                        self.env().evm_env.cfg_env.chain_id,
+                        addr,
+                    )),
                     TxKind::Create => MultiChainTxKind::Create,
                 },
                 data,

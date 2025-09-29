@@ -105,4 +105,3 @@ impl<DB: crate::backend::MultiChainDatabaseExt, C> ContextExt
         )
     }
 }
-

@@ -1080,7 +1080,7 @@ impl NodeConfig {
             // Get or create block environment for the current chain
             let chain_id = env.evm_env.cfg_env.chain_id;
             let block_env = env.evm_env.block_env.entry(chain_id).or_default();
-            
+
             block_env.timestamp = genesis.timestamp;
             if let Some(base_fee) = genesis.base_fee_per_gas {
                 block_env.basefee = base_fee.try_into()?;
@@ -1241,7 +1241,7 @@ latest block number: {latest_block}"
         // Get current block environment or default for the chain
         let chain_id = env.evm_env.cfg_env.chain_id;
         let current_block_env = env.evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
-        
+
         let new_block_env = BlockEnv {
             number: fork_block_number,
             timestamp: block.header.timestamp,
@@ -1254,7 +1254,7 @@ latest block number: {latest_block}"
             basefee: current_block_env.basefee,
             ..Default::default()
         };
-        
+
         // Insert the new block environment for this chain
         env.evm_env.block_env.insert(chain_id, new_block_env);
 
@@ -1354,7 +1354,11 @@ latest block number: {latest_block}"
             compute_units_per_second: self.compute_units_per_second,
             total_difficulty: block.header.total_difficulty.unwrap_or_default(),
             blob_gas_used: block.header.blob_gas_used.map(|g| g as u128),
-            blob_excess_gas_and_price: env.evm_env.block_env.get(&chain_id).and_then(|b| b.blob_excess_gas_and_price),
+            blob_excess_gas_and_price: env
+                .evm_env
+                .block_env
+                .get(&chain_id)
+                .and_then(|b| b.blob_excess_gas_and_price),
             force_transactions,
         };
 

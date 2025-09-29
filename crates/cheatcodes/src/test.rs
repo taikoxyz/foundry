@@ -2,7 +2,7 @@
 
 use crate::{Cheatcode, Cheatcodes, CheatsCtxt, Result, Vm::*};
 use alloy_chains::Chain as AlloyChain;
-use alloy_primitives::{ U256};
+use alloy_primitives::U256;
 use alloy_sol_types::SolValue;
 use foundry_common::version::SEMVER_VERSION;
 use foundry_evm_core::constants::MAGIC_SKIP;
@@ -79,7 +79,10 @@ impl Cheatcode for skip_1Call {
         if *skipTest {
             // Skip should not work if called deeper than at test level.
             // Since we're not returning the magic skip bytes, this will cause a test failure.
-            ensure!(ccx.ecx.journaled_state.inner.depth <= 1, "`skip` can only be used at test level");
+            ensure!(
+                ccx.ecx.journaled_state.inner.depth <= 1,
+                "`skip` can only be used at test level"
+            );
             Err([MAGIC_SKIP, reason.as_bytes()].concat().into())
         } else {
             Ok(Default::default())

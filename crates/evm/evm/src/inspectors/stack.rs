@@ -535,7 +535,10 @@ impl InspectorStackRefMut<'_> {
     /// Should be called on the top-level call of inner context (depth == 0 &&
     /// self.in_inner_context) Decreases sender nonce for CALLs to keep backwards compatibility
     /// Updates tx.origin to the value before entering inner context
-    fn adjust_evm_data_for_inner_context(&mut self, ecx: &mut EthEvmContext<&mut dyn MultiChainDatabaseExt>) {
+    fn adjust_evm_data_for_inner_context(
+        &mut self,
+        ecx: &mut EthEvmContext<&mut dyn MultiChainDatabaseExt>,
+    ) {
         let inner_context_data =
             self.inner_context_data.as_ref().expect("should be called in inner context");
         ecx.tx.caller = inner_context_data.original_origin;
@@ -608,7 +611,7 @@ impl InspectorStackRefMut<'_> {
         gas_limit: u64,
         value: U256,
     ) -> (InterpreterResult, Option<Address>) {
-        // Get the current chain's block environment  
+        // Get the current chain's block environment
         let current_block = ecx.block.get(&ecx.cfg.chain_id).cloned().unwrap_or_default();
         let cached_env = Env::from(ecx.cfg.clone(), current_block, ecx.tx.clone());
 
@@ -716,7 +719,9 @@ impl InspectorStackRefMut<'_> {
         }
 
         let (result, address, output) = match res.result {
-            ExecutionResult::Success { reason, gas_used, gas_refunded, logs: _, output, .. } => {
+            ExecutionResult::Success {
+                reason, gas_used, gas_refunded, logs: _, output, ..
+            } => {
                 gas.set_refund(gas_refunded as i64);
                 let _ = gas.record_cost(gas_used);
                 let address = match output {

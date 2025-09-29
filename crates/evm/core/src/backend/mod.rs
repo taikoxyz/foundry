@@ -1626,13 +1626,13 @@ impl Database for Backend {
 pub trait MultiChainDatabaseManager {
     /// Get a reference to a DatabaseExt instance for a specific chain
     fn get(&self, chain_id: u64) -> Option<&dyn DatabaseExt>;
-    
+
     /// Get a mutable reference to a DatabaseExt instance for a specific chain
     fn get_mut(&mut self, chain_id: u64) -> Option<&mut dyn DatabaseExt>;
-    
+
     /// Add a new chain database
     fn add_chain_ext(&mut self, chain_id: u64, db: Box<dyn DatabaseExt>);
-    
+
     /// Check if a chain exists
     fn has_chain(&self, chain_id: u64) -> bool;
 }
@@ -1650,12 +1650,9 @@ pub struct DatabaseExtWrapper {
 impl DatabaseExtWrapper {
     /// Create a new empty DatabaseExtWrapper
     pub fn new() -> Self {
-        Self {
-            inner: SimpleMultiChainDB::new(),
-            active_chain_id: None,
-        }
+        Self { inner: SimpleMultiChainDB::new(), active_chain_id: None }
     }
-    
+
     /// Wrap a single DatabaseExt instance for a specific chain
     pub fn wrap_single<DB: DatabaseExt + 'static>(db: DB, chain_id: u64) -> Self {
         let mut wrapper = Self::new();
@@ -1663,22 +1660,22 @@ impl DatabaseExtWrapper {
         wrapper.set_active_chain(chain_id);
         wrapper
     }
-    
+
     /// Set the active chain ID
     pub fn set_active_chain(&mut self, chain_id: u64) {
         self.active_chain_id = Some(chain_id);
     }
-    
+
     /// Get the active chain ID
     pub fn active_chain_id(&self) -> Option<u64> {
         self.active_chain_id
     }
-    
+
     /// Get the active chain's database
     fn get_active_db(&self) -> Option<&dyn DatabaseExt> {
         self.active_chain_id.and_then(|id| self.get(id))
     }
-    
+
     /// Get the active chain's database mutably
     fn get_active_db_mut(&mut self) -> Option<&mut dyn DatabaseExt> {
         let chain_id = self.active_chain_id?;
@@ -1690,15 +1687,15 @@ impl MultiChainDatabaseManager for DatabaseExtWrapper {
     fn get(&self, chain_id: u64) -> Option<&dyn DatabaseExt> {
         self.inner.get_chain(chain_id).map(|db| db.as_ref())
     }
-    
+
     fn get_mut(&mut self, chain_id: u64) -> Option<&mut dyn DatabaseExt> {
         self.inner.get_chain_mut(chain_id).map(|db| db.as_mut() as &mut dyn DatabaseExt)
     }
-    
+
     fn add_chain_ext(&mut self, chain_id: u64, db: Box<dyn DatabaseExt>) {
         self.inner.add_chain(chain_id, db);
     }
-    
+
     fn has_chain(&self, chain_id: u64) -> bool {
         self.inner.get_chain(chain_id).is_some()
     }
@@ -1735,11 +1732,7 @@ impl DatabaseExt for DatabaseExtWrapper {
     }
 
     fn delete_state_snapshot(&mut self, id: U256) -> bool {
-        if let Some(db) = self.get_active_db_mut() {
-            db.delete_state_snapshot(id)
-        } else {
-            false
-        }
+        if let Some(db) = self.get_active_db_mut() { db.delete_state_snapshot(id) } else { false }
     }
 
     fn delete_state_snapshots(&mut self) {
@@ -1866,19 +1859,11 @@ impl DatabaseExt for DatabaseExtWrapper {
     }
 
     fn active_fork_id(&self) -> Option<LocalForkId> {
-        if let Some(db) = self.get_active_db() {
-            db.active_fork_id()
-        } else {
-            None
-        }
+        if let Some(db) = self.get_active_db() { db.active_fork_id() } else { None }
     }
 
     fn active_fork_url(&self) -> Option<String> {
-        if let Some(db) = self.get_active_db() {
-            db.active_fork_url()
-        } else {
-            None
-        }
+        if let Some(db) = self.get_active_db() { db.active_fork_url() } else { None }
     }
 
     fn ensure_fork(&self, id: Option<LocalForkId>) -> eyre::Result<LocalForkId> {
@@ -1935,11 +1920,7 @@ impl DatabaseExt for DatabaseExtWrapper {
     }
 
     fn is_persistent(&self, account: &ChainAddress) -> bool {
-        if let Some(db) = self.get_active_db() {
-            db.is_persistent(account)
-        } else {
-            false
-        }
+        if let Some(db) = self.get_active_db() { db.is_persistent(account) } else { false }
     }
 
     fn remove_persistent_account(&mut self, account: &ChainAddress) -> bool {
@@ -1975,11 +1956,7 @@ impl DatabaseExt for DatabaseExtWrapper {
     }
 
     fn has_cheatcode_access(&self, account: &ChainAddress) -> bool {
-        if let Some(db) = self.get_active_db() {
-            db.has_cheatcode_access(account)
-        } else {
-            false
-        }
+        if let Some(db) = self.get_active_db() { db.has_cheatcode_access(account) } else { false }
     }
 
     fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
@@ -2045,10 +2022,10 @@ impl DatabaseCommit for DatabaseExtWrapper {
     }
 }
 
-// Implement MultiChainDatabase for DatabaseExtWrapper  
+// Implement MultiChainDatabase for DatabaseExtWrapper
 impl MultiChainDatabase for DatabaseExtWrapper {
     type Error = DatabaseError;
-    
+
     fn basic_multi(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
         if let Some(db) = self.inner.get_chain_mut(address.0) {
             db.basic(address.1)
@@ -2056,15 +2033,22 @@ impl MultiChainDatabase for DatabaseExtWrapper {
             Ok(None)
         }
     }
-    
-    fn code_by_hash_multi(&mut self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+
+    fn code_by_hash_multi(
+        &mut self,
+        chain_id: u64,
+        code_hash: B256,
+    ) -> Result<Bytecode, Self::Error> {
         if let Some(db) = self.inner.get_chain_mut(chain_id) {
             db.code_by_hash(code_hash)
         } else {
-            Err(DatabaseError::AnyRequest(std::sync::Arc::new(eyre::eyre!("Missing database for chain {}", chain_id))))
+            Err(DatabaseError::AnyRequest(std::sync::Arc::new(eyre::eyre!(
+                "Missing database for chain {}",
+                chain_id
+            ))))
         }
     }
-    
+
     fn storage_multi(&mut self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
         if let Some(db) = self.inner.get_chain_mut(address.0) {
             db.storage(address.1, index)
@@ -2072,12 +2056,15 @@ impl MultiChainDatabase for DatabaseExtWrapper {
             Ok(U256::ZERO)
         }
     }
-    
+
     fn block_hash_multi(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
         if let Some(db) = self.inner.get_chain_mut(chain_id) {
             db.block_hash(number)
         } else {
-            Err(DatabaseError::AnyRequest(std::sync::Arc::new(eyre::eyre!("Missing database for chain {}", chain_id))))
+            Err(DatabaseError::AnyRequest(std::sync::Arc::new(eyre::eyre!(
+                "Missing database for chain {}",
+                chain_id
+            ))))
         }
     }
 }
@@ -2103,62 +2090,56 @@ impl<'a> DatabaseExtRefWrapper<'a> {
 
 impl<'a> MultiChainDatabase for DatabaseExtRefWrapper<'a> {
     type Error = DatabaseError;
-    
+
     fn basic_multi(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
-        if address.0 == self.chain_id {
-            self.db.basic(address.1)
-        } else {
-            Ok(None)
-        }
+        if address.0 == self.chain_id { self.db.basic(address.1) } else { Ok(None) }
     }
-    
-    fn code_by_hash_multi(&mut self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
+
+    fn code_by_hash_multi(
+        &mut self,
+        chain_id: u64,
+        code_hash: B256,
+    ) -> Result<Bytecode, Self::Error> {
         if chain_id == self.chain_id {
             self.db.code_by_hash(code_hash)
         } else {
-            Err(DatabaseError::AnyRequest(std::sync::Arc::new(eyre::eyre!("Missing database for chain {}", chain_id))))
+            Err(DatabaseError::AnyRequest(std::sync::Arc::new(eyre::eyre!(
+                "Missing database for chain {}",
+                chain_id
+            ))))
         }
     }
-    
+
     fn storage_multi(&mut self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
-        if address.0 == self.chain_id {
-            self.db.storage(address.1, index)
-        } else {
-            Ok(U256::ZERO)
-        }
+        if address.0 == self.chain_id { self.db.storage(address.1, index) } else { Ok(U256::ZERO) }
     }
-    
+
     fn block_hash_multi(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
         if chain_id == self.chain_id {
             self.db.block_hash(number)
         } else {
-            Err(DatabaseError::AnyRequest(std::sync::Arc::new(eyre::eyre!("Missing database for chain {}", chain_id))))
+            Err(DatabaseError::AnyRequest(std::sync::Arc::new(eyre::eyre!(
+                "Missing database for chain {}",
+                chain_id
+            ))))
         }
     }
 }
 
 impl<'a> MultiChainDatabaseManager for DatabaseExtRefWrapper<'a> {
     fn get(&self, chain_id: u64) -> Option<&dyn DatabaseExt> {
-        if chain_id == self.chain_id {
-            Some(&*self.db)
-        } else {
-            None
-        }
+        if chain_id == self.chain_id { Some(&*self.db) } else { None }
     }
-    
+
     fn get_mut(&mut self, chain_id: u64) -> Option<&mut dyn DatabaseExt> {
-        if chain_id == self.chain_id {
-            Some(&mut *self.db)
-        } else {
-            None
-        }
+        if chain_id == self.chain_id { Some(&mut *self.db) } else { None }
     }
-    
+
     fn add_chain_ext(&mut self, _chain_id: u64, _db: Box<dyn DatabaseExt>) {
         // Can't add chains to a reference wrapper
         panic!("Cannot add chains to DatabaseExtRefWrapper");
     }
-    
+
     fn has_chain(&self, chain_id: u64) -> bool {
         chain_id == self.chain_id
     }
@@ -2371,26 +2352,26 @@ impl<'a> DatabaseExt for DatabaseExtRefWrapper<'a> {
 impl<'a> MultiChainDatabaseExt for DatabaseExtRefWrapper<'a> {}
 
 /// Helper function to wrap DatabaseExt with DatabaseExtWrapper
-/// 
+///
 /// # Example
 /// ```
-/// use foundry_evm_core::backend::{Backend, wrap_database_ext_trait, MultiChainDatabaseManager};
-/// 
+/// use foundry_evm_core::backend::{Backend, MultiChainDatabaseManager, wrap_database_ext_trait};
+///
 /// // Create a backend instance
 /// let backend = Backend::spawn(None).unwrap();
 /// let chain_id = 1;
-/// 
+///
 /// // Wrap it for multi-chain usage
 /// let mut wrapper = wrap_database_ext_trait(backend, chain_id);
-/// 
+///
 /// // Access the specific chain's database
 /// if let Some(db) = wrapper.get_mut(chain_id) {
 ///     // Use the DatabaseExt instance
 /// }
 /// ```
 pub fn wrap_database_ext_trait<DB: DatabaseExt + 'static>(
-    db: DB, 
-    chain_id: u64
+    db: DB,
+    chain_id: u64,
 ) -> DatabaseExtWrapper {
     DatabaseExtWrapper::wrap_single(db, chain_id)
 }
@@ -2398,7 +2379,7 @@ pub fn wrap_database_ext_trait<DB: DatabaseExt + 'static>(
 /// Helper function to wrap a reference to DatabaseExt with DatabaseExtRefWrapper
 pub fn wrap_database_ext_ref<'a>(
     chain_id: u64,
-    db: &'a mut dyn DatabaseExt
+    db: &'a mut dyn DatabaseExt,
 ) -> DatabaseExtRefWrapper<'a> {
     DatabaseExtRefWrapper::new(chain_id, db)
 }
@@ -2407,27 +2388,27 @@ pub fn wrap_database_ext_ref<'a>(
 #[cfg(test)]
 mod example_usage {
     use super::*;
-    
+
     #[allow(dead_code)]
     fn example_with_wrapper() {
         // Create a wrapper for multiple DatabaseExt instances
         let mut multi_db = DatabaseExtWrapper::new();
-        
+
         // Add databases for different chains
         // multi_db.add_chain_ext(1, Box::new(backend_eth));
         // multi_db.add_chain_ext(137, Box::new(backend_polygon));
-        
+
         // Access a specific chain's database
         let chain_id = 1;
         if let Some(db) = multi_db.get_mut(chain_id) {
             // Now you can use any DatabaseExt methods on db
             let _result = db.basic(Address::ZERO);
         }
-        
+
         // Check if a chain exists
         let has_eth = multi_db.has_chain(1);
         let has_bsc = multi_db.has_chain(56);
-        
+
         assert_eq!(has_eth, false); // false because we didn't actually add any
         assert_eq!(has_bsc, false);
     }
@@ -2942,7 +2923,7 @@ mod tests {
 
         let meta = BlockchainDbMeta {
             block_env: env.evm_env.block_env.get(&env.evm_env.cfg_env.chain_id).unwrap().clone(),
-            hosts: Default::default()
+            hosts: Default::default(),
         };
 
         let db = BlockchainDb::new(

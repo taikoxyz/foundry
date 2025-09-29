@@ -10,9 +10,8 @@ use foundry_config::fs_permissions::FsAccessKind;
 use foundry_evm_core::constants::DEFAULT_CREATE2_DEPLOYER;
 use proptest::prelude::Strategy;
 use rand::{Rng, RngCore, seq::SliceRandom};
-use revm::context::JournalTr;
+use revm::{context::JournalTr, primitives::ChainAddress};
 use std::path::PathBuf;
-use revm::primitives::ChainAddress;
 
 /// Contains locations of traces ignored via cheatcodes.
 ///

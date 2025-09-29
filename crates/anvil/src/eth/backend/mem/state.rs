@@ -2,7 +2,6 @@
 
 use crate::eth::error::BlockchainError;
 use alloy_primitives::{Address, B256, U256, keccak256, map::HashMap};
-use revm::primitives::ChainAddress;
 use alloy_rlp::Encodable;
 use alloy_rpc_types::{BlockOverrides, state::StateOverride};
 use alloy_trie::{HashBuilder, Nibbles};
@@ -11,6 +10,7 @@ use revm::{
     bytecode::Bytecode,
     context::BlockEnv,
     database::{CacheDB, DatabaseRef, DbAccount},
+    primitives::ChainAddress,
     state::AccountInfo,
 };
 

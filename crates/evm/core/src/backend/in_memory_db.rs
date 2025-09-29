@@ -6,8 +6,10 @@ use foundry_fork_db::DatabaseError;
 use revm::{
     Database, DatabaseCommit,
     bytecode::Bytecode,
+    context_interface::MultiChainDatabase,
     database::{CacheDB, DatabaseRef, EmptyDB},
-    primitives::HashMap as Map,
+    database_interface::MultiChainDatabaseCommit,
+    primitives::{ChainAddress, HashMap as Map},
     state::{Account, AccountInfo},
 };
 
@@ -75,6 +77,38 @@ impl Database for MemDb {
 impl DatabaseCommit for MemDb {
     fn commit(&mut self, changes: Map<Address, Account>) {
         DatabaseCommit::commit(&mut self.inner, changes)
+    }
+}
+
+impl MultiChainDatabase for MemDb {
+    type Error = DatabaseError;
+
+    fn basic_multi(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        self.basic(address.1)
+    }
+
+    fn code_by_hash_multi(
+        &mut self,
+        _chain_id: u64,
+        code_hash: B256,
+    ) -> Result<Bytecode, Self::Error> {
+        self.code_by_hash(code_hash)
+    }
+
+    fn storage_multi(&mut self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
+        self.storage(address.1, index)
+    }
+
+    fn block_hash_multi(&mut self, _chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        self.block_hash(number)
+    }
+}
+
+impl MultiChainDatabaseCommit for MemDb {
+    fn commit_multi(&mut self, changes: Map<ChainAddress, Account>) {
+        let single_chain_changes =
+            changes.into_iter().map(|(addr, account)| (addr.1, account)).collect();
+        self.commit(single_chain_changes)
     }
 }
 

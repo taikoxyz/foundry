@@ -251,7 +251,11 @@ impl RunArgs {
                                         format!(
                                             "Failed to deploy transaction: {:?} in block {}",
                                             tx.tx_hash(),
-                                            env.evm_env.block_env.get(&env.evm_env.chainid()).unwrap().number
+                                            env.evm_env
+                                                .block_env
+                                                .get(&env.evm_env.chainid())
+                                                .unwrap()
+                                                .number
                                         )
                                     });
                                 }

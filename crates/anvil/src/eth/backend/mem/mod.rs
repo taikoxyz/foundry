@@ -41,7 +41,6 @@ use alloy_consensus::{
 };
 use alloy_eips::{eip1559::BaseFeeParams, eip7840::BlobParams};
 use alloy_evm::{EthEvm, Evm, eth::EthEvmContext, precompiles::PrecompilesMap};
-use revm::Database;
 use alloy_network::{
     AnyHeader, AnyRpcBlock, AnyRpcHeader, AnyRpcTransaction, AnyTxEnvelope, AnyTxType,
     EthereumWallet, UnknownTxEnvelope, UnknownTypedTransaction,
@@ -91,6 +90,7 @@ use foundry_evm::{
     inspectors::AccessListInspector,
     traces::TracingInspectorConfig,
 };
+use revm::Database;
 //use foundry_evm_core::either_evm::EitherEvm;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
 use op_alloy_consensus::DEPOSIT_TX_TYPE_ID;
@@ -103,14 +103,14 @@ use revm::{
     DatabaseCommit, Inspector,
     context::{Block as RevmBlock, BlockEnv, TxEnv},
     context_interface::{
+        MultiChainDatabase,
         block::BlobExcessGasAndPrice,
         result::{ExecutionResult, Output, ResultAndState},
-        MultiChainDatabase,
     },
     database::{CacheDB, DatabaseRef, WrapDatabaseRef},
     interpreter::InstructionResult,
     precompile::secp256r1::P256VERIFY,
-    primitives::{KECCAK_EMPTY, ChainAddress, MultiChainTxKind, hardfork::SpecId},
+    primitives::{ChainAddress, KECCAK_EMPTY, MultiChainTxKind, hardfork::SpecId},
     state::AccountInfo,
 };
 use revm_inspectors::transfer::TransferInspector;
@@ -573,10 +573,11 @@ impl Backend {
 
                     let chain_id = fork.chain_id();
                     env.evm_env.cfg_env.chain_id = chain_id;
-                    
+
                     // Get current block env values or defaults
-                    let current_block_env = env.evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
-                    
+                    let current_block_env =
+                        env.evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
+
                     let new_block_env = BlockEnv {
                         number: fork_block_number,
                         timestamp: fork_block.header.timestamp,
@@ -588,7 +589,7 @@ impl Backend {
                         basefee: current_block_env.basefee,
                         ..current_block_env
                     };
-                    
+
                     env.evm_env.block_env.insert(chain_id, new_block_env);
 
                     // this is the base fee of the current block, but we need the base fee of
@@ -748,7 +749,11 @@ impl Backend {
     pub fn coinbase(&self) -> Address {
         let env = self.env.read();
         let chain_id = env.evm_env.cfg_env.chain_id;
-        env.evm_env.block_env.get(&chain_id).map(|block_env| block_env.beneficiary.1).unwrap_or_default()
+        env.evm_env
+            .block_env
+            .get(&chain_id)
+            .map(|block_env| block_env.beneficiary.1)
+            .unwrap_or_default()
     }
 
     /// Returns the client coinbase address.
@@ -897,7 +902,11 @@ impl Backend {
     pub fn gas_limit(&self) -> u64 {
         let env = self.env.read();
         let chain_id = env.evm_env.cfg_env.chain_id;
-        env.evm_env.block_env.get(&chain_id).map(|block_env| block_env.gas_limit).unwrap_or_default()
+        env.evm_env
+            .block_env
+            .get(&chain_id)
+            .map(|block_env| block_env.gas_limit)
+            .unwrap_or_default()
     }
 
     /// Sets the block gas limit
@@ -989,10 +998,11 @@ impl Backend {
 
             let mut env = self.env.write();
             let chain_id = env.evm_env.cfg_env.chain_id;
-            
+
             // Get current block env values or defaults
-            let current_block_env = env.evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
-            
+            let current_block_env =
+                env.evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
+
             let new_block_env = BlockEnv {
                 number: num,
                 timestamp: block.header.timestamp,
@@ -1005,7 +1015,7 @@ impl Backend {
                 basefee: current_block_env.basefee,
                 ..Default::default()
             };
-            
+
             env.evm_env.block_env.insert(chain_id, new_block_env);
         }
         Ok(self.db.write().await.revert_state(id, RevertStateSnapshotAction::RevertRemove))
@@ -1283,7 +1293,12 @@ impl Backend {
             db: &mut cache_db,
             validator: self,
             pending: pool_transactions.into_iter(),
-            block_env: env.evm_env.block_env.get(&env.evm_env.cfg_env.chain_id).cloned().unwrap_or_default(),
+            block_env: env
+                .evm_env
+                .block_env
+                .get(&env.evm_env.cfg_env.chain_id)
+                .cloned()
+                .unwrap_or_default(),
             cfg_env: env.evm_env.cfg_env,
             parent_hash: storage.best_hash,
             gas_used: 0,
@@ -1329,8 +1344,8 @@ impl Backend {
 
             if let Some(block_env) = env.evm_env.block_env.get(&chain_id) {
                 if block_env.basefee == 0 {
-                    // this is an edge case because the evm fails if `tx.effective_gas_price < base_fee`
-                    // 0 is only possible if it's manually set
+                    // this is an edge case because the evm fails if `tx.effective_gas_price <
+                    // base_fee` 0 is only possible if it's manually set
                     env.evm_env.cfg_env.disable_base_fee = true;
                 }
             }
@@ -1608,7 +1623,9 @@ impl Backend {
             max_fee_per_blob_gas: max_fee_per_blob_gas
                 .or_else(|| {
                     if !blob_hashes.is_empty() {
-                        env.evm_env.block_env.get(&chain_id)
+                        env.evm_env
+                            .block_env
+                            .get(&chain_id)
                             .and_then(|block_env| block_env.blob_gasprice())
                     } else {
                         Some(0)
@@ -2428,7 +2445,7 @@ impl Backend {
                             number: block.header.number,
                             beneficiary: ChainAddress::new(
                                 self.env.read().evm_env.cfg_env.chain_id,
-                                block.header.beneficiary
+                                block.header.beneficiary,
                             ),
                             timestamp: block.header.timestamp,
                             difficulty: block.header.difficulty,
@@ -2453,7 +2470,7 @@ impl Backend {
             let chain_id = env.evm_env.cfg_env.chain_id;
             env.evm_env.block_env.get(&chain_id).map_or(0, |block| block.number)
         };
-        
+
         if block_number < current_block_number {
             if let Some((block_hash, block)) = self
                 .block_by_number(BlockNumber::Number(block_number))
@@ -2465,7 +2482,7 @@ impl Backend {
                     number: block_number,
                     beneficiary: ChainAddress::new(
                         self.env.read().evm_env.cfg_env.chain_id,
-                        block.header.beneficiary
+                        block.header.beneficiary,
                     ),
                     timestamp: block.header.timestamp,
                     difficulty: block.header.difficulty,
@@ -2480,11 +2497,9 @@ impl Backend {
             warn!(target: "backend", "Not historic state found for block={}", block_number);
             let env = self.env.read();
             let chain_id = env.evm_env.cfg_env.chain_id;
-            let current_number = env.evm_env.block_env.get(&chain_id).map_or(0, |block| block.number);
-            return Err(BlockchainError::BlockOutOfRange(
-                current_number,
-                block_number,
-            ));
+            let current_number =
+                env.evm_env.block_env.get(&chain_id).map_or(0, |block| block.number);
+            return Err(BlockchainError::BlockOutOfRange(current_number, block_number));
         }
 
         let db = self.db.read().await;
@@ -3222,7 +3237,10 @@ impl TransactionValidator for Backend {
         // Check gas limit, iff block gas limit is set.
         let chain_id = env.evm_env.cfg_env.chain_id;
         if !env.evm_env.cfg_env.disable_block_gas_limit
-            && env.evm_env.block_env.get(&chain_id)
+            && env
+                .evm_env
+                .block_env
+                .get(&chain_id)
                 .map_or(false, |block_env| tx.gas_limit() > block_env.gas_limit)
         {
             warn!(target: "backend", "[{:?}] gas too high", tx.hash());

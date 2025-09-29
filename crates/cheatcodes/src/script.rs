@@ -13,7 +13,7 @@ use revm::{
     bytecode::Bytecode,
     context::JournalTr,
     context_interface::transaction::SignedAuthorization,
-    primitives::{hardfork::SpecId, ChainAddress, KECCAK_EMPTY},
+    primitives::{ChainAddress, KECCAK_EMPTY, hardfork::SpecId},
 };
 use std::sync::Arc;
 
@@ -132,10 +132,13 @@ fn sign_delegation(
     let nonce = if let Some(nonce) = nonce {
         nonce
     } else {
-        let authority_acc = ccx.ecx.journaled_state.load_account(ChainAddress(ccx.cfg.chain_id, signer.address()))?;
+        let authority_acc = ccx
+            .ecx
+            .journaled_state
+            .load_account(ChainAddress(ccx.cfg.chain_id, signer.address()))?;
         // Calculate next nonce considering existing active delegations
         next_delegation_nonce(
-            &[],  // TODO: Convert HashMap to slice or update function signature
+            &[], // TODO: Convert HashMap to slice or update function signature
             signer.address(),
             &ccx.state.broadcast,
             authority_acc.data.info.nonce,
@@ -150,7 +153,7 @@ fn sign_delegation(
         let signed_auth = SignedAuthorization::new_unchecked(auth, sig.v() as u8, sig.r(), sig.s());
         write_delegation(ccx, signed_auth.clone())?;
         // Note: add_delegation method needs SignedAuthorization import fix
-    // ccx.state.add_delegation(signed_auth);
+        // ccx.state.add_delegation(signed_auth);
     }
     Ok(SignedDelegation {
         v: sig.v() as u8,
@@ -193,10 +196,11 @@ fn next_delegation_nonce(
 
 fn write_delegation(ccx: &mut CheatsCtxt<'_, '_>, auth: SignedAuthorization) -> Result<()> {
     let authority = auth.recover_authority().map_err(|e| format!("{e}"))?;
-    let authority_acc = ccx.ecx.journaled_state.load_account(ChainAddress(ccx.caller.0, authority))?;
+    let authority_acc =
+        ccx.ecx.journaled_state.load_account(ChainAddress(ccx.caller.0, authority))?;
 
     let expected_nonce = next_delegation_nonce(
-        &[],  // TODO: Convert HashMap to slice or update function signature
+        &[], // TODO: Convert HashMap to slice or update function signature
         authority,
         &ccx.state.broadcast,
         authority_acc.data.info.nonce,
@@ -213,7 +217,11 @@ fn write_delegation(ccx: &mut CheatsCtxt<'_, '_>, auth: SignedAuthorization) -> 
     if auth.address.is_zero() {
         // Set empty code if the delegation address of authority is 0x.
         // See https://github.com/ethereum/EIPs/blob/master/EIPS/eip-7702.md#behavior.
-        ccx.ecx.journaled_state.set_code_with_hash(ChainAddress(ccx.caller.0, authority), Bytecode::default(), KECCAK_EMPTY);
+        ccx.ecx.journaled_state.set_code_with_hash(
+            ChainAddress(ccx.caller.0, authority),
+            Bytecode::default(),
+            KECCAK_EMPTY,
+        );
     } else {
         let bytecode = Bytecode::new_eip7702(*auth.address());
         ccx.ecx.journaled_state.set_code(ChainAddress(ccx.caller.0, authority), bytecode);
@@ -358,7 +366,11 @@ impl Wallets {
 }
 
 /// Sets up broadcasting from a script using `new_origin` as the sender.
-fn broadcast(ccx: &mut CheatsCtxt<'_, '_>, new_origin: Option<&Address>, single_call: bool) -> Result {
+fn broadcast(
+    ccx: &mut CheatsCtxt<'_, '_>,
+    new_origin: Option<&Address>,
+    single_call: bool,
+) -> Result {
     let depth = ccx.ecx.journaled_state.depth();
     ensure!(
         ccx.state.prank.is_none(),

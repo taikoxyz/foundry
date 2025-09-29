@@ -56,6 +56,9 @@ pub mod eth;
 mod evm;
 pub use evm::{PrecompileFactory, inject_precompiles};
 
+/// contains cli command
+#[cfg(feature = "cmd")]
+pub mod cmd;
 /// support for polling filters
 pub mod filter;
 /// commandline output
@@ -68,12 +71,6 @@ pub mod server;
 mod shutdown;
 /// additional task management
 mod tasks;
-/// orphan rule implementations for multi-chain support  
-mod orphan_impls;
-
-/// contains cli command
-#[cfg(feature = "cmd")]
-pub mod cmd;
 
 #[cfg(feature = "cmd")]
 pub mod args;

@@ -36,11 +36,7 @@ impl Prank {
     /// Apply the prank by setting `used` to true iff it is false
     /// Only returns self in the case it is updated (first application)
     pub fn first_time_applied(&self) -> Option<Self> {
-        if self.used {
-            None
-        } else {
-            Some(Self { used: true, ..self.clone() })
-        }
+        if self.used { None } else { Some(Self { used: true, ..self.clone() }) }
     }
 }
 

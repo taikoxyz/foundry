@@ -541,8 +541,8 @@ impl TestResult {
 
         if let Some(cheatcodes) = raw_call_result.cheatcodes {
             self.breakpoints = cheatcodes.breakpoints;
-            // TODO: gas_snapshots and deprecated_cheatcodes are not available in current Cheatcodes struct
-            // Initialize to empty for now
+            // TODO: gas_snapshots and deprecated_cheatcodes are not available in current Cheatcodes
+            // struct Initialize to empty for now
             self.gas_snapshots = BTreeMap::new();
             self.deprecated_cheatcodes = Default::default();
         }

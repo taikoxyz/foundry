@@ -12,15 +12,11 @@ use foundry_evm::{
 };
 use revm::{
     context::BlockEnv,
-    context_interface::MultiChainDatabase,
-    database_interface::MultiChainDatabaseCommit,
     database::{Database, DatabaseRef, DbAccount},
-    primitives::ChainAddress,
-    state::{AccountInfo, Account},
+    state::AccountInfo,
 };
 
 pub use foundry_evm::fork::database::ForkedDatabase;
-
 
 impl Db for ForkedDatabase {
     fn insert_account(&mut self, address: Address, account: AccountInfo) {
@@ -92,10 +88,10 @@ impl Db for ForkedDatabase {
     }
 }
 
-// Multi-chain database implementations for ForkedDatabase  
+// Multi-chain database implementations for ForkedDatabase
 // These are orphan rule violations but necessary for the multi-chain fork architecture.
 
-// Multi-chain database implementations for ForkedDatabase  
+// Multi-chain database implementations for ForkedDatabase
 // These are orphan rule violations but necessary for the multi-chain fork architecture.
 
 impl MaybeFullDatabase for ForkedDatabase {

@@ -10,7 +10,6 @@ use crate::{
 use alloy_dyn_abi::{DynSolValue, JsonAbiExt};
 use alloy_json_abi::Function;
 use alloy_primitives::{Address, Bytes, U256, address, map::HashMap};
-use revm::primitives::ChainAddress;
 use eyre::Result;
 use foundry_common::{TestFunctionExt, TestFunctionKind, contracts::ContractsByAddress};
 use foundry_compilers::utils::canonicalized;
@@ -36,6 +35,7 @@ use proptest::test_runner::{
     FailurePersistence, FileFailurePersistence, RngAlgorithm, TestError, TestRng, TestRunner,
 };
 use rayon::prelude::*;
+use revm::primitives::ChainAddress;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,

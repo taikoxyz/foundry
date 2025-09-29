@@ -1,15 +1,14 @@
 use crate::{
-    Cheatcode, Cheatcodes, CheatcodesExecutor, CheatsCtxt, Result, Vm::*,
-    json::json_value_to_token,
+    Cheatcode, Cheatcodes, CheatcodesExecutor, CheatsCtxt, Result, Vm::*, json::json_value_to_token,
 };
-use revm::primitives::ChainAddress;
 use alloy_dyn_abi::DynSolValue;
 use alloy_primitives::{B256, U256};
 use alloy_provider::Provider;
 use alloy_rpc_types::Filter;
 use alloy_sol_types::SolValue;
 use foundry_common::provider::ProviderBuilder;
-use foundry_evm_core::{AsEnvMut, fork::CreateFork, env::EnvMut};
+use foundry_evm_core::{AsEnvMut, env::EnvMut, fork::CreateFork};
+use revm::primitives::ChainAddress;
 
 impl Cheatcode for activeForkCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
@@ -152,14 +151,22 @@ impl Cheatcode for selectForkCall {
 }
 
 impl Cheatcode for transact_0Call {
-    fn apply_full<'a, E: CheatcodesExecutor>(&self, ccx: &'a mut CheatsCtxt<'a, 'a>, executor: &mut E) -> Result {
+    fn apply_full<'a, E: CheatcodesExecutor>(
+        &self,
+        ccx: &'a mut CheatsCtxt<'a, 'a>,
+        executor: &mut E,
+    ) -> Result {
         let Self { txHash } = *self;
         transact(ccx, executor, txHash, None)
     }
 }
 
 impl Cheatcode for transact_1Call {
-    fn apply_full<'a, E: CheatcodesExecutor>(&self, ccx: &'a mut CheatsCtxt<'a, 'a>, executor: &mut E) -> Result {
+    fn apply_full<'a, E: CheatcodesExecutor>(
+        &self,
+        ccx: &'a mut CheatsCtxt<'a, 'a>,
+        executor: &mut E,
+    ) -> Result {
         let Self { forkId, txHash } = *self;
         transact(ccx, executor, txHash, Some(forkId))
     }
@@ -168,7 +175,10 @@ impl Cheatcode for transact_1Call {
 impl Cheatcode for allowCheatcodesCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account } = self;
-        ccx.ecx.journaled_state.database.allow_cheatcode_access(ChainAddress(ccx.ecx.cfg.chain_id, *account));
+        ccx.ecx
+            .journaled_state
+            .database
+            .allow_cheatcode_access(ChainAddress(ccx.ecx.cfg.chain_id, *account));
         Ok(Default::default())
     }
 }
@@ -176,7 +186,10 @@ impl Cheatcode for allowCheatcodesCall {
 impl Cheatcode for makePersistent_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account } = self;
-        ccx.ecx.journaled_state.database.add_persistent_account(ChainAddress(ccx.ecx.cfg.chain_id, *account));
+        ccx.ecx
+            .journaled_state
+            .database
+            .add_persistent_account(ChainAddress(ccx.ecx.cfg.chain_id, *account));
         Ok(Default::default())
     }
 }
@@ -184,8 +197,14 @@ impl Cheatcode for makePersistent_0Call {
 impl Cheatcode for makePersistent_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account0, account1 } = self;
-        ccx.ecx.journaled_state.database.add_persistent_account(ChainAddress(ccx.ecx.cfg.chain_id, *account0));
-        ccx.ecx.journaled_state.database.add_persistent_account(ChainAddress(ccx.ecx.cfg.chain_id, *account1));
+        ccx.ecx
+            .journaled_state
+            .database
+            .add_persistent_account(ChainAddress(ccx.ecx.cfg.chain_id, *account0));
+        ccx.ecx
+            .journaled_state
+            .database
+            .add_persistent_account(ChainAddress(ccx.ecx.cfg.chain_id, *account1));
         Ok(Default::default())
     }
 }
@@ -193,9 +212,18 @@ impl Cheatcode for makePersistent_1Call {
 impl Cheatcode for makePersistent_2Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account0, account1, account2 } = self;
-        ccx.ecx.journaled_state.database.add_persistent_account(ChainAddress(ccx.ecx.cfg.chain_id, *account0));
-        ccx.ecx.journaled_state.database.add_persistent_account(ChainAddress(ccx.ecx.cfg.chain_id, *account1));
-        ccx.ecx.journaled_state.database.add_persistent_account(ChainAddress(ccx.ecx.cfg.chain_id, *account2));
+        ccx.ecx
+            .journaled_state
+            .database
+            .add_persistent_account(ChainAddress(ccx.ecx.cfg.chain_id, *account0));
+        ccx.ecx
+            .journaled_state
+            .database
+            .add_persistent_account(ChainAddress(ccx.ecx.cfg.chain_id, *account1));
+        ccx.ecx
+            .journaled_state
+            .database
+            .add_persistent_account(ChainAddress(ccx.ecx.cfg.chain_id, *account2));
         Ok(Default::default())
     }
 }
@@ -204,7 +232,10 @@ impl Cheatcode for makePersistent_3Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { accounts } = self;
         for account in accounts {
-            ccx.ecx.journaled_state.database.add_persistent_account(ChainAddress(ccx.ecx.cfg.chain_id, *account));
+            ccx.ecx
+                .journaled_state
+                .database
+                .add_persistent_account(ChainAddress(ccx.ecx.cfg.chain_id, *account));
         }
         Ok(Default::default())
     }
@@ -213,7 +244,10 @@ impl Cheatcode for makePersistent_3Call {
 impl Cheatcode for revokePersistent_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account } = self;
-        ccx.ecx.journaled_state.database.remove_persistent_account(&ChainAddress(ccx.ecx.cfg.chain_id, *account));
+        ccx.ecx
+            .journaled_state
+            .database
+            .remove_persistent_account(&ChainAddress(ccx.ecx.cfg.chain_id, *account));
         Ok(Default::default())
     }
 }
@@ -222,7 +256,10 @@ impl Cheatcode for revokePersistent_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { accounts } = self;
         for account in accounts {
-            ccx.ecx.journaled_state.database.remove_persistent_account(&ChainAddress(ccx.ecx.cfg.chain_id, *account));
+            ccx.ecx
+                .journaled_state
+                .database
+                .remove_persistent_account(&ChainAddress(ccx.ecx.cfg.chain_id, *account));
         }
         Ok(Default::default())
     }
@@ -231,7 +268,12 @@ impl Cheatcode for revokePersistent_1Call {
 impl Cheatcode for isPersistentCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { account } = self;
-        Ok(ccx.ecx.journaled_state.database.is_persistent(&ChainAddress(ccx.ecx.cfg.chain_id, *account)).abi_encode())
+        Ok(ccx
+            .ecx
+            .journaled_state
+            .database
+            .is_persistent(&ChainAddress(ccx.ecx.cfg.chain_id, *account))
+            .abi_encode())
     }
 }
 
@@ -343,7 +385,12 @@ fn create_select_fork_at_transaction(
         &mut ccx.ecx.tx,
     );
     let mut env = EnvMut { block, cfg, tx };
-    let id = database.create_select_fork_at_transaction(fork, &mut env, journaled_state, *transaction)?;
+    let id = database.create_select_fork_at_transaction(
+        fork,
+        &mut env,
+        journaled_state,
+        *transaction,
+    )?;
     Ok(id.abi_encode())
 }
 

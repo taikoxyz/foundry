@@ -20,7 +20,11 @@ use bytes::BufMut;
 use foundry_evm::traces::CallTraceNode;
 use op_alloy_consensus::{DEPOSIT_TX_TYPE_ID, TxDeposit};
 //use op_revm::{OpTransaction, transaction::deposit::DepositTransactionParts};
-use revm::{context::TxEnv, interpreter::InstructionResult, primitives::{ChainAddress, MultiChainTxKind}};
+use revm::{
+    context::TxEnv,
+    interpreter::InstructionResult,
+    primitives::{ChainAddress, MultiChainTxKind},
+};
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, Mul};
 

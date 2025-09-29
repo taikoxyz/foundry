@@ -10,10 +10,12 @@ use foundry_evm::{
     constants::CALLER,
     executors::{DeployResult, EvmError, ExecutionErr, Executor, RawCallResult},
     opts::EvmOpts,
-    revm::interpreter::{InstructionResult, return_ok},
+    revm::{
+        interpreter::{InstructionResult, return_ok},
+        primitives::ChainAddress,
+    },
     traces::{TraceKind, Traces},
 };
-use foundry_evm::revm::primitives::ChainAddress;
 use std::collections::VecDeque;
 
 /// Drives script execution
