@@ -1342,12 +1342,12 @@ impl Backend {
             let mut env = self.env.read().clone();
             let chain_id = env.evm_env.cfg_env.chain_id;
 
-            if let Some(block_env) = env.evm_env.block_env.get(&chain_id) {
-                if block_env.basefee == 0 {
-                    // this is an edge case because the evm fails if `tx.effective_gas_price <
-                    // base_fee` 0 is only possible if it's manually set
-                    env.evm_env.cfg_env.disable_base_fee = true;
-                }
+            if let Some(block_env) = env.evm_env.block_env.get(&chain_id)
+                && block_env.basefee == 0
+            {
+                // this is an edge case because the evm fails if `tx.effective_gas_price <
+                // base_fee` 0 is only possible if it's manually set
+                env.evm_env.cfg_env.disable_base_fee = true;
             }
 
             let block_number = self.blockchain.storage.read().best_number.saturating_add(1);
@@ -1652,12 +1652,12 @@ impl Backend {
         }
 
         let chain_id = env.evm_env.cfg_env.chain_id;
-        if let Some(block_env) = env.evm_env.block_env.get(&chain_id) {
-            if block_env.basefee == 0 {
-                // this is an edge case because the evm fails if `tx.effective_gas_price < base_fee`
-                // 0 is only possible if it's manually set
-                env.evm_env.cfg_env.disable_base_fee = true;
-            }
+        if let Some(block_env) = env.evm_env.block_env.get(&chain_id)
+            && block_env.basefee == 0
+        {
+            // this is an edge case because the evm fails if `tx.effective_gas_price < base_fee`
+            // 0 is only possible if it's manually set
+            env.evm_env.cfg_env.disable_base_fee = true;
         }
 
         /*
@@ -3241,7 +3241,7 @@ impl TransactionValidator for Backend {
                 .evm_env
                 .block_env
                 .get(&chain_id)
-                .map_or(false, |block_env| tx.gas_limit() > block_env.gas_limit)
+                .is_some_and(|block_env| tx.gas_limit() > block_env.gas_limit)
         {
             warn!(target: "backend", "[{:?}] gas too high", tx.hash());
             return Err(InvalidTransactionError::GasTooHigh(ErrDetail {
@@ -3259,11 +3259,12 @@ impl TransactionValidator for Backend {
         }
 
         if env.evm_env.cfg_env.spec >= SpecId::LONDON {
-            if let Some(block_env) = env.evm_env.block_env.get(&chain_id) {
-                if tx.gas_price() < block_env.basefee.into() && !is_deposit_tx {
-                    warn!(target: "backend", "max fee per gas={}, too low, block basefee={}",tx.gas_price(), block_env.basefee);
-                    return Err(InvalidTransactionError::FeeCapTooLow);
-                }
+            if let Some(block_env) = env.evm_env.block_env.get(&chain_id)
+                && tx.gas_price() < block_env.basefee.into()
+                && !is_deposit_tx
+            {
+                warn!(target: "backend", "max fee per gas={}, too low, block basefee={}",tx.gas_price(), block_env.basefee);
+                return Err(InvalidTransactionError::FeeCapTooLow);
             }
 
             if let (Some(max_priority_fee_per_gas), Some(max_fee_per_gas)) =

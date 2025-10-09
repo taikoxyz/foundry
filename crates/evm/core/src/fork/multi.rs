@@ -519,7 +519,7 @@ impl Drop for ShutDownMultiFork {
 ///
 /// This will establish a new `Provider` to the endpoint and return the Fork Backend.
 async fn create_fork(mut fork: CreateFork) -> eyre::Result<(ForkId, CreatedFork, Handler)> {
-    println!("create_fork");
+    trace!(target: "fork::multi", "create_fork");
 
     let provider = Arc::new(
         ProviderBuilder::new(fork.url.as_str())

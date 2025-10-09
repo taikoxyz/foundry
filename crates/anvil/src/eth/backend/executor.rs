@@ -292,7 +292,7 @@ impl<DB: Db + ?Sized, V: TransactionValidator> Iterator for &mut TransactionExec
                 .evm_env
                 .block_env
                 .get(&env.evm_env.cfg_env.chain_id)
-                .map_or(false, |block| max_gas > block.gas_limit)
+                .is_some_and(|block| max_gas > block.gas_limit)
         {
             return Some(TransactionExecutionOutcome::Exhausted(transaction));
         }
@@ -493,9 +493,7 @@ where
             PrecompilesMap::from_static(eth_precompiles.precompiles),
         );
 
-        let eth = EthEvm::new(eth_evm, true);
-
-        eth
+        EthEvm::new(eth_evm, true)
     }
 }
 

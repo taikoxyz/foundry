@@ -33,6 +33,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     time::Instant,
 };
+use tracing::{debug, trace};
 
 mod diagnostic;
 pub use diagnostic::RevertDiagnostic;
@@ -596,7 +597,7 @@ impl Backend {
     /// This will also grant cheatcode access to the test account
     pub fn set_test_contract(&mut self, acc: ChainAddress) -> &mut Self {
         trace!(?acc, "setting test account");
-        println!("set_test_contract: {:?}", acc);
+        debug!("set_test_contract: {acc:?}");
         self.add_persistent_account(acc);
         self.allow_cheatcode_access(acc);
         self
@@ -605,7 +606,7 @@ impl Backend {
     /// Sets the caller address
     pub fn set_caller(&mut self, acc: ChainAddress) -> &mut Self {
         trace!(?acc, "setting caller account");
-        println!("set_caller: {:?}", acc);
+        debug!("set_caller: {acc:?}");
         self.inner.caller = Some(acc);
         self.allow_cheatcode_access(acc);
         self
@@ -782,7 +783,7 @@ impl Backend {
         env: &mut Env,
         inspector: &mut I,
     ) -> eyre::Result<ResultAndState> {
-        println!("backend::inspect");
+        trace!("backend::inspect");
         //println!("env pre: {:?}", env);
 
         self.initialize(env);
@@ -1588,7 +1589,7 @@ impl DatabaseCommit for Backend {
 impl Database for Backend {
     type Error = DatabaseError;
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
-        println!("Backend::basic: {:?}", address);
+        debug!("Backend::basic: {address:?}");
         if let Some(db) = self.active_fork_db_mut() {
             Ok(db.basic(address)?)
         } else {
@@ -1597,7 +1598,7 @@ impl Database for Backend {
     }
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        println!("Backend::code_by_hash: {:?}", code_hash);
+        debug!("Backend::code_by_hash: {code_hash:?}");
         if let Some(db) = self.active_fork_db_mut() {
             Ok(db.code_by_hash(code_hash)?)
         } else {
@@ -1977,37 +1978,37 @@ impl Database for DatabaseExtWrapper {
     type Error = DatabaseError;
 
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
-        if let Some(chain_id) = self.active_chain_id {
-            if let Some(db) = self.get_mut(chain_id) {
-                return db.basic(address);
-            }
+        if let Some(chain_id) = self.active_chain_id
+            && let Some(db) = self.get_mut(chain_id)
+        {
+            return db.basic(address);
         }
         Ok(None)
     }
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        if let Some(chain_id) = self.active_chain_id {
-            if let Some(db) = self.get_mut(chain_id) {
-                return db.code_by_hash(code_hash);
-            }
+        if let Some(chain_id) = self.active_chain_id
+            && let Some(db) = self.get_mut(chain_id)
+        {
+            return db.code_by_hash(code_hash);
         }
         Ok(Bytecode::default())
     }
 
     fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
-        if let Some(chain_id) = self.active_chain_id {
-            if let Some(db) = self.get_mut(chain_id) {
-                return db.storage(address, index);
-            }
+        if let Some(chain_id) = self.active_chain_id
+            && let Some(db) = self.get_mut(chain_id)
+        {
+            return db.storage(address, index);
         }
         Ok(U256::ZERO)
     }
 
     fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
-        if let Some(chain_id) = self.active_chain_id {
-            if let Some(db) = self.get_mut(chain_id) {
-                return db.block_hash(number);
-            }
+        if let Some(chain_id) = self.active_chain_id
+            && let Some(db) = self.get_mut(chain_id)
+        {
+            return db.block_hash(number);
         }
         Ok(B256::ZERO)
     }
@@ -2409,8 +2410,8 @@ mod example_usage {
         let has_eth = multi_db.has_chain(1);
         let has_bsc = multi_db.has_chain(56);
 
-        assert_eq!(has_eth, false); // false because we didn't actually add any
-        assert_eq!(has_bsc, false);
+        assert!(!has_eth); // false because we didn't actually add any
+        assert!(!has_bsc);
     }
 }
 
@@ -2657,7 +2658,7 @@ impl BackendInner {
 
     /// Returns a new, empty, `JournaledState` with set precompiles
     pub fn new_journaled_state(&self) -> JournaledState {
-        println!("new_journaled_state");
+        trace!("new_journaled_state");
         let mut journal = {
             let mut journal_inner = JournalInner::new();
             journal_inner.set_spec_id(self.spec_id);
@@ -2863,8 +2864,7 @@ fn apply_state_changeset(
     persistent_accounts: &HashSet<Address>,
 ) -> Result<(), BackendError> {
     // commit the state and update the loaded accounts
-    // XXX FIXME YSG
-    let fork_state = state.clone().into_iter().map(|(addr, acc)| (addr.1, acc)).collect();
+    let fork_state = state.into_iter().map(|(addr, acc)| (addr.1, acc)).collect();
     fork.db.commit(fork_state);
     update_state(&mut journaled_state.state, &mut fork.db, Some(persistent_accounts))?;
     update_state(&mut fork.journaled_state.state, &mut fork.db, Some(persistent_accounts))?;

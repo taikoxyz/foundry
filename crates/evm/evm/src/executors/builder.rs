@@ -90,7 +90,7 @@ impl ExecutorBuilder {
                 .block_env
                 .get(&chain_id)
                 .map(|block| block.gas_limit)
-                .unwrap_or(u64::MAX.into())
+                .unwrap_or(u64::MAX)
         });
         let chain_id = env.evm_env.cfg_env.chain_id;
         let block_env = env.evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();

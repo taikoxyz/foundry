@@ -16,6 +16,7 @@ use revm::{
     primitives::{ChainAddress, KECCAK_EMPTY, hardfork::SpecId},
 };
 use std::sync::Arc;
+use tracing::debug;
 
 impl Cheatcode for broadcast_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
@@ -112,7 +113,7 @@ fn attach_delegation(
         U256::from_be_bytes(r.0),
         U256::from_be_bytes(s.0),
     );
-    write_delegation(ccx, signed_auth.clone())?;
+    write_delegation(ccx, signed_auth)?;
     // Note: add_delegation method needs SignedAuthorization import fix
     // ccx.state.add_delegation(signed_auth);
     Ok(Default::default())
@@ -151,7 +152,7 @@ fn sign_delegation(
     // Attach delegation.
     if attach {
         let signed_auth = SignedAuthorization::new_unchecked(auth, sig.v() as u8, sig.r(), sig.s());
-        write_delegation(ccx, signed_auth.clone())?;
+        write_delegation(ccx, signed_auth)?;
         // Note: add_delegation method needs SignedAuthorization import fix
         // ccx.state.add_delegation(signed_auth);
     }
@@ -247,7 +248,7 @@ impl Cheatcode for attachBlobCall {
 
 impl Cheatcode for startBroadcast_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
-        println!("startBroadcast_0Call");
+        debug!("startBroadcast_0Call");
         let Self {} = self;
         broadcast(ccx, None, false)
     }
@@ -255,7 +256,7 @@ impl Cheatcode for startBroadcast_0Call {
 
 impl Cheatcode for startBroadcast_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
-        println!("startBroadcast_1Call");
+        debug!("startBroadcast_1Call");
         let Self { signer } = self;
         broadcast(ccx, Some(signer), false)
     }

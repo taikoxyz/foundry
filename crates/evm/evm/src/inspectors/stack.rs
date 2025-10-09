@@ -618,7 +618,7 @@ impl InspectorStackRefMut<'_> {
         // Set basefee to 0 for current chain
         #[allow(unused_mut)]
         if let Some(mut block) = ecx.block.get_mut(&ecx.cfg.chain_id) {
-            block.basefee = 0u64.into();
+            block.basefee = 0;
         }
         ecx.tx.chain_id = Some(ecx.cfg.chain_id);
         ecx.tx.caller = caller;

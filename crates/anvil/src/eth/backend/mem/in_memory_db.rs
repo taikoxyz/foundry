@@ -174,6 +174,8 @@ mod tests {
                 code_hash: KECCAK_EMPTY,
                 code: Some(contract_code.clone()),
                 nonce: 1234,
+                parent_code: None,
+                parent_code_hash: Some(KECCAK_EMPTY),
             },
         );
         dump_db
@@ -216,6 +218,8 @@ mod tests {
                 code_hash: KECCAK_EMPTY,
                 code: Some(contract_code.clone()),
                 nonce: 1234,
+                parent_code: None,
+                parent_code_hash: Some(KECCAK_EMPTY),
             },
         );
 

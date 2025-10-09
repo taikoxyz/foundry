@@ -16,11 +16,12 @@ use revm::{
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt::Write;
 use url::Url;
+use tracing::debug;
 
 /// Helper module for deserializing ChainAddress from string addresses
 mod chain_address_serde {
     use super::*;
-    use serde::de::{self, Unexpected, Visitor};
+    use serde::de::{self, Visitor};
     use std::fmt;
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<ChainAddress, D::Error>
@@ -41,12 +42,9 @@ mod chain_address_serde {
                 E: de::Error,
             {
                 // Parse address string and use chain_id 1 as default (Ethereum mainnet)
-                let address = value.parse::<Address>().map_err(|e| {
-                    E::invalid_value(
-                        Unexpected::Str(value),
-                        &format!("valid address: {}", e).as_str(),
-                    )
-                })?;
+                let address = value
+                    .parse::<Address>()
+                    .map_err(|e| E::custom(format!("valid address: {e}")))?;
                 Ok(ChainAddress(1, address))
             }
 
@@ -205,8 +203,8 @@ impl EvmOpts {
 
     /// Returns the `revm::Env` configured with only local settings
     pub fn local_evm_env(&self) -> crate::Env {
-        println!("CORE!!!");
-        println!("chain_ids: {:?}", self.chain_ids);
+        debug!(target: "evm::opts", "initializing local env");
+        debug!(target: "evm::opts", chain_ids = ?self.chain_ids);
 
         let mut cfg = configure_env(
             self.env.chain_id.unwrap_or(foundry_common::DEV_CHAIN_ID),
@@ -220,9 +218,7 @@ impl EvmOpts {
 
         let canonical_chain_id = cfg.chain_id;
         let mut block_chain_ids = self.chain_ids.clone().unwrap_or_default();
-        if block_chain_ids.is_empty() {
-            block_chain_ids.push(canonical_chain_id);
-        } else if !block_chain_ids.contains(&canonical_chain_id) {
+        if !block_chain_ids.contains(&canonical_chain_id) {
             block_chain_ids.push(canonical_chain_id);
         }
 

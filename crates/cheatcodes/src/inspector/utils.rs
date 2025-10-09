@@ -1,6 +1,7 @@
 use super::Ecx;
 use crate::inspector::Cheatcodes;
 use alloy_primitives::{Address, Bytes, U256};
+use foundry_common::sh_println;
 use revm::{
     interpreter::{CreateInputs, CreateScheme, EOFCreateInputs},
     primitives::ChainAddress,
@@ -93,7 +94,11 @@ impl CommonCreateInput for &mut EOFCreateInputs {
 
     fn log_debug(&self, _cheatcodes: &mut Cheatcodes, _scheme: &CreateScheme) {
         let created_address = self.kind.created_address().unwrap_or(&Address::ZERO);
-        println!("Create2Factory EOF create: {:?} -> {:?}", self.caller(), created_address);
+        let _ = sh_println!(
+            "Create2Factory EOF create: {:?} -> {:?}",
+            self.caller(),
+            created_address
+        );
     }
 
     fn allow_cheatcodes(&self, cheatcodes: &mut Cheatcodes, ecx: Ecx) -> ChainAddress {

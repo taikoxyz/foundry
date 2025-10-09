@@ -24,6 +24,7 @@ use revm::{
     state::{Account, AccountInfo},
 };
 use std::{borrow::Cow, collections::BTreeMap};
+use tracing::debug;
 
 /// A wrapper around `Backend` that ensures only `revm::DatabaseRef` functions are called.
 ///
@@ -69,7 +70,7 @@ impl<'a> CowBackend<'a> {
         env: &mut Env,
         inspector: &mut I,
     ) -> eyre::Result<ResultAndState> {
-        println!("inspect");
+        debug!("inspect");
         // this is a new call to inspect with a new env, so even if we've cloned the backend
         // already, we reset the initialized state
         self.is_initialized = false;

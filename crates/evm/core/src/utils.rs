@@ -32,7 +32,7 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
                 if block_number >= 15_537_351u64 {
                     env.block.get_mut(&env.cfg.chain_id).unwrap().difficulty = env
                         .block
-                        .get(&&env.cfg.chain_id)
+                        .get(&env.cfg.chain_id)
                         .unwrap()
                         .prevrandao
                         .unwrap_or_default()
@@ -49,7 +49,7 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
                 // specification. This will confuse revm and causes emulation
                 // failure.
                 env.block.get_mut(&env.cfg.chain_id).unwrap().prevrandao =
-                    Some(env.block.get(&&env.cfg.chain_id).unwrap().difficulty.into());
+                    Some(env.block.get(&env.cfg.chain_id).unwrap().difficulty.into());
                 return;
             }
             Moonbeam | Moonbase | Moonriver | MoonbeamDev | Rsk | RskTestnet => {
@@ -78,7 +78,7 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
     // if difficulty is `0` we assume it's past merge
     if block.header().difficulty().is_zero() {
         env.block.get_mut(&env.cfg.chain_id).unwrap().difficulty =
-            env.block.get(&&env.cfg.chain_id).unwrap().prevrandao.unwrap_or_default().into();
+            env.block.get(&env.cfg.chain_id).unwrap().prevrandao.unwrap_or_default().into();
     }
 }
 

@@ -263,15 +263,15 @@ impl CallArgs {
 
             // Apply the block overrides.
             if let Some(block_overrides) = block_overrides {
-                if let Some(number) = block_overrides.number {
-                    if let Some(block_env) = env.evm_env.block_env.get_mut(&chain_id) {
-                        block_env.number = number.to();
-                    }
+                if let Some(number) = block_overrides.number
+                    && let Some(block_env) = env.evm_env.block_env.get_mut(&chain_id)
+                {
+                    block_env.number = number.to();
                 }
-                if let Some(time) = block_overrides.time {
-                    if let Some(block_env) = env.evm_env.block_env.get_mut(&chain_id) {
-                        block_env.timestamp = time;
-                    }
+                if let Some(time) = block_overrides.time
+                    && let Some(block_env) = env.evm_env.block_env.get_mut(&chain_id)
+                {
+                    block_env.timestamp = time;
                 }
             }
 

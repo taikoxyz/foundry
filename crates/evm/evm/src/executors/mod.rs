@@ -31,6 +31,7 @@ use foundry_evm_core::{
 };
 use foundry_evm_coverage::HitMaps;
 use foundry_evm_traces::{SparsedTraceArena, TraceMode};
+use tracing::debug;
 use revm::{
     bytecode::Bytecode,
     context::{BlockEnv, TxEnv},
@@ -383,8 +384,6 @@ impl Executor {
         to: Address,
         rd: Option<&RevertDecoder>,
     ) -> Result<RawCallResult, EvmError> {
-        let chain_id = self.env().evm_env.cfg_env.chain_id;
-        println!("setting up contract {:?} {:?}", from, ChainAddress(chain_id, to));
         trace!(?from, ?to, "setting up contract");
 
         let from = from.unwrap_or(CALLER);
@@ -421,7 +420,7 @@ impl Executor {
         value: U256,
         rd: Option<&RevertDecoder>,
     ) -> Result<CallResult, EvmError> {
-        println!("call");
+        debug!("call");
         let calldata = Bytes::from(func.abi_encode_input(args)?);
         let result = self.call_raw(from, to, calldata, value)?;
         result.into_decoded_result(func, rd)
@@ -465,7 +464,7 @@ impl Executor {
         calldata: Bytes,
         value: U256,
     ) -> eyre::Result<RawCallResult> {
-        println!("call_raw");
+        debug!("call_raw");
         let env = self.build_test_env(from, TxKind::Call(to), calldata, value);
         self.call_with_env(env)
     }
@@ -494,7 +493,7 @@ impl Executor {
         calldata: Bytes,
         value: U256,
     ) -> eyre::Result<RawCallResult> {
-        println!("transact_raw");
+        debug!("transact_raw");
         let env = self.build_test_env(from, TxKind::Call(to), calldata, value);
         self.transact_with_env(env)
     }
@@ -504,7 +503,7 @@ impl Executor {
     /// The state after the call is **not** persisted.
     #[instrument(name = "call", level = "debug", skip_all)]
     pub fn call_with_env(&self, mut env: Env) -> eyre::Result<RawCallResult> {
-        println!("call_with_env");
+        debug!("call_with_env");
         let mut inspector = self.inspector().clone();
         #[allow(unused_mut)]
         let mut backend = CowBackend::new_borrowed(self.backend());
@@ -516,7 +515,7 @@ impl Executor {
     /// Execute the transaction configured in `env.tx`.
     #[instrument(name = "transact", level = "debug", skip_all)]
     pub fn transact_with_env(&mut self, mut env: Env) -> eyre::Result<RawCallResult> {
-        println!("transact_with_env");
+        debug!("transact_with_env");
         let mut inspector = self.inspector().clone();
         let backend = self.backend_mut();
         let result = backend.clone().inspect(&mut env, &mut inspector)?;
@@ -726,7 +725,7 @@ impl Executor {
                     let mut block_env_map = HashMap::default();
                     block_env_map.insert(
                         chain_id,
-                        BlockEnv { basefee: 0_u64, gas_limit: self.gas_limit.into(), ..base_block },
+                        BlockEnv { basefee: 0_u64, gas_limit: self.gas_limit, ..base_block },
                     );
                     block_env_map
                 },

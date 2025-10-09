@@ -62,7 +62,7 @@ mod tests {
 
     use alloy_evm::{EthEvm, Evm, EvmEnv, eth::EthEvmContext, precompiles::PrecompilesMap};
     //  use alloy_op_evm::OpEvm;
-    use alloy_primitives::{Address, Bytes, TxKind, U256, address};
+    use alloy_primitives::{Address, Bytes, address};
     //use foundry_evm_core::either_evm::EitherEvm;
     use itertools::Itertools;
     //use op_revm::{L1BlockInfo, OpContext, OpSpecId, OpTransaction, precompiles::OpPrecompiles};
@@ -74,19 +74,16 @@ mod tests {
         inspector::NoOpInspector,
         interpreter::interpreter::EthInterpreter,
         precompile::{
-            PrecompileOutput, PrecompileResult, PrecompileSpecId, PrecompileWithAddress,
-            Precompiles,
+            PrecompileContext, PrecompileOutput, PrecompileResult, PrecompileSpecId,
+            PrecompileWithAddress, Precompiles,
         },
-        primitives::hardfork::SpecId,
+        primitives::{ChainAddress, MultiChainTxKind, hardfork::SpecId},
     };
 
     use crate::{PrecompileFactory, inject_precompiles};
 
     // A precompile activated in the `Prague` spec.
     const ETH_PRAGUE_PRECOMPILE: Address = address!("0x0000000000000000000000000000000000000011");
-
-    // A precompile activated in the `Isthmus` spec.
-    const OP_ISTHMUS_PRECOMPILE: Address = address!("0x0000000000000000000000000000000000000100");
 
     // A custom precompile address and payload for testing.
     const PRECOMPILE_ADDR: Address = address!("0x0000000000000000000000000000000000000071");
@@ -99,14 +96,18 @@ mod tests {
         fn precompiles(&self) -> Vec<PrecompileWithAddress> {
             vec![PrecompileWithAddress::from((
                 PRECOMPILE_ADDR,
-                custom_echo_precompile as fn(&[u8], u64) -> PrecompileResult,
+                custom_echo_precompile as fn(&[u8], u64, &mut PrecompileContext) -> PrecompileResult,
             ))]
         }
     }
 
     /// Custom precompile that echoes the input data.
     /// In this example it uses `0xdeadbeef` as the input data, returning it as output.
-    fn custom_echo_precompile(input: &[u8], _gas_limit: u64) -> PrecompileResult {
+    fn custom_echo_precompile(
+        input: &[u8],
+        _gas_limit: u64,
+        _context: &mut PrecompileContext,
+    ) -> PrecompileResult {
         Ok(PrecompileOutput { bytes: Bytes::copy_from_slice(input), gas_used: 0 })
     }
 
@@ -117,7 +118,7 @@ mod tests {
         let eth_env = foundry_evm::Env {
             evm_env: EvmEnv { block_env: Default::default(), cfg_env: CfgEnv::new_with_spec(spec) },
             tx: TxEnv {
-                kind: TxKind::Call(PRECOMPILE_ADDR),
+                kind: MultiChainTxKind::Call(ChainAddress(0, PRECOMPILE_ADDR)),
                 data: PAYLOAD.into(),
                 ..Default::default()
             },

@@ -39,6 +39,7 @@ use foundry_config::{
     },
     filter::GlobMatcher,
 };
+use tracing::debug;
 use foundry_debugger::Debugger;
 use foundry_evm::traces::identifier::TraceIdentifiers;
 use regex::Regex;
@@ -283,7 +284,7 @@ impl TestArgs {
     ///
     /// Returns the test results for all matching tests.
     pub async fn execute_tests(mut self) -> Result<TestOutcome> {
-        println!("execute_tests");
+        debug!("execute_tests");
 
         // Merge all configs.
         let (mut config, mut evm_opts) = self.load_config_and_evm_opts()?;
@@ -330,12 +331,12 @@ impl TestArgs {
             evm_opts.verbosity = 3;
         }
 
-        println!("opts chain id: {:?}", evm_opts.env.chain_id);
+        debug!("opts chain id: {:?}", evm_opts.env.chain_id);
 
         let env = evm_opts.evm_env().await?;
 
         let chain_id = env.evm_env.cfg_env.chain_id;
-        println!("executing tests on chain id {}", chain_id);
+        debug!("executing tests on chain id {}", chain_id);
 
         // Enable internal tracing for more informative flamegraph.
         if should_draw && !self.decode_internal {

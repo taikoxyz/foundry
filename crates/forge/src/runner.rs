@@ -45,7 +45,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use tracing::Span;
+use tracing::{Span, debug};
 
 /// When running tests, we deploy all external libraries present in the project. To avoid additional
 /// libraries affecting nonces of senders used in tests, we are using separate address to
@@ -120,7 +120,7 @@ impl<'a> ContractRunner<'a> {
     fn _setup(&mut self, call_setup: bool) -> Result<TestSetup> {
         trace!(call_setup, "setting up");
 
-        println!("setting up ContractRunner");
+        debug!("setting up ContractRunner");
 
         self.apply_contract_inline_config()?;
 

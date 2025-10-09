@@ -174,7 +174,7 @@ impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
 
     fn block(&self) -> &BlockEnv {
         let chain_id = self.chain_id();
-        &self
+        self
             .inner
             .block
             .get(&chain_id)
