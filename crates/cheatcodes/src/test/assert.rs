@@ -191,7 +191,11 @@ fn handle_assertion_result<DB: DatabaseExt, E: CheatcodesExecutor, ERR>(
                 Err(msg.into())
             } else {
                 executor.console_log(ccx, msg);
-                ccx.ecx.sstore(ChainAddress(ccx.cfg().chain_id, CHEATCODE_ADDRESS), GLOBAL_FAIL_SLOT, U256::from(1))?;
+                ccx.ecx.sstore(
+                    ChainAddress(ccx.cfg().chain_id, CHEATCODE_ADDRESS),
+                    GLOBAL_FAIL_SLOT,
+                    U256::from(1),
+                )?;
                 Ok(Default::default())
             }
         }

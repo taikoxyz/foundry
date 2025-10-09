@@ -105,7 +105,8 @@ impl PreSimulationState {
                 let to = if let Some(TxKind::Call(to)) = tx.to() { Some(to) } else { None };
                 let result = runner
                     .simulate(
-                        tx.from().map(|a| ChainAddress(chain_id, a))
+                        tx.from()
+                            .map(|a| ChainAddress(chain_id, a))
                             .expect("transaction doesn't have a `from` address at execution time"),
                         to.map(|a| ChainAddress(chain_id, a)),
                         tx.input().map(Bytes::copy_from_slice),
@@ -334,8 +335,7 @@ impl FilledTransactionsState {
                 }
             }
 
-            let sequence =
-                self.create_sequence(is_multi_deployment, chain_id, new_sequence)?;
+            let sequence = self.create_sequence(is_multi_deployment, chain_id, new_sequence)?;
 
             sequences.push(sequence);
 

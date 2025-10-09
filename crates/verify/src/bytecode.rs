@@ -270,7 +270,9 @@ impl VerifyBytecodeArgs {
                 nonce: 0,
                 ..Default::default()
             };
-            executor.backend_mut().insert_account_info(ChainAddress(chain_id, deployer), account_info);
+            executor
+                .backend_mut()
+                .insert_account_info(ChainAddress(chain_id, deployer), account_info);
 
             let fork_address =
                 crate::utils::deploy_contract(&mut executor, &env, config.evm_spec_id(), &gen_tx)?;

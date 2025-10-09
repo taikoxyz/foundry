@@ -26,7 +26,10 @@ use revm::{
     primitives::{BlockEnv, ChainAddress, TransactTo, TxEnv},
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, ops::{Deref, Mul}};
+use std::{
+    collections::HashMap,
+    ops::{Deref, Mul},
+};
 
 pub mod optimism;
 

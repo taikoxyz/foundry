@@ -9,7 +9,9 @@ use alloy_rpc_types::BlockId;
 use foundry_fork_db::{BlockchainDb, DatabaseError, SharedBackend};
 use parking_lot::Mutex;
 use revm::{
-    db::CacheDB, primitives::{Account, AccountInfo, Bytecode, ChainAddress, HashMap as Map}, DatabaseCommit, SyncDatabase, SyncDatabaseRef
+    db::CacheDB,
+    primitives::{Account, AccountInfo, Bytecode, ChainAddress, HashMap as Map},
+    DatabaseCommit, SyncDatabase, SyncDatabaseRef,
 };
 use std::sync::Arc;
 
@@ -263,8 +265,8 @@ impl SyncDatabaseRef for ForkDbSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy_primitives::Address;
     use crate::backend::BlockchainDbMeta;
+    use alloy_primitives::Address;
     use foundry_common::provider::get_http_provider;
     use std::collections::BTreeSet;
 

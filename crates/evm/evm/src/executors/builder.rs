@@ -81,7 +81,9 @@ impl ExecutorBuilder {
         if stack.gas_price.is_none() {
             stack.gas_price = Some(env.tx.gas_price);
         }
-        let gas_limit = gas_limit.unwrap_or_else(|| env.blocks.get(&env.cfg.chain_id).unwrap().gas_limit.saturating_to());
+        let gas_limit = gas_limit.unwrap_or_else(|| {
+            env.blocks.get(&env.cfg.chain_id).unwrap().gas_limit.saturating_to()
+        });
         let env = EnvWithHandlerCfg::new_with_spec_id(Box::new(env), spec_id);
         Executor::new(db, env, stack.build(), gas_limit, legacy_assertions)
     }

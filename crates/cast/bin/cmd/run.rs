@@ -1,7 +1,10 @@
 use alloy_primitives::U256;
 use alloy_provider::Provider;
 use alloy_rpc_types::BlockTransactions;
-use cast::{revm::primitives::{ChainAddress, EnvWithHandlerCfg}, traces::TraceKind};
+use cast::{
+    revm::primitives::{ChainAddress, EnvWithHandlerCfg},
+    traces::TraceKind,
+};
 use clap::Parser;
 use eyre::{Result, WrapErr};
 use foundry_cli::{
@@ -138,29 +141,29 @@ impl RunArgs {
         let mut evm_version = self.evm_version;
 
         {
-        let block_env = env.blocks.get_mut(&env.cfg.chain_id).unwrap();
+            let block_env = env.blocks.get_mut(&env.cfg.chain_id).unwrap();
 
-        block_env.number = U256::from(tx_block_number);
+            block_env.number = U256::from(tx_block_number);
 
-        let chain_id = env.cfg.chain_id;
+            let chain_id = env.cfg.chain_id;
 
-        if let Some(block) = &block {
-            block_env.timestamp = U256::from(block.header.timestamp);
-            block_env.coinbase = ChainAddress(chain_id, block.header.miner);
-            block_env.difficulty = block.header.difficulty;
-            block_env.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
-            block_env.basefee = U256::from(block.header.base_fee_per_gas.unwrap_or_default());
-            block_env.gas_limit = U256::from(block.header.gas_limit);
+            if let Some(block) = &block {
+                block_env.timestamp = U256::from(block.header.timestamp);
+                block_env.coinbase = ChainAddress(chain_id, block.header.miner);
+                block_env.difficulty = block.header.difficulty;
+                block_env.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
+                block_env.basefee = U256::from(block.header.base_fee_per_gas.unwrap_or_default());
+                block_env.gas_limit = U256::from(block.header.gas_limit);
 
-            // TODO: we need a smarter way to map the block to the corresponding evm_version for
-            // commonly used chains
-            if evm_version.is_none() {
-                // if the block has the excess_blob_gas field, we assume it's a Cancun block
-                if block.header.excess_blob_gas.is_some() {
-                    evm_version = Some(EvmVersion::Cancun);
+                // TODO: we need a smarter way to map the block to the corresponding evm_version for
+                // commonly used chains
+                if evm_version.is_none() {
+                    // if the block has the excess_blob_gas field, we assume it's a Cancun block
+                    if block.header.excess_blob_gas.is_some() {
+                        evm_version = Some(EvmVersion::Cancun);
+                    }
                 }
             }
-        }
         }
 
         let mut executor = TracingExecutor::new(

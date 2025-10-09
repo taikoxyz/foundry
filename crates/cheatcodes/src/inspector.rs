@@ -41,7 +41,10 @@ use revm::{
         EOFCreateInputs, EOFCreateKind, Gas, InstructionResult, Interpreter, InterpreterAction,
         InterpreterResult,
     },
-    primitives::{BlockEnv, ChainAddress, CreateScheme, EVMError, EvmStorageSlot, SpecId, TransactTo, EOF_MAGIC_BYTES},
+    primitives::{
+        BlockEnv, ChainAddress, CreateScheme, EVMError, EvmStorageSlot, SpecId, TransactTo,
+        EOF_MAGIC_BYTES,
+    },
     EvmContext, InnerEvmContext, Inspector,
 };
 use rustc_hash::FxHashMap;
@@ -804,8 +807,9 @@ impl Cheatcodes {
                         crate::Vm::AccountAccessKind::Create as u8
                     );
                     if let Some(address) = outcome.address {
-                        if let Ok(created_acc) =
-                            ecx.journaled_state.load_account(ChainAddress(ecx.cfg().chain_id, address), &mut ecx.db)
+                        if let Ok(created_acc) = ecx
+                            .journaled_state
+                            .load_account(ChainAddress(ecx.cfg().chain_id, address), &mut ecx.db)
                         {
                             create_access.newBalance = created_acc.info.balance;
                             create_access.deployedCode =
@@ -898,7 +902,8 @@ impl Cheatcodes {
         // Handle expected calls
 
         // Grab the different calldatas expected.
-        if let Some(expected_calls_for_target) = self.expected_calls.get_mut(&call.bytecode_address.1)
+        if let Some(expected_calls_for_target) =
+            self.expected_calls.get_mut(&call.bytecode_address.1)
         {
             // Match every partial/full calldata
             for (calldata, (expected, actual_count)) in expected_calls_for_target {
@@ -981,7 +986,6 @@ impl Cheatcodes {
 
         // Apply our broadcast
         if let Some(broadcast) = &self.broadcast {
-
             let mut broadcast = broadcast.clone();
             broadcast.new_origin = ChainAddress(broadcast.chain_id, broadcast.new_origin.1);
 
@@ -1682,7 +1686,8 @@ impl Cheatcodes {
 
                 // get previous balance and initialized status of the target account
                 let target = try_or_return!(interpreter.stack().peek(0));
-                let target = ChainAddress(ecx.cfg().chain_id, Address::from_word(B256::from(target)));
+                let target =
+                    ChainAddress(ecx.cfg().chain_id, Address::from_word(B256::from(target)));
                 let (initialized, old_balance) = ecx
                     .load_account(target)
                     .map(|account| (account.info.exists(), account.info.balance))
@@ -1775,8 +1780,10 @@ impl Cheatcodes {
                     op::BALANCE => crate::Vm::AccountAccessKind::Balance,
                     _ => unreachable!(),
                 };
-                let address =
-                    ChainAddress(ecx.cfg().chain_id, Address::from_word(B256::from(try_or_return!(interpreter.stack().peek(0)))));
+                let address = ChainAddress(
+                    ecx.cfg().chain_id,
+                    Address::from_word(B256::from(try_or_return!(interpreter.stack().peek(0)))),
+                );
                 let initialized;
                 let balance;
                 if let Ok(acc) = ecx.load_account(address) {

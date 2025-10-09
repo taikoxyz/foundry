@@ -15,7 +15,9 @@ use revm::{
         return_ok, CallInputs, CallOutcome, CallScheme, CallValue, CreateInputs, CreateOutcome,
         Gas, InstructionResult, InterpreterResult,
     },
-    primitives::{ChainAddress, CreateScheme, EVMError, HandlerCfg, SpecId, TransactTo, KECCAK_EMPTY},
+    primitives::{
+        ChainAddress, CreateScheme, EVMError, HandlerCfg, SpecId, TransactTo, KECCAK_EMPTY,
+    },
     FrameOrResult, FrameResult,
 };
 use std::{cell::RefCell, rc::Rc, sync::Arc};
@@ -39,7 +41,13 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
             NamedChain::Mainnet => {
                 // after merge difficulty is supplanted with prevrandao EIP-4399
                 if block_number >= 15_537_351u64 {
-                    env.blocks.get_mut(&env.cfg.chain_id).unwrap().difficulty = env.blocks.get(&env.cfg.chain_id).unwrap().prevrandao.unwrap_or_default().into();
+                    env.blocks.get_mut(&env.cfg.chain_id).unwrap().difficulty = env
+                        .blocks
+                        .get(&env.cfg.chain_id)
+                        .unwrap()
+                        .prevrandao
+                        .unwrap_or_default()
+                        .into();
                 }
 
                 return;
@@ -66,7 +74,8 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
 
     // if difficulty is `0` we assume it's past merge
     if block.header().difficulty().is_zero() {
-        env.blocks.get_mut(&env.cfg.chain_id).unwrap().difficulty = env.blocks.get_mut(&env.cfg.chain_id).unwrap().prevrandao.unwrap_or_default().into();
+        env.blocks.get_mut(&env.cfg.chain_id).unwrap().difficulty =
+            env.blocks.get_mut(&env.cfg.chain_id).unwrap().prevrandao.unwrap_or_default().into();
     }
 }
 
@@ -91,10 +100,8 @@ pub fn configure_tx_env(env: &mut revm::primitives::Env, tx: &Transaction) {
     env.tx.access_list = tx.access_list.clone().unwrap_or_default().0.into_iter().collect();
     env.tx.value = tx.value.to();
     env.tx.data = alloy_primitives::Bytes(tx.input.0.clone());
-    env.tx.transact_to = convert_tx_kind(
-        tx.chain_id.unwrap(),
-        tx.to.map(TxKind::Call).unwrap_or(TxKind::Create)
-    );
+    env.tx.transact_to =
+        convert_tx_kind(tx.chain_id.unwrap(), tx.to.map(TxKind::Call).unwrap_or(TxKind::Create));
 }
 
 /// Get the gas used, accounting for refunds
@@ -156,7 +163,11 @@ pub fn create2_handler_register<DB: revm::SyncDatabase, I: InspectorExt<DB>>(
                 .push((ctx.evm.journaled_state.depth(), call_inputs.clone()));
 
             // Sanity check that CREATE2 deployer exists.
-            let code_hash = ctx.evm.load_account(ChainAddress(inputs.caller.0, DEFAULT_CREATE2_DEPLOYER))?.info.code_hash;
+            let code_hash = ctx
+                .evm
+                .load_account(ChainAddress(inputs.caller.0, DEFAULT_CREATE2_DEPLOYER))?
+                .info
+                .code_hash;
             if code_hash == KECCAK_EMPTY {
                 return Ok(FrameOrResult::Result(FrameResult::Call(CallOutcome {
                     result: InterpreterResult {

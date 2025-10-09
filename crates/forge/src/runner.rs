@@ -151,14 +151,19 @@ impl<'a> ContractRunner<'a> {
         // Reset `self.sender`s, `CALLER`s and `LIBRARY_DEPLOYER`'s balance to the initial balance.
         self.executor.set_balance(self.sender, self.initial_balance)?;
         self.executor.set_balance(ChainAddress(chain_id, CALLER), self.initial_balance)?;
-        self.executor.set_balance(ChainAddress(chain_id, LIBRARY_DEPLOYER), self.initial_balance)?;
+        self.executor
+            .set_balance(ChainAddress(chain_id, LIBRARY_DEPLOYER), self.initial_balance)?;
 
         self.executor.deploy_create2_deployer()?;
 
         // Optionally call the `setUp` function
         let result = if call_setup {
             trace!("calling setUp");
-            let res = self.executor.setup(None, ChainAddress(chain_id, address), Some(self.revert_decoder));
+            let res = self.executor.setup(
+                None,
+                ChainAddress(chain_id, address),
+                Some(self.revert_decoder),
+            );
             let (setup_logs, setup_traces, labeled_addresses, reason, coverage) = match res {
                 Ok(RawCallResult { traces, labels, logs, coverage, .. }) => {
                     trace!(%address, "successfully called setUp");
@@ -223,9 +228,14 @@ impl<'a> ContractRunner<'a> {
         for func in fixture_functions {
             if func.inputs.is_empty() {
                 // Read fixtures declared as functions.
-                if let Ok(CallResult { raw: _, decoded_result }) =
-                    self.executor.call(ChainAddress(chain_id, CALLER), address, func, &[], U256::ZERO, None)
-                {
+                if let Ok(CallResult { raw: _, decoded_result }) = self.executor.call(
+                    ChainAddress(chain_id, CALLER),
+                    address,
+                    func,
+                    &[],
+                    U256::ZERO,
+                    None,
+                ) {
                     fixtures.insert(fixture_name(func.name.clone()), decoded_result);
                 }
             } else {

@@ -6,7 +6,9 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 use auto_impl::auto_impl;
-use revm::{inspectors::NoOpInspector, interpreter::CreateInputs, EvmContext, Inspector, SyncDatabase};
+use revm::{
+    inspectors::NoOpInspector, interpreter::CreateInputs, EvmContext, Inspector, SyncDatabase,
+};
 use revm_inspectors::access_list::AccessListInspector;
 
 #[macro_use]

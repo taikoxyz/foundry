@@ -752,7 +752,10 @@ async fn test_reorg() {
     // Test reverting code
     let greeter = abi::Greeter::deploy(provider.clone(), "Reorg".to_string()).await.unwrap();
     api.anvil_reorg(ReorgOptions { depth: 5, tx_block_pairs: vec![] }).await.unwrap();
-    let code = api.get_code(ChainAddress(chain_id, *greeter.address()), Some(BlockId::latest())).await.unwrap();
+    let code = api
+        .get_code(ChainAddress(chain_id, *greeter.address()), Some(BlockId::latest()))
+        .await
+        .unwrap();
     assert_eq!(code, Bytes::default());
 
     // Test reverting contract storage

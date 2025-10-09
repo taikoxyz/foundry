@@ -28,7 +28,8 @@ use revm::{
     db::DatabaseCommit,
     interpreter::{return_ok, InstructionResult},
     primitives::{
-        Bytecode, ChainAddress, Env, EnvWithHandlerCfg, ExecutionResult, Output, ResultAndState, SpecId, TransactTo, TxEnv,
+        Bytecode, ChainAddress, Env, EnvWithHandlerCfg, ExecutionResult, Output, ResultAndState,
+        SpecId, TransactTo, TxEnv,
     },
     SyncDatabaseRef,
 };
@@ -113,7 +114,8 @@ impl Executor {
                 revm::primitives::AccountInfo {
                     code: Some(Bytecode::new_raw(Bytes::from_static(&[0]))),
                     // Also set the code hash manually so that it's not computed later.
-                    // The code hash value does not matter, as long as it's not zero or `KECCAK_EMPTY`.
+                    // The code hash value does not matter, as long as it's not zero or
+                    // `KECCAK_EMPTY`.
                     code_hash: CHEATCODE_CONTRACT_HASH,
                     ..Default::default()
                 },
@@ -548,7 +550,9 @@ impl Executor {
                 }
             }
         }
-        if let Ok(failed_slot) = self.backend().storage_ref(ChainAddress(address.0, CHEATCODE_ADDRESS), GLOBAL_FAIL_SLOT) {
+        if let Ok(failed_slot) =
+            self.backend().storage_ref(ChainAddress(address.0, CHEATCODE_ADDRESS), GLOBAL_FAIL_SLOT)
+        {
             if !failed_slot.is_zero() {
                 return false;
             }
@@ -578,7 +582,13 @@ impl Executor {
 
             // Check if a DSTest assertion failed
             let executor = self.clone_with_backend(backend);
-            let call = executor.call_sol(ChainAddress(address.0, CALLER), address, &ITest::failedCall {}, U256::ZERO, None);
+            let call = executor.call_sol(
+                ChainAddress(address.0, CALLER),
+                address,
+                &ITest::failedCall {},
+                U256::ZERO,
+                None,
+            );
             match call {
                 Ok(CallResult { raw: _, decoded_result: ITest::failedReturn { failed } }) => {
                     trace!(failed, "DSTest::failed()");

@@ -235,8 +235,7 @@ impl ForgeTestData {
             opts.isolate = true;
         }
 
-        let chain_id =
-            config.chain.map(|chain| chain.id()).unwrap_or(DEV_CHAIN_ID);
+        let chain_id = config.chain.map(|chain| chain.id()).unwrap_or(DEV_CHAIN_ID);
         let sender = ChainAddress(chain_id, config.sender);
 
         let mut builder = self.base_runner();

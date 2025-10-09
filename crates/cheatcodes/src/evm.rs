@@ -135,9 +135,8 @@ impl Cheatcode for loadAllocsCall {
         };
 
         let chain_id = ccx.caller.0;
-        let allocs = allocs.into_iter().map(|alloc| {
-            (ChainAddress(chain_id, alloc.0), alloc.1)
-        }).collect();
+        let allocs =
+            allocs.into_iter().map(|alloc| (ChainAddress(chain_id, alloc.0), alloc.1)).collect();
 
         // Then, load the allocs into the database.
         ccx.ecx
@@ -281,7 +280,8 @@ impl Cheatcode for coinbaseCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { newCoinbase } = self;
         let chain_id = ccx.caller.0;
-        ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().coinbase = ChainAddress(chain_id, *newCoinbase);
+        ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().coinbase =
+            ChainAddress(chain_id, *newCoinbase);
         Ok(Default::default())
     }
 }
@@ -413,7 +413,12 @@ impl Cheatcode for blobBaseFeeCall {
              see EIP-4844: https://eips.ethereum.org/EIPS/eip-4844"
         );
         let chain_id = ccx.caller.0;
-        ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().set_blob_excess_gas_and_price((*newBlobBaseFee).to());
+        ccx.ecx
+            .env
+            .blocks
+            .get_mut(&chain_id)
+            .unwrap()
+            .set_blob_excess_gas_and_price((*newBlobBaseFee).to());
         Ok(Default::default())
     }
 }
@@ -422,7 +427,15 @@ impl Cheatcode for getBlobBaseFeeCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self {} = self;
         let chain_id = ccx.caller.0;
-        Ok(ccx.ecx.env.blocks.get_mut(&chain_id).unwrap().get_blob_excess_gas().unwrap_or(0).abi_encode())
+        Ok(ccx
+            .ecx
+            .env
+            .blocks
+            .get_mut(&chain_id)
+            .unwrap()
+            .get_blob_excess_gas()
+            .unwrap_or(0)
+            .abi_encode())
     }
 }
 
@@ -432,7 +445,8 @@ impl Cheatcode for dealCall {
         let chain_id = ccx.caller.0;
         let account = journaled_account(ccx.ecx, ChainAddress(chain_id, address))?;
         let old_balance = std::mem::replace(&mut account.info.balance, new_balance);
-        let record = DealRecord { address: ChainAddress(chain_id, address), old_balance, new_balance };
+        let record =
+            DealRecord { address: ChainAddress(chain_id, address), old_balance, new_balance };
         ccx.state.eth_deals.push(record);
         Ok(Default::default())
     }
@@ -509,7 +523,9 @@ impl Cheatcode for coolCall {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
         let Self { target } = self;
         let chain_id = ccx.caller.0;
-        if let Some(account) = ccx.ecx.journaled_state.state.get_mut(&ChainAddress(chain_id, *target)) {
+        if let Some(account) =
+            ccx.ecx.journaled_state.state.get_mut(&ChainAddress(chain_id, *target))
+        {
             account.unmark_touch();
             account.storage.clear();
         }
@@ -642,7 +658,10 @@ impl Cheatcode for setBlockhashCall {
     }
 }
 
-pub(super) fn get_nonce<DB: DatabaseExt>(ccx: &mut CheatsCtxt<DB>, address: &ChainAddress) -> Result {
+pub(super) fn get_nonce<DB: DatabaseExt>(
+    ccx: &mut CheatsCtxt<DB>,
+    address: &ChainAddress,
+) -> Result {
     let account = ccx.ecx.journaled_state.load_account(*address, &mut ccx.ecx.db)?;
     Ok(account.info.nonce.abi_encode())
 }

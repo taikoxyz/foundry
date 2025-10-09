@@ -1,6 +1,7 @@
 use crate::{invariant::RandomCallGenerator, strategies::EvmFuzzState};
 use revm::{
-    interpreter::{CallInputs, CallOutcome, CallScheme, Interpreter}, EvmContext, Inspector, SyncDatabase
+    interpreter::{CallInputs, CallOutcome, CallScheme, Interpreter},
+    EvmContext, Inspector, SyncDatabase,
 };
 
 /// An inspector that can fuzz and collect data for that effect.

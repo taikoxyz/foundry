@@ -28,28 +28,24 @@ pub async fn environment<N: Network, T: Transport + Clone, P: Provider<T, N>>(
     //println!("provider_chain_id: {:?}", provider_chain_id);
 
     // Get the parent chain id from the provider
-    let parent_chain_id = match provider
-        .client()
-        .request_noparams::<String>("eth_getParentChainId")
-        .await
-    {
-        Ok(res) => {
-            let without_prefix = res.trim_start_matches("0x");
-            // Parse as base 16
-            let parent_chain_id = u64::from_str_radix(without_prefix, 16).expect("Invalid hex input");
-            Some(parent_chain_id)
-        }
-        Err(err) => {
-            println!("error getting parent chain id: {err:?}");
-            None
-        }
-    };
+    let parent_chain_id =
+        match provider.client().request_noparams::<String>("eth_getParentChainId").await {
+            Ok(res) => {
+                let without_prefix = res.trim_start_matches("0x");
+                // Parse as base 16
+                let parent_chain_id =
+                    u64::from_str_radix(without_prefix, 16).expect("Invalid hex input");
+                Some(parent_chain_id)
+            }
+            Err(err) => {
+                println!("error getting parent chain id: {err:?}");
+                None
+            }
+        };
     println!("parent_chain_id: {parent_chain_id:?}");
 
-    if let Err(err) = provider
-        .client()
-        .request::<_, bool>("eth_setActiveChainId", (parent_chain_id,))
-        .await
+    if let Err(err) =
+        provider.client().request::<_, bool>("eth_setActiveChainId", (parent_chain_id,)).await
     {
         println!("failed to set active chain id: {err:?}");
     }
@@ -102,10 +98,8 @@ pub async fn environment<N: Network, T: Transport + Clone, P: Provider<T, N>>(
     // If not available, use current chain ID and parent chain ID as defaults
     let chain_ids = {
         // Try to get chain IDs from RPC (this might be a custom method)
-        let result: TransportResult<Vec<u64>> = provider
-            .client()
-            .request_noparams("eth_getSupportedChains")
-            .await;
+        let result: TransportResult<Vec<u64>> =
+            provider.client().request_noparams("eth_getSupportedChains").await;
 
         if let Ok(chain_ids_list) = result {
             if !chain_ids_list.is_empty() {
@@ -136,16 +130,19 @@ pub async fn environment<N: Network, T: Transport + Clone, P: Provider<T, N>>(
 
     let mut blocks = HashMap::new();
     for &chain_id in chain_ids.as_ref().unwrap().iter() {
-        blocks.insert(chain_id, BlockEnv {
-            number: U256::from(block.header().number()),
-            timestamp: U256::from(block.header().timestamp()),
-            coinbase: ChainAddress(cfg.chain_id, block.header().coinbase()),
-            difficulty: block.header().difficulty(),
-            prevrandao: block.header().mix_hash(),
-            basefee: U256::from(block.header().base_fee_per_gas().unwrap_or_default()),
-            gas_limit: U256::from(block.header().gas_limit()),
-            ..Default::default()
-        });
+        blocks.insert(
+            chain_id,
+            BlockEnv {
+                number: U256::from(block.header().number()),
+                timestamp: U256::from(block.header().timestamp()),
+                coinbase: ChainAddress(cfg.chain_id, block.header().coinbase()),
+                difficulty: block.header().difficulty(),
+                prevrandao: block.header().mix_hash(),
+                basefee: U256::from(block.header().base_fee_per_gas().unwrap_or_default()),
+                gas_limit: U256::from(block.header().gas_limit()),
+                ..Default::default()
+            },
+        );
     }
 
     let mut env = Env {

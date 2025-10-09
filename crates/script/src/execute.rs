@@ -153,7 +153,8 @@ impl PreExecutionState {
 
         if setup_result.success {
             let chain_id = runner.executor.env().cfg.chain_id;
-            let script_result = runner.script(ChainAddress(chain_id, address), self.execution_data.calldata.clone())?;
+            let script_result = runner
+                .script(ChainAddress(chain_id, address), self.execution_data.calldata.clone())?;
 
             setup_result.success &= script_result.success;
             setup_result.gas_used = script_result.gas_used;
@@ -426,7 +427,6 @@ impl PreSimulationState {
 
             shell::println("Traces:")?;
             for (kind, trace) in &result.traces {
-
                 //println!("{:?}", trace);
 
                 let should_include = match kind {

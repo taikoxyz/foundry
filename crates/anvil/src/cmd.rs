@@ -209,7 +209,7 @@ impl NodeArgs {
                 // if self.evm_opts.optimism {
                 //     Some(OptimismHardfork::from_str(hf)?.into())
                 // } else {
-                    Some(EthereumHardfork::from_str(hf)?.into())
+                Some(EthereumHardfork::from_str(hf)?.into())
                 //}
             }
             None => None,

@@ -15,7 +15,9 @@ use foundry_config::Config;
 use foundry_evm::{constants::DEFAULT_CREATE2_DEPLOYER, executors::TracingExecutor, opts::EvmOpts};
 use reqwest::Url;
 use revm_primitives::{
-    db::SyncDatabase, env::{EnvWithHandlerCfg, HandlerCfg}, Bytecode, ChainAddress, Env, SpecId
+    db::SyncDatabase,
+    env::{EnvWithHandlerCfg, HandlerCfg},
+    Bytecode, ChainAddress, Env, SpecId,
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};

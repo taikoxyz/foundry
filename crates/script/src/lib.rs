@@ -12,6 +12,7 @@ use self::transaction::AdditionalContract;
 use crate::runner::ScriptRunner;
 use alloy_json_abi::{Function, JsonAbi};
 use alloy_primitives::{hex, Address, Bytes, Log, TxKind, U256};
+use alloy_provider::Provider;
 use alloy_signer::Signer;
 use broadcast::next_nonce;
 use build::PreprocessedState;
@@ -23,8 +24,8 @@ use foundry_cli::{opts::CoreBuildArgs, utils::LoadConfig};
 use foundry_common::{
     abi::{encode_function_args, get_func},
     evm::{Breakpoints, EvmArgs},
-    shell, ContractsByArtifact, CONTRACT_MAX_SIZE, SELECTOR_LEN,
     provider::try_get_http_provider,
+    shell, ContractsByArtifact, CONTRACT_MAX_SIZE, SELECTOR_LEN,
 };
 use foundry_compilers::ArtifactId;
 use foundry_config::{
@@ -51,7 +52,6 @@ use revm_primitives::ChainAddress;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use yansi::Paint;
-use alloy_provider::Provider;
 
 mod broadcast;
 mod build;
@@ -206,8 +206,10 @@ pub struct ScriptArgs {
 
 impl ScriptArgs {
     pub async fn preprocess(self) -> Result<PreprocessedState> {
-        let script_wallets =
-            ScriptWallets::new(self.wallets.get_multi_wallet().await?, self.evm_opts.sender.map(|a| ChainAddress(self.evm_opts.env.chain.unwrap().id(), a)));
+        let script_wallets = ScriptWallets::new(
+            self.wallets.get_multi_wallet().await?,
+            self.evm_opts.sender.map(|a| ChainAddress(self.evm_opts.env.chain.unwrap().id(), a)),
+        );
 
         let (mut config, mut evm_opts) = self.load_config_and_evm_opts_emit_warnings()?;
 

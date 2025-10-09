@@ -4,7 +4,9 @@ use crate::snapshot::Snapshots;
 use alloy_primitives::{B256, U256};
 use foundry_fork_db::DatabaseError;
 use revm::{
-    db::{CacheDB, EmptyDB}, primitives::{Account, AccountInfo, Bytecode, ChainAddress, HashMap as Map}, DatabaseCommit, SyncDatabase, SyncDatabaseRef
+    db::{CacheDB, EmptyDB},
+    primitives::{Account, AccountInfo, Bytecode, ChainAddress, HashMap as Map},
+    DatabaseCommit, SyncDatabase, SyncDatabaseRef,
 };
 
 /// Type alias for an in-memory database.
@@ -166,9 +168,12 @@ mod tests {
     #[test]
     fn mem_db_insert_basic_default() {
         let mut db = MemDb::default();
-        let address = ChainAddress(1, Address::from_word(b256!(
-            "000000000000000000000000d8da6bf26964af9d7eed9e03e53415d37aa96045"
-        )));
+        let address = ChainAddress(
+            1,
+            Address::from_word(b256!(
+                "000000000000000000000000d8da6bf26964af9d7eed9e03e53415d37aa96045"
+            )),
+        );
 
         let info = SyncDatabase::basic(&mut db, address).unwrap();
         // We know info exists, as MemDb always returns `Some(AccountInfo)` due to the

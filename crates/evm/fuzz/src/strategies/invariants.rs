@@ -80,7 +80,10 @@ pub fn invariant_strat(
             );
             (sender, call_details)
         })
-        .prop_map(move |(sender, call_details)| BasicTxDetails { sender: ChainAddress(chain_id, sender), call_details })
+        .prop_map(move |(sender, call_details)| BasicTxDetails {
+            sender: ChainAddress(chain_id, sender),
+            call_details,
+        })
 }
 
 /// Strategy to select a sender address:

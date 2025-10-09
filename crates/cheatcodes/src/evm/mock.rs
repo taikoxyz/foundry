@@ -1,6 +1,9 @@
 use crate::{Cheatcode, Cheatcodes, CheatsCtxt, DatabaseExt, Result, Vm::*};
 use alloy_primitives::{Address, Bytes, U256};
-use revm::{interpreter::InstructionResult, primitives::{Bytecode, ChainAddress}};
+use revm::{
+    interpreter::InstructionResult,
+    primitives::{Bytecode, ChainAddress},
+};
 use std::cmp::Ordering;
 
 /// Mocked call data.

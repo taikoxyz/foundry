@@ -143,7 +143,10 @@ impl Pool {
     }
 
     /// Remove transactions by sender
-    pub fn remove_transactions_by_address(&self, sender: ChainAddress) -> Vec<Arc<PoolTransaction>> {
+    pub fn remove_transactions_by_address(
+        &self,
+        sender: ChainAddress,
+    ) -> Vec<Arc<PoolTransaction>> {
         self.inner.write().remove_transactions_by_address(sender)
     }
 
@@ -380,7 +383,10 @@ impl PoolInner {
     }
 
     /// Remove transactions by sender address
-    pub fn remove_transactions_by_address(&mut self, sender: ChainAddress) -> Vec<Arc<PoolTransaction>> {
+    pub fn remove_transactions_by_address(
+        &mut self,
+        sender: ChainAddress,
+    ) -> Vec<Arc<PoolTransaction>> {
         let tx_hashes =
             self.transactions_by_sender(sender).map(move |tx| tx.hash()).collect::<Vec<TxHash>>();
 

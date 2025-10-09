@@ -265,7 +265,11 @@ impl ClientFork {
         self.provider().get_balance(address).block_id(blocknumber.into()).await
     }
 
-    pub async fn get_nonce(&self, address: ChainAddress, block: u64) -> Result<u64, TransportError> {
+    pub async fn get_nonce(
+        &self,
+        address: ChainAddress,
+        block: u64,
+    ) -> Result<u64, TransportError> {
         trace!(target: "backend::fork", "get_nonce={:?}", address);
         self.provider().get_transaction_count(address.1).block_id(block.into()).await
     }

@@ -151,7 +151,6 @@ pub struct EvmArgs {
     #[serde(skip)]
     pub alphanet: bool,
 
-
     /// the supported chain ids
     #[arg(long)]
     #[serde(skip)]

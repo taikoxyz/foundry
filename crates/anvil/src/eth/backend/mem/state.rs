@@ -47,8 +47,15 @@ pub fn trie_storage(storage: &HashMap<U256, U256>) -> Vec<(Nibbles, Vec<u8>)> {
 }
 
 /// Builds iterator over stored key-value pairs ready for account trie root calculation.
-pub fn trie_accounts(chain_id: u64, accounts: &HashMap<ChainAddress, DbAccount>) -> Vec<(Nibbles, Vec<u8>)> {
-    let accounts: HashMap<Address, DbAccount> = accounts.iter().filter(|x| x.0.0 == chain_id).map(|(addr, account)| (addr.1, account.clone())).collect();
+pub fn trie_accounts(
+    chain_id: u64,
+    accounts: &HashMap<ChainAddress, DbAccount>,
+) -> Vec<(Nibbles, Vec<u8>)> {
+    let accounts: HashMap<Address, DbAccount> = accounts
+        .iter()
+        .filter(|x| x.0 .0 == chain_id)
+        .map(|(addr, account)| (addr.1, account.clone()))
+        .collect();
 
     let mut accounts = accounts
         .iter()
@@ -86,7 +93,6 @@ where
 
     let mut cache_db = CacheDB::new(state);
     for (account, account_overrides) in overrides.iter() {
-
         let account = &ChainAddress(chain_id, *account);
 
         let mut account_info = cache_db.basic_ref(*account)?.unwrap_or_default();

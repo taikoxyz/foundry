@@ -553,9 +553,7 @@ mod tests {
     use anvil_core::eth::transaction::TypedTransaction;
     use foundry_evm::{
         backend::MemDb,
-        revm::{
-            primitives::{AccountInfo, U256},
-        },
+        revm::primitives::{AccountInfo, U256},
     };
     use revm::{primitives::ChainAddress, SyncDatabaseRef};
 

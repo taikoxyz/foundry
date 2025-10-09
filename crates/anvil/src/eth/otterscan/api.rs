@@ -118,7 +118,11 @@ impl EthApi {
     }
 
     /// Check if an ETH address contains code at a certain block number.
-    pub async fn ots_has_code(&self, address: ChainAddress, block_number: BlockNumber) -> Result<bool> {
+    pub async fn ots_has_code(
+        &self,
+        address: ChainAddress,
+        block_number: BlockNumber,
+    ) -> Result<bool> {
         node_info!("ots_hasCode");
         let block_id = Some(BlockId::Number(block_number));
         Ok(!self.get_code(address, block_id).await?.is_empty())

@@ -2,7 +2,9 @@ use crate::inspector::Cheatcodes;
 use alloy_primitives::{Bytes, U256};
 use foundry_evm_core::backend::DatabaseExt;
 use revm::{
-    interpreter::{CreateInputs, CreateScheme, EOFCreateInputs, EOFCreateKind}, primitives::ChainAddress, InnerEvmContext
+    interpreter::{CreateInputs, CreateScheme, EOFCreateInputs, EOFCreateKind},
+    primitives::ChainAddress,
+    InnerEvmContext,
 };
 
 /// Common behaviour of legacy and EOF create inputs.

@@ -113,7 +113,12 @@ pub trait Db:
     }
 
     /// Sets the balance of the given address
-    fn set_storage_at(&mut self, address: ChainAddress, slot: U256, val: U256) -> DatabaseResult<()>;
+    fn set_storage_at(
+        &mut self,
+        address: ChainAddress,
+        slot: U256,
+        val: U256,
+    ) -> DatabaseResult<()>;
 
     /// inserts a blockhash for the given number
     fn insert_block_hash(&mut self, chain_id: u64, number: U256, hash: B256);
@@ -180,12 +185,19 @@ pub trait Db:
 /// This is useful to create blocks without actually writing to the `Db`, but rather in the cache of
 /// the `CacheDB` see also
 /// [Backend::pending_block()](crate::eth::backend::mem::Backend::pending_block())
-impl<T: SyncDatabaseRef<Error = DatabaseError> + Send + Sync + Clone + fmt::Debug> Db for CacheDB<T> {
+impl<T: SyncDatabaseRef<Error = DatabaseError> + Send + Sync + Clone + fmt::Debug> Db
+    for CacheDB<T>
+{
     fn insert_account(&mut self, address: ChainAddress, account: AccountInfo) {
         self.insert_account_info(address, account)
     }
 
-    fn set_storage_at(&mut self, address: ChainAddress, slot: U256, val: U256) -> DatabaseResult<()> {
+    fn set_storage_at(
+        &mut self,
+        address: ChainAddress,
+        slot: U256,
+        val: U256,
+    ) -> DatabaseResult<()> {
         self.insert_account_storage(address, slot, val)
     }
 

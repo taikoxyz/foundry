@@ -47,7 +47,8 @@ impl ScriptRunner {
         if !is_broadcast {
             if self.evm_opts.sender == Config::DEFAULT_SENDER {
                 // We max out their balance so that they can deploy and make calls.
-                self.executor.set_balance(ChainAddress(chain_id, self.evm_opts.sender), U256::MAX)?;
+                self.executor
+                    .set_balance(ChainAddress(chain_id, self.evm_opts.sender), U256::MAX)?;
             }
 
             if need_create2_deployer {
@@ -68,7 +69,12 @@ impl ScriptRunner {
             ScriptPredeployLibraries::Default(libraries) => libraries.iter().for_each(|code| {
                 let result = self
                     .executor
-                    .deploy(ChainAddress(chain_id, self.evm_opts.sender), code.clone(), U256::ZERO, None)
+                    .deploy(
+                        ChainAddress(chain_id, self.evm_opts.sender),
+                        code.clone(),
+                        U256::ZERO,
+                        None,
+                    )
                     .expect("couldn't deploy library")
                     .raw;
 
@@ -137,7 +143,8 @@ impl ScriptRunner {
 
         // Set the contracts initial balance before deployment, so it is available during the
         // construction
-        self.executor.set_balance(ChainAddress(chain_id, address), self.evm_opts.initial_balance)?;
+        self.executor
+            .set_balance(ChainAddress(chain_id, address), self.evm_opts.initial_balance)?;
 
         // Deploy an instance of the contract
         let DeployResult {
@@ -155,7 +162,11 @@ impl ScriptRunner {
             self.executor.backend_mut().set_test_contract(ChainAddress(chain_id, address));
             (true, 0, Default::default(), Some(library_transactions))
         } else {
-            match self.executor.setup(Some(ChainAddress(chain_id, self.evm_opts.sender)), ChainAddress(chain_id, address), None) {
+            match self.executor.setup(
+                Some(ChainAddress(chain_id, self.evm_opts.sender)),
+                ChainAddress(chain_id, address),
+                None,
+            ) {
                 Ok(RawCallResult {
                     reverted,
                     traces: setup_traces,
@@ -215,7 +226,13 @@ impl ScriptRunner {
 
     /// Executes the method that will collect all broadcastable transactions.
     pub fn script(&mut self, address: ChainAddress, calldata: Bytes) -> Result<ScriptResult> {
-        self.call(ChainAddress(address.0, self.evm_opts.sender), address, calldata, U256::ZERO, false)
+        self.call(
+            ChainAddress(address.0, self.evm_opts.sender),
+            address,
+            calldata,
+            U256::ZERO,
+            false,
+        )
     }
 
     /// Runs a broadcastable transaction locally and persists its state.

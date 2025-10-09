@@ -11,7 +11,7 @@ use crate::{
         fees::{INITIAL_BASE_FEE, INITIAL_GAS_PRICE},
         pool::transactions::{PoolTransaction, TransactionOrder},
     },
-    hardfork::{ChainHardfork},
+    hardfork::ChainHardfork,
     mem::{self, in_memory_db::MemDb},
     EthereumHardfork, FeeManager, PrecompileFactory,
 };
@@ -974,11 +974,14 @@ impl NodeConfig {
 
         let mut blocks = HashMap::new();
         for &chain_id in self.chain_ids.as_ref().unwrap().iter() {
-            blocks.insert(chain_id, BlockEnv {
-                gas_limit: U256::from(self.gas_limit),
-                basefee: U256::from(self.get_base_fee()),
-                ..Default::default()
-            });
+            blocks.insert(
+                chain_id,
+                BlockEnv {
+                    gas_limit: U256::from(self.gas_limit),
+                    basefee: U256::from(self.get_base_fee()),
+                    ..Default::default()
+                },
+            );
         }
 
         let env = revm::primitives::Env {
@@ -1278,7 +1281,12 @@ latest block number: {latest_block}"
             compute_units_per_second: self.compute_units_per_second,
             total_difficulty: block.header.total_difficulty.unwrap_or_default(),
             blob_gas_used: block.header.blob_gas_used,
-            blob_excess_gas_and_price: env.blocks.get(&env.cfg.chain_id).unwrap().blob_excess_gas_and_price.clone(),
+            blob_excess_gas_and_price: env
+                .blocks
+                .get(&env.cfg.chain_id)
+                .unwrap()
+                .blob_excess_gas_and_price
+                .clone(),
             force_transactions,
         };
 

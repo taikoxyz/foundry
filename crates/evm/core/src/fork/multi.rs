@@ -307,8 +307,10 @@ impl MultiForkHandler {
     /// cheatcodes when new fork selected.
     fn update_block(&mut self, fork_id: ForkId, block_number: U256, block_timestamp: U256) {
         if let Some(fork) = self.forks.get_mut(&fork_id) {
-            fork.opts.env.blocks.get_mut(&fork.opts.env.cfg.chain_id).unwrap().number = block_number;
-            fork.opts.env.blocks.get_mut(&fork.opts.env.cfg.chain_id).unwrap().timestamp = block_timestamp;
+            fork.opts.env.blocks.get_mut(&fork.opts.env.cfg.chain_id).unwrap().number =
+                block_number;
+            fork.opts.env.blocks.get_mut(&fork.opts.env.cfg.chain_id).unwrap().timestamp =
+                block_timestamp;
         }
     }
 

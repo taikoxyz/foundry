@@ -108,7 +108,7 @@ impl FromStr for Dependency {
             }
 
             let url = url.to_string();
-              let name = url
+            let name = url
                 .split('/')
                 .next_back()
                 .ok_or_else(|| eyre::eyre!("no dependency name found"))?

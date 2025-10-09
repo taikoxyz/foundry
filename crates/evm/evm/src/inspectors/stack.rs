@@ -17,11 +17,16 @@ use revm::{
         EOFCreateKind, Gas, InstructionResult, Interpreter, InterpreterResult,
     },
     primitives::{
-        BlockEnv, ChainAddress, CreateScheme, Env, EnvWithHandlerCfg, ExecutionResult, Output, TransactTo
+        BlockEnv, ChainAddress, CreateScheme, Env, EnvWithHandlerCfg, ExecutionResult, Output,
+        TransactTo,
     },
     EvmContext, Inspector,
 };
-use std::{collections::HashMap, ops::{Deref, DerefMut}, sync::Arc};
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 
 #[derive(Clone, Debug, Default)]
 #[must_use = "builders do nothing unless you call `build` on them"]
@@ -367,7 +372,6 @@ impl InspectorStack {
         }
     }
 
-
     /// Sets the gas price for the relevant inspectors.
     #[inline]
     pub fn set_gas_price(&mut self, gas_price: U256) {
@@ -599,8 +603,12 @@ impl<'a> InspectorStackRefMut<'a> {
 
         let Ok(mut res) = res else {
             // Should we match, encode and propagate error as a revert reason?
-            let result =
-                InterpreterResult { result: InstructionResult::Revert, output: Bytes::new(), gas, call_options: None };
+            let result = InterpreterResult {
+                result: InstructionResult::Revert,
+                output: Bytes::new(),
+                gas,
+                call_options: None,
+            };
             return (result, None);
         };
 
@@ -640,7 +648,16 @@ impl<'a> InspectorStackRefMut<'a> {
         }
 
         let (result, address, output) = match res.result {
-            ExecutionResult::Success { reason, gas_used, gas_refunded, logs: _, output, state_changes: _, gas_used_per_chain: _, gas_refunded_per_chain: _ } => {
+            ExecutionResult::Success {
+                reason,
+                gas_used,
+                gas_refunded,
+                logs: _,
+                output,
+                state_changes: _,
+                gas_used_per_chain: _,
+                gas_refunded_per_chain: _,
+            } => {
                 gas.set_refund(gas_refunded as i64);
                 let _ = gas.record_cost(ecx.env.cfg.chain_id, gas_used);
                 let address = match output {
@@ -763,7 +780,11 @@ impl<'a, DB: DatabaseExt> Inspector<DB> for InspectorStackRefMut<'a> {
                 call.gas_limit,
                 call.value.get(),
             );
-            return Some(CallOutcome { result, memory_offset: call.return_memory_offset.clone(), call_options: None });
+            return Some(CallOutcome {
+                result,
+                memory_offset: call.return_memory_offset.clone(),
+                call_options: None,
+            });
         }
 
         None

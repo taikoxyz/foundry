@@ -341,10 +341,13 @@ impl EthApi {
             EthRequest::SetNonce(addr, nonce) => {
                 self.anvil_set_nonce(ChainAddress(chain_id, addr), nonce).await.to_rpc_result()
             }
-            EthRequest::SetStorageAt(addr, slot, val) => {
-                self.anvil_set_storage_at(ChainAddress(chain_id, addr), slot, val).await.to_rpc_result()
+            EthRequest::SetStorageAt(addr, slot, val) => self
+                .anvil_set_storage_at(ChainAddress(chain_id, addr), slot, val)
+                .await
+                .to_rpc_result(),
+            EthRequest::SetCoinbase(addr) => {
+                self.anvil_set_coinbase(ChainAddress(chain_id, addr)).await.to_rpc_result()
             }
-            EthRequest::SetCoinbase(addr) => self.anvil_set_coinbase(ChainAddress(chain_id, addr)).await.to_rpc_result(),
             EthRequest::SetChainId(id) => self.anvil_set_chain_id(id).await.to_rpc_result(),
             EthRequest::SetLogging(log) => self.anvil_set_logging(log).await.to_rpc_result(),
             EthRequest::SetMinGasPrice(gas) => {
@@ -416,7 +419,9 @@ impl EthApi {
             EthRequest::OtsGetInternalOperations(hash) => {
                 self.ots_get_internal_operations(hash).await.to_rpc_result()
             }
-            EthRequest::OtsHasCode(addr, num) => self.ots_has_code(ChainAddress(chain_id, addr), num).await.to_rpc_result(),
+            EthRequest::OtsHasCode(addr, num) => {
+                self.ots_has_code(ChainAddress(chain_id, addr), num).await.to_rpc_result()
+            }
             EthRequest::OtsTraceTransaction(hash) => {
                 self.ots_trace_transaction(hash).await.to_rpc_result()
             }
@@ -444,9 +449,10 @@ impl EthApi {
             EthRequest::OtsGetContractCreator(address) => {
                 self.ots_get_contract_creator(address).await.to_rpc_result()
             }
-            EthRequest::RemovePoolTransactions(address) => {
-                self.anvil_remove_pool_transactions(ChainAddress(chain_id, address)).await.to_rpc_result()
-            }
+            EthRequest::RemovePoolTransactions(address) => self
+                .anvil_remove_pool_transactions(ChainAddress(chain_id, address))
+                .await
+                .to_rpc_result(),
             EthRequest::Reorg(reorg_options) => {
                 self.anvil_reorg(reorg_options).await.to_rpc_result()
             }
@@ -655,7 +661,11 @@ impl EthApi {
     /// Returns balance of the given account.
     ///
     /// Handler for ETH RPC call: `eth_getBalance`
-    pub async fn balance(&self, address: ChainAddress, block_number: Option<BlockId>) -> Result<U256> {
+    pub async fn balance(
+        &self,
+        address: ChainAddress,
+        block_number: Option<BlockId>,
+    ) -> Result<U256> {
         node_info!("eth_getBalance");
         let block_request = self.block_request(block_number).await?;
 
@@ -839,7 +849,11 @@ impl EthApi {
     /// Returns the code at given address at given time (block number).
     ///
     /// Handler for ETH RPC call: `eth_getCode`
-    pub async fn get_code(&self, address: ChainAddress, block_number: Option<BlockId>) -> Result<Bytes> {
+    pub async fn get_code(
+        &self,
+        address: ChainAddress,
+        block_number: Option<BlockId>,
+    ) -> Result<Bytes> {
         node_info!("eth_getCode");
         let block_request = self.block_request(block_number).await?;
         // check if the number predates the fork, if in fork mode
@@ -969,7 +983,8 @@ impl EthApi {
         let from = request.from.map(Ok).unwrap_or_else(|| {
             self.accounts()?.first().cloned().ok_or(BlockchainError::NoSignerAvailable)
         })?;
-        let (nonce, on_chain_nonce) = self.request_nonce(&request, ChainAddress(chain_id, from)).await?;
+        let (nonce, on_chain_nonce) =
+            self.request_nonce(&request, ChainAddress(chain_id, from)).await?;
 
         if request.gas.is_none() {
             // estimate if not provided
@@ -1878,7 +1893,13 @@ impl EthApi {
 
         Ok(NodeInfo {
             current_block_number: self.backend.best_number(),
-            current_block_timestamp: env.blocks.get(&env.cfg.chain_id).unwrap().timestamp.try_into().unwrap_or(u64::MAX),
+            current_block_timestamp: env
+                .blocks
+                .get(&env.cfg.chain_id)
+                .unwrap()
+                .timestamp
+                .try_into()
+                .unwrap_or(u64::MAX),
             current_block_hash: self.backend.best_hash(),
             hard_fork: hard_fork.to_string(),
             transaction_order: match *tx_order {
@@ -2014,8 +2035,11 @@ impl EthApi {
 
                 // Get the nonce at the common block
                 let curr_nonce = nonces.entry(from).or_insert(
-                    self.get_transaction_count(ChainAddress(chain_id, from), Some(common_block.header.number.into()))
-                        .await?,
+                    self.get_transaction_count(
+                        ChainAddress(chain_id, from),
+                        Some(common_block.header.number.into()),
+                    )
+                    .await?,
                 );
 
                 // Estimate gas
@@ -2261,7 +2285,8 @@ impl EthApi {
         let from = request.from.ok_or(BlockchainError::NoSignerAvailable)?;
 
         let chain_id = request.chain_id.unwrap();
-        let (nonce, on_chain_nonce) = self.request_nonce(&request, ChainAddress(chain_id, from)).await?;
+        let (nonce, on_chain_nonce) =
+            self.request_nonce(&request, ChainAddress(chain_id, from)).await?;
 
         let request = self.build_typed_tx_request(request, nonce)?;
 
@@ -2270,7 +2295,8 @@ impl EthApi {
 
         self.ensure_typed_transaction_supported(&transaction)?;
 
-        let pending_transaction = PendingTransaction::with_impersonated(transaction, ChainAddress(chain_id, from));
+        let pending_transaction =
+            PendingTransaction::with_impersonated(transaction, ChainAddress(chain_id, from));
 
         // pre-validate
         self.backend.validate_pool_transaction(&pending_transaction).await?;
@@ -2476,7 +2502,9 @@ impl EthApi {
         if maybe_transfer {
             if let Some(to) = to {
                 let chain_id = block_env.coinbase.0;
-                if let Ok(target_code) = self.backend.get_code_with_state(&state, ChainAddress(chain_id, *to)) {
+                if let Ok(target_code) =
+                    self.backend.get_code_with_state(&state, ChainAddress(chain_id, *to))
+                {
                     if target_code.as_ref().is_empty() {
                         return Ok(MIN_TRANSACTION_GAS);
                     }
@@ -2501,7 +2529,8 @@ impl EthApi {
         if gas_price > 0 {
             if let Some(from) = request.from {
                 let chain_id = block_env.coinbase.0;
-                let mut available_funds = self.backend.get_balance_with_state(&state, ChainAddress(chain_id, from))?;
+                let mut available_funds =
+                    self.backend.get_balance_with_state(&state, ChainAddress(chain_id, from))?;
                 if let Some(value) = request.value {
                     if value > available_funds {
                         return Err(InvalidTransactionError::InsufficientFunds.into());

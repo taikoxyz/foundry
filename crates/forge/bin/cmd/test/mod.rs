@@ -38,6 +38,7 @@ use foundry_config::{
 use foundry_debugger::Debugger;
 use foundry_evm::traces::identifier::TraceIdentifiers;
 use regex::Regex;
+use revm_primitives::ChainAddress;
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
@@ -45,7 +46,6 @@ use std::{
     time::Instant,
 };
 use yansi::Paint;
-use revm_primitives::ChainAddress;
 
 mod filter;
 mod summary;

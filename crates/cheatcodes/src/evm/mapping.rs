@@ -128,7 +128,8 @@ pub(crate) fn step(mapping_slots: &mut HashMap<Address, MappingSlots>, interpret
             }
         }
         opcode::SSTORE => {
-            if let Some(mapping_slots) = mapping_slots.get_mut(&interpreter.contract.target_address.1)
+            if let Some(mapping_slots) =
+                mapping_slots.get_mut(&interpreter.contract.target_address.1)
             {
                 if let Ok(slot) = interpreter.stack.peek(0) {
                     mapping_slots.insert(slot.into());

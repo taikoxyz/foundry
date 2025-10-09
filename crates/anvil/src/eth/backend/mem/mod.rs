@@ -89,8 +89,10 @@ use parking_lot::{Mutex, RwLock};
 use revm::{
     db::WrapDatabaseRef,
     primitives::{
-        calc_blob_gasprice, BlobExcessGasAndPrice, ChainAddress, HashMap, ResultAndState, TransactTo
-    }, SyncDatabaseRef,
+        calc_blob_gasprice, BlobExcessGasAndPrice, ChainAddress, HashMap, ResultAndState,
+        TransactTo,
+    },
+    SyncDatabaseRef,
 };
 use std::{
     collections::BTreeMap,
@@ -792,7 +794,8 @@ impl Backend {
     pub async fn load_state(&self, state: SerializableState) -> Result<bool, BlockchainError> {
         // reset the block env
         if let Some(block) = state.block.clone() {
-            *self.env.write().blocks.get_mut(&self.env.read().cfg.chain_id).unwrap() = block.clone();
+            *self.env.write().blocks.get_mut(&self.env.read().cfg.chain_id).unwrap() =
+                block.clone();
 
             // Set the current best block number.
             // Defaults to block number for compatibility with existing state files.
@@ -889,7 +892,9 @@ impl Backend {
             ExecutionResult::Revert { gas_used, output, gas_used_per_chain: _ } => {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)), None)
             }
-            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => (reason.into(), gas_used, None, None),
+            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => {
+                (reason.into(), gas_used, None, None)
+            }
         };
 
         drop(evm);
@@ -977,9 +982,11 @@ impl Backend {
             }
 
             // increase block number for this block
-            env.blocks.get_mut(&chain_id).unwrap().number = env.blocks.get_mut(&chain_id).unwrap().number.saturating_add(U256::from(1));
+            env.blocks.get_mut(&chain_id).unwrap().number =
+                env.blocks.get_mut(&chain_id).unwrap().number.saturating_add(U256::from(1));
             env.blocks.get_mut(&chain_id).unwrap().basefee = U256::from(current_base_fee);
-            env.blocks.get_mut(&chain_id).unwrap().blob_excess_gas_and_price = current_excess_blob_gas_and_price;
+            env.blocks.get_mut(&chain_id).unwrap().blob_excess_gas_and_price =
+                current_excess_blob_gas_and_price;
 
             // pick a random value for prevrandao
             env.blocks.get_mut(&chain_id).unwrap().prevrandao = Some(B256::random());
@@ -998,7 +1005,8 @@ impl Backend {
                 // finally set the next block timestamp, this is done just before execution, because
                 // there can be concurrent requests that can delay acquiring the db lock and we want
                 // to ensure the timestamp is as close as possible to the actual execution.
-                env.blocks.get_mut(&chain_id).unwrap().timestamp = U256::from(self.time.next_timestamp());
+                env.blocks.get_mut(&chain_id).unwrap().timestamp =
+                    U256::from(self.time.next_timestamp());
 
                 let executor = TransactionExecutor {
                     db: &mut *db,
@@ -1018,7 +1026,11 @@ impl Backend {
 
                 // we also need to update the new blockhash in the db itself
                 let block_hash = executed_tx.block.block.header.hash_slow();
-                db.insert_block_hash(env.cfg.chain_id, U256::from(executed_tx.block.block.header.number), block_hash);
+                db.insert_block_hash(
+                    env.cfg.chain_id,
+                    U256::from(executed_tx.block.block.header.number),
+                    block_hash,
+                );
 
                 (executed_tx, block_hash)
             };
@@ -1277,7 +1289,9 @@ impl Backend {
             ExecutionResult::Revert { gas_used, output, gas_used_per_chain: _ } => {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
             }
-            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => (reason.into(), gas_used, None),
+            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => {
+                (reason.into(), gas_used, None)
+            }
         };
         drop(evm);
         inspector.print_logs();
@@ -1353,7 +1367,9 @@ impl Backend {
                 ExecutionResult::Revert { gas_used, output, gas_used_per_chain: _ } => {
                     (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
                 }
-                ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => (reason.into(), gas_used, None),
+                ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => {
+                    (reason.into(), gas_used, None)
+                }
             };
 
             drop(evm);
@@ -1408,7 +1424,9 @@ impl Backend {
             ExecutionResult::Revert { gas_used, output, gas_used_per_chain: _ } => {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
             }
-            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => (reason.into(), gas_used, None),
+            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => {
+                (reason.into(), gas_used, None)
+            }
         };
         drop(evm);
         let access_list = inspector.access_list();
@@ -1874,7 +1892,8 @@ impl Backend {
         };
         let block_number: U256 = U256::from(self.convert_block_number(block_number));
 
-        if block_number < self.env.read().blocks.get(&self.env.read().cfg.chain_id).unwrap().number {
+        if block_number < self.env.read().blocks.get(&self.env.read().cfg.chain_id).unwrap().number
+        {
             if let Some((block_hash, block)) = self
                 .block_by_number(BlockNumber::Number(block_number.to::<u64>()))
                 .await?
@@ -1897,7 +1916,13 @@ impl Backend {
 
             warn!(target: "backend", "Not historic state found for block={}", block_number);
             return Err(BlockchainError::BlockOutOfRange(
-                self.env.read().blocks.get(&self.env.read().cfg.chain_id).unwrap().number.to::<u64>(),
+                self.env
+                    .read()
+                    .blocks
+                    .get(&self.env.read().cfg.chain_id)
+                    .unwrap()
+                    .number
+                    .to::<u64>(),
                 block_number.to::<u64>(),
             ));
         }
@@ -2431,8 +2456,9 @@ impl Backend {
             let db = block_db.maybe_as_full_db().ok_or(BlockchainError::DataUnavailable)?;
             let account = db.get(&address).cloned().unwrap_or_default();
 
-            let mut builder = HashBuilder::default()
-                .with_proof_retainer(ProofRetainer::new(vec![Nibbles::unpack(keccak256(address.1))]));
+            let mut builder = HashBuilder::default().with_proof_retainer(ProofRetainer::new(vec![
+                Nibbles::unpack(keccak256(address.1)),
+            ]));
 
             let chain_id = address.0;
 
@@ -2796,7 +2822,8 @@ pub fn transaction_build(
         transaction.hash = tx_hash;
     }
 
-    transaction.to = info.as_ref().map_or(eth_transaction.to().map(|a| a.1), |status| status.to.map(|a| a.1));
+    transaction.to =
+        info.as_ref().map_or(eth_transaction.to().map(|a| a.1), |status| status.to.map(|a| a.1));
     WithOtherFields::new(transaction)
 }
 

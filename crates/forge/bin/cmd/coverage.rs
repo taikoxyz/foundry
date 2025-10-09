@@ -24,6 +24,7 @@ use foundry_compilers::{
 };
 use foundry_config::{Config, SolcReq};
 use rayon::prelude::*;
+use revm_primitives::ChainAddress;
 use rustc_hash::FxHashMap;
 use semver::Version;
 use std::{
@@ -32,7 +33,6 @@ use std::{
     sync::Arc,
 };
 use yansi::Paint;
-use revm_primitives::ChainAddress;
 
 // Loads project's figment and merges the build cli arguments into it
 foundry_config::impl_figment_convert!(CoverageArgs, test);

@@ -9,7 +9,8 @@ use parking_lot::{lock_api::RwLockReadGuard, RawRwLock, RwLock};
 use revm::{
     db::{CacheDB, DbAccount},
     interpreter::opcode,
-    primitives::{AccountInfo, ChainAddress}, SyncDatabaseRef,
+    primitives::{AccountInfo, ChainAddress},
+    SyncDatabaseRef,
 };
 use std::{
     collections::{BTreeMap, HashMap},

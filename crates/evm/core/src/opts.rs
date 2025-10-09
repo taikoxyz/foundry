@@ -132,16 +132,19 @@ impl EvmOpts {
 
         let mut blocks = HashMap::new();
         for &chain_id in self.chain_ids.as_ref().unwrap().iter() {
-            blocks.insert(chain_id, BlockEnv {
-                number: U256::from(self.env.block_number),
-                coinbase: self.env.block_coinbase,
-                timestamp: U256::from(self.env.block_timestamp),
-                difficulty: U256::from(self.env.block_difficulty),
-                prevrandao: Some(self.env.block_prevrandao),
-                basefee: U256::from(self.env.block_base_fee_per_gas),
-                gas_limit: U256::from(self.gas_limit()),
-                ..Default::default()
-            });
+            blocks.insert(
+                chain_id,
+                BlockEnv {
+                    number: U256::from(self.env.block_number),
+                    coinbase: self.env.block_coinbase,
+                    timestamp: U256::from(self.env.block_timestamp),
+                    difficulty: U256::from(self.env.block_difficulty),
+                    prevrandao: Some(self.env.block_prevrandao),
+                    basefee: U256::from(self.env.block_base_fee_per_gas),
+                    gas_limit: U256::from(self.gas_limit()),
+                    ..Default::default()
+                },
+            );
         }
 
         revm::primitives::Env {

@@ -57,10 +57,8 @@ pub async fn next_nonce(caller: ChainAddress, provider_url: &str) -> eyre::Resul
     let current_chain = provider.get_chain_id().await.unwrap();
     //println!("current chain: {:?}, requested: {:?}", current_chain, caller.0);
     if current_chain != caller.0 {
-        let result: std::result::Result<bool, RpcError<TransportErrorKind>> = provider
-            .client()
-            .request("eth_setActiveChainId", (caller.0,))
-            .await;
+        let result: std::result::Result<bool, RpcError<TransportErrorKind>> =
+            provider.client().request("eth_setActiveChainId", (caller.0,)).await;
         assert!(
             result.is_ok(),
             "Couldn't switch to the expected chain on provider {provider_url:?}"
@@ -84,10 +82,8 @@ pub async fn send_transaction(
 
             let chain_id = tx.chain_id.unwrap();
             println!("Sending transaction on chain {chain_id:?}");
-            let result: std::result::Result<bool, RpcError<TransportErrorKind>> = provider
-                .client()
-                .request("eth_setActiveChainId", (chain_id,))
-                .await;
+            let result: std::result::Result<bool, RpcError<TransportErrorKind>> =
+                provider.client().request("eth_setActiveChainId", (chain_id,)).await;
             assert!(result.unwrap(), "Couldn't switch to the expected chain");
 
             let nonce = provider.get_transaction_count(from).await?;

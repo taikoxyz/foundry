@@ -23,7 +23,12 @@ impl Db for ForkedDatabase {
         self.database_mut().insert_account(address, account)
     }
 
-    fn set_storage_at(&mut self, address: ChainAddress, slot: U256, val: U256) -> DatabaseResult<()> {
+    fn set_storage_at(
+        &mut self,
+        address: ChainAddress,
+        slot: U256,
+        val: U256,
+    ) -> DatabaseResult<()> {
         // this ensures the account is loaded first
         let _ = SyncDatabase::basic(self, address)?;
         self.database_mut().set_storage_at(address, slot, val)

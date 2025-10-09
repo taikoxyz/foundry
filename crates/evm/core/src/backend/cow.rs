@@ -15,8 +15,10 @@ use eyre::WrapErr;
 use foundry_fork_db::DatabaseError;
 use revm::{
     primitives::{
-        Account, AccountInfo, Bytecode, ChainAddress, Env, EnvWithHandlerCfg, HashMap as Map, ResultAndState, SpecId
-    }, DatabaseCommit, JournaledState, SyncDatabase, SyncDatabaseRef
+        Account, AccountInfo, Bytecode, ChainAddress, Env, EnvWithHandlerCfg, HashMap as Map,
+        ResultAndState, SpecId,
+    },
+    DatabaseCommit, JournaledState, SyncDatabase, SyncDatabaseRef,
 };
 use std::{borrow::Cow, collections::BTreeMap};
 

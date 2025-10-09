@@ -9,7 +9,10 @@ use foundry_evm::{
     executors::{DeployResult, Executor, RawCallResult},
     traces::{TraceKind, Traces},
 };
-use revm::{interpreter::{return_ok, InstructionResult}, primitives::ChainAddress};
+use revm::{
+    interpreter::{return_ok, InstructionResult},
+    primitives::ChainAddress,
+};
 use std::collections::HashMap;
 
 /// The function selector of the REPL contract's entrypoint, the `run()` function.
@@ -104,7 +107,13 @@ impl ChiselRunner {
         }
 
         // Call the "run()" function of the REPL contract
-        let call_res = self.call(self.sender, ChainAddress(self.sender.0, address), Bytes::from(calldata), U256::from(0), true);
+        let call_res = self.call(
+            self.sender,
+            ChainAddress(self.sender.0, address),
+            Bytes::from(calldata),
+            U256::from(0),
+            true,
+        );
 
         call_res.map(|res| (address, res))
     }

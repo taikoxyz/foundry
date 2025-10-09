@@ -881,14 +881,16 @@ impl Backend {
 
         let env = self.env_with_handler_cfg(env);
         let fork = self.inner.get_fork_by_id_mut(id)?;
-        let full_block =
-            fork.db.db.get_full_block(env.cfg.chain_id, env.blocks.get(&env.cfg.chain_id).unwrap().number.to::<u64>())?;
+        let full_block = fork.db.db.get_full_block(
+            env.cfg.chain_id,
+            env.blocks.get(&env.cfg.chain_id).unwrap().number.to::<u64>(),
+        )?;
 
         for tx in full_block.transactions.clone().into_transactions() {
             // System transactions such as on L2s don't contain any pricing info so we skip them
             // otherwise this would cause reverts
-            if is_known_system_sender(tx.from)
-                || tx.transaction_type == Some(SYSTEM_TRANSACTION_TYPE)
+            if is_known_system_sender(tx.from) ||
+                tx.transaction_type == Some(SYSTEM_TRANSACTION_TYPE)
             {
                 trace!(tx=?tx.hash, "skipping system transaction");
                 continue;
@@ -1130,7 +1132,11 @@ impl DatabaseExt for Backend {
                 caller_account.into()
             });
 
-            self.update_fork_db(env.tx.transact_to.to().unwrap().0, active_journaled_state, &mut fork);
+            self.update_fork_db(
+                env.tx.transact_to.to().unwrap().0,
+                active_journaled_state,
+                &mut fork,
+            );
 
             // insert the fork back
             self.inner.set_fork(idx, fork);
@@ -2081,8 +2087,11 @@ mod tests {
         }
         drop(backend);
 
-        let meta =
-            BlockchainDbMeta { cfg_env: env.cfg.clone(), block_env: env.blocks.get(&env.cfg.chain_id).unwrap().clone(), hosts: Default::default() };
+        let meta = BlockchainDbMeta {
+            cfg_env: env.cfg.clone(),
+            block_env: env.blocks.get(&env.cfg.chain_id).unwrap().clone(),
+            hosts: Default::default(),
+        };
 
         let db = BlockchainDb::new(
             meta,

@@ -239,10 +239,8 @@ impl CreateArgs {
         });
         let provider = Arc::new(provider);
 
-        let result: std::result::Result<bool, RpcError<TransportErrorKind>> = provider
-            .client()
-            .request("eth_setActiveChainId", (chain,))
-            .await;
+        let result: std::result::Result<bool, RpcError<TransportErrorKind>> =
+            provider.client().request("eth_setActiveChainId", (chain,)).await;
         assert!(result.unwrap(), "Couldn't switch to the expected chain");
 
         let factory = ContractFactory::new(abi.clone(), bin.clone(), provider.clone(), timeout);

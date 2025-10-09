@@ -42,9 +42,12 @@ async fn test_account_proof() {
     )
     .await
     .unwrap();
-    api.anvil_set_balance(ChainAddress(chain_id, address!("33f0fc440b8477fcfbe9d0bf8649e7dea9baedb2")), U256::from(1))
-        .await
-        .unwrap();
+    api.anvil_set_balance(
+        ChainAddress(chain_id, address!("33f0fc440b8477fcfbe9d0bf8649e7dea9baedb2")),
+        U256::from(1),
+    )
+    .await
+    .unwrap();
     api.anvil_set_balance(
         ChainAddress(chain_id, address!("62b0dd4aab2b1a0a04e279e2b828791a10755528")),
         U256::from(1100000000000000000_u128),
