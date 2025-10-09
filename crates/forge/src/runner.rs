@@ -305,7 +305,7 @@ impl<'a> ContractRunner<'a> {
                 warnings,
             )
         }
-        let call_after_invariant = after_invariant_fns.first().map_or(false, |after_invariant_fn| {
+        let call_after_invariant = after_invariant_fns.first().is_some_and(|after_invariant_fn| {
             let match_sig = after_invariant_fn.name == "afterInvariant";
             if !match_sig {
                 warnings.push(format!(
@@ -658,7 +658,7 @@ impl<'a> ContractRunner<'a> {
             Err(res) => return res,
         };
 
-        let chain_id = executor.env().cfg.chain_id;
+        let _chain_id = executor.env().cfg.chain_id;
 
         // Run fuzz test.
         let fuzzed_executor =
@@ -689,6 +689,7 @@ impl<'a> ContractRunner<'a> {
     ///
     /// Unit tests within same contract (or even current test) are valid options for before test tx
     /// configuration. Test execution stops if any of before test txes fails.
+    #[allow(clippy::result_large_err)]
     fn prepare_test(
         &self,
         func: &Function,

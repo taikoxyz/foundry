@@ -198,26 +198,24 @@ impl Resolver {
                 if let Some(name) = self.simple_types.get(&(ty.referenced_declaration as usize)) {
                     Ok(Some(name.clone()))
                 } else if let Some(def) = self.structs.get(&(ty.referenced_declaration as usize)) {
-                    let name =
-                        // If we've already seen struct with this ID, just use assigned name.
-                        if let Some((name, _)) = subtypes.iter().find(|(_, id)| **id == def.id) {
-                            name.clone()
-                        // Otherwise, try assigning a new name.
-                        } else {
-                            let mut i = 0;
-                            let mut name = def.name.clone();
-                            while subtypes.contains_key(&name) {
-                                i += 1;
-                                name = format!("{}_{i}", def.name);
-                            }
+                    let name = if let Some((name, _)) = subtypes.iter().find(|(_, id)| **id == def.id)
+                    {
+                        name.clone()
+                    } else {
+                        let mut i = 0;
+                        let mut name = def.name.clone();
+                        while subtypes.contains_key(&name) {
+                            i += 1;
+                            name = format!("{}_{i}", def.name);
+                        }
 
-                            subtypes.insert(name.clone(), def.id);
-                            name
-                        };
+                        subtypes.insert(name.clone(), def.id);
+                        name
+                    };
 
-                    return Ok(Some(name))
+                    Ok(Some(name))
                 } else {
-                    return Ok(None)
+                    Ok(None)
                 }
             }
         }

@@ -115,7 +115,7 @@ impl EvmOpts {
     /// Returns the `revm::Env` configured with only local settings
     pub fn local_evm_env(&self) -> revm::primitives::Env {
         println!("CORE!!!");
-        println!("chain_ids: {:?}", self.chain_ids);
+        println!("chain_ids: {chain_ids:?}", chain_ids = self.chain_ids);
 
         let mut cfg = CfgEnv::default();
         cfg.chain_id = self.env.chain_id.unwrap_or(foundry_common::DEV_CHAIN_ID);
@@ -201,7 +201,7 @@ impl EvmOpts {
         if self.no_rpc_rate_limit {
             u64::MAX
         } else if let Some(cups) = self.compute_units_per_second {
-            return cups;
+            cups
         } else {
             ALCHEMY_FREE_TIER_CUPS
         }

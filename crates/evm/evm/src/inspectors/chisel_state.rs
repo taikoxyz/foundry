@@ -1,7 +1,7 @@
 use alloy_primitives::U256;
 use revm::{
     interpreter::{InstructionResult, Interpreter},
-    Database, EvmContext, Inspector, SyncDatabase,
+    EvmContext, Inspector, SyncDatabase,
 };
 
 /// An inspector for Chisel

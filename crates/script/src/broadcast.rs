@@ -27,7 +27,6 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use alloy_provider::RootProvider;
 
 pub async fn estimate_gas<P, T>(
     tx: &mut WithOtherFields<TransactionRequest>,
@@ -55,14 +54,17 @@ pub async fn next_nonce(caller: ChainAddress, provider_url: &str) -> eyre::Resul
         .wrap_err_with(|| format!("bad fork_url provider: {provider_url}"))?;
 
     //println!("Provider: {:?}", provider_url);
-    let chain_id = provider.get_chain_id().await.unwrap();
-    //println!("current chain: {:?}, requested: {:?}", chain_id, caller.0);
-    if provider.get_chain_id().await.unwrap() != caller.0 {
+    let current_chain = provider.get_chain_id().await.unwrap();
+    //println!("current chain: {:?}, requested: {:?}", current_chain, caller.0);
+    if current_chain != caller.0 {
         let result: std::result::Result<bool, RpcError<TransportErrorKind>> = provider
             .client()
             .request("eth_setActiveChainId", (caller.0,))
             .await;
-        assert!(result.is_ok(), "Couldn't switch to the expected chain on provider {:?}", provider_url);
+        assert!(
+            result.is_ok(),
+            "Couldn't switch to the expected chain on provider {provider_url:?}"
+        );
     }
 
     Ok(provider.get_transaction_count(caller.1).await?)
@@ -81,7 +83,7 @@ pub async fn send_transaction(
             let from = tx.from.expect("no sender");
 
             let chain_id = tx.chain_id.unwrap();
-            println!("Sending transaction on chain {:?}", chain_id);
+            println!("Sending transaction on chain {chain_id:?}");
             let result: std::result::Result<bool, RpcError<TransportErrorKind>> = provider
                 .client()
                 .request("eth_setActiveChainId", (chain_id,))

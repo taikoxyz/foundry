@@ -7,7 +7,7 @@ use foundry_evm_core::utils::StateChangeset;
 use indexmap::IndexSet;
 use parking_lot::{lock_api::RwLockReadGuard, RawRwLock, RwLock};
 use revm::{
-    db::{CacheDB, DatabaseRef, DbAccount},
+    db::{CacheDB, DbAccount},
     interpreter::opcode,
     primitives::{AccountInfo, ChainAddress}, SyncDatabaseRef,
 };

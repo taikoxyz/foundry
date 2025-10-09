@@ -72,7 +72,6 @@ use foundry_evm::{
     backend::DatabaseError,
     decode::RevertDecoder,
     revm::{
-        db::DatabaseRef,
         interpreter::{return_ok, return_revert, InstructionResult},
         primitives::BlockEnv,
     },

@@ -193,7 +193,7 @@ pub fn create2_handler_register<DB: revm::SyncDatabase, I: InspectorExt<DB>>(
             if create2_overrides_inner
                 .borrow()
                 .last()
-                .map_or(false, |(depth, _)| *depth == ctx.evm.journaled_state.depth())
+                .is_some_and(|(depth, _)| *depth == ctx.evm.journaled_state.depth())
             {
                 let (_, call_inputs) = create2_overrides_inner.borrow_mut().pop().unwrap();
                 outcome = ctx.external.call_end(&mut ctx.evm, &call_inputs, outcome);
@@ -230,11 +230,10 @@ pub fn alphanet_handler_register<DB: revm::SyncDatabase, I: InspectorExt<DB>>(
 ) {
     let prev = handler.pre_execution.load_precompiles.clone();
     handler.pre_execution.load_precompiles = Arc::new(move || {
-        let mut loaded_precompiles = prev();
-
-        //loaded_precompiles.extend([ALPHANET_P256]);
-
-        loaded_precompiles
+        // let mut loaded_precompiles = prev();
+        // loaded_precompiles.extend([ALPHANET_P256]);
+        // loaded_precompiles
+        prev()
     });
 }
 

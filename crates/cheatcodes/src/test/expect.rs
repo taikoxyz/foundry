@@ -520,7 +520,7 @@ pub(crate) fn handle_expect_emit(
     let Some(expected) = &event_to_fill_or_check.log else {
         // Unless the caller is trying to match an anonymous event, the first topic must be
         // filled.
-        if event_to_fill_or_check.anonymous || log.topics().first().is_some() {
+        if event_to_fill_or_check.anonymous || !log.topics().is_empty() {
             event_to_fill_or_check.log = Some(log.data.clone());
             // If we only filled the expected log then we put it back at the same position.
             state.expected_emits.insert(index_to_fill_or_check, event_to_fill_or_check);
@@ -554,7 +554,7 @@ pub(crate) fn handle_expect_emit(
             return false
         }
         // Maybe match source address.
-        if event_to_fill_or_check.address.map_or(false, |addr| addr != log.address) {
+        if event_to_fill_or_check.address.is_some_and(|addr| addr != log.address) {
             return false;
         }
         // Maybe match data.
@@ -651,7 +651,7 @@ pub(crate) fn handle_expect_revert(
         Ok(success_return())
     } else {
         let (actual, expected) = if let Some(contracts) = known_contracts {
-            let decoder = RevertDecoder::new().with_abis(contracts.iter().map(|(_, c)| &c.abi));
+            let decoder = RevertDecoder::new().with_abis(contracts.values().map(|c| &c.abi));
             (
                 &decoder.decode(actual_revert.as_slice(), Some(status)),
                 &decoder.decode(expected_revert, Some(status)),

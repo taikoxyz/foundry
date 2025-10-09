@@ -779,7 +779,7 @@ impl NodeConfig {
     /// Sets the `fork_chain_id` to use to fork off local cache from
     #[must_use]
     pub fn with_fork_chain_id(mut self, fork_chain_id: Option<U256>) -> Self {
-        self.fork_chain_id = fork_chain_id.map(Into::into);
+        self.fork_chain_id = fork_chain_id;
         self
     }
 
@@ -970,7 +970,7 @@ impl NodeConfig {
             cfg.memory_limit = value;
         }
 
-        let chain_id = self.get_chain_id().into();
+        let chain_id = self.get_chain_id();
 
         let mut blocks = HashMap::new();
         for &chain_id in self.chain_ids.as_ref().unwrap().iter() {

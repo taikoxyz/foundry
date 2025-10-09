@@ -25,11 +25,12 @@ use foundry_evm_core::{
 use foundry_evm_coverage::HitMaps;
 use foundry_evm_traces::{SparsedTraceArena, TraceMode};
 use revm::{
-    db::{DatabaseCommit, DatabaseRef},
+    db::DatabaseCommit,
     interpreter::{return_ok, InstructionResult},
     primitives::{
-        BlockEnv, Bytecode, ChainAddress, Env, EnvWithHandlerCfg, ExecutionResult, Output, ResultAndState, SpecId, TransactTo, TxEnv, TxKind
-    }, SyncDatabaseRef,
+        Bytecode, ChainAddress, Env, EnvWithHandlerCfg, ExecutionResult, Output, ResultAndState, SpecId, TransactTo, TxEnv,
+    },
+    SyncDatabaseRef,
 };
 use std::{borrow::Cow, collections::HashMap};
 
@@ -302,7 +303,7 @@ impl Executor {
         to: ChainAddress,
         rd: Option<&RevertDecoder>,
     ) -> Result<RawCallResult, EvmError> {
-        println!("setting up contract {:?} {:?}", from, to);
+        println!("setting up contract {from:?} {to:?}");
 
         trace!(?from, ?to, "setting up contract");
 
@@ -871,11 +872,11 @@ fn convert_executed_result(
         ExecutionResult::Success { reason, gas_used, gas_refunded, output, logs, .. } => {
             (reason.into(), gas_refunded, gas_used, Some(output), logs)
         }
-        ExecutionResult::Revert { gas_used, output, gas_used_per_chain } => {
+        ExecutionResult::Revert { gas_used, output, gas_used_per_chain: _ } => {
             // Need to fetch the unused gas
             (InstructionResult::Revert, 0_u64, gas_used, Some(Output::Call(output)), vec![])
         }
-        ExecutionResult::Halt { reason, gas_used, gas_used_per_chain } => {
+        ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => {
             (reason.into(), 0_u64, gas_used, None, vec![])
         }
     };

@@ -2,7 +2,7 @@ use super::{
     Cheatcodes, CheatsConfig, ChiselState, CoverageCollector, Fuzzer, LogCollector,
     TracingInspector,
 };
-use alloy_primitives::{Address, Bytes, Log, TxKind, U256};
+use alloy_primitives::{Address, Bytes, Log, U256};
 use foundry_cheatcodes::CheatcodesExecutor;
 use foundry_evm_core::{
     backend::{update_state, DatabaseExt},
@@ -21,9 +21,7 @@ use revm::{
     },
     EvmContext, Inspector,
 };
-use std::{
-    collections::HashMap, num::NonZeroU16, ops::{Deref, DerefMut}, sync::Arc
-};
+use std::{collections::HashMap, ops::{Deref, DerefMut}, sync::Arc};
 
 #[derive(Clone, Debug, Default)]
 #[must_use = "builders do nothing unless you call `build` on them"]
@@ -357,7 +355,7 @@ impl InspectorStack {
     /// Set variables from an environment for the relevant inspectors.
     #[inline]
     pub fn set_env(&mut self, env: &Env) {
-        self.set_block(&env.blocks.get(&env.cfg.chain_id).unwrap());
+        self.set_block(env.blocks.get(&env.cfg.chain_id).unwrap());
         self.set_gas_price(env.tx.gas_price);
     }
 
@@ -642,7 +640,7 @@ impl<'a> InspectorStackRefMut<'a> {
         }
 
         let (result, address, output) = match res.result {
-            ExecutionResult::Success { reason, gas_used, gas_refunded, logs: _, output, state_changes: _, gas_used_per_chain, gas_refunded_per_chain } => {
+            ExecutionResult::Success { reason, gas_used, gas_refunded, logs: _, output, state_changes: _, gas_used_per_chain: _, gas_refunded_per_chain: _ } => {
                 gas.set_refund(gas_refunded as i64);
                 let _ = gas.record_cost(ecx.env.cfg.chain_id, gas_used);
                 let address = match output {
@@ -651,11 +649,11 @@ impl<'a> InspectorStackRefMut<'a> {
                 };
                 (reason.into(), address, output.into_data())
             }
-            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain } => {
+            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => {
                 let _ = gas.record_cost(ecx.env.cfg.chain_id, gas_used);
                 (reason.into(), None, Bytes::new())
             }
-            ExecutionResult::Revert { gas_used, output, gas_used_per_chain } => {
+            ExecutionResult::Revert { gas_used, output, gas_used_per_chain: _ } => {
                 let _ = gas.record_cost(ecx.env.cfg.chain_id, gas_used);
                 (InstructionResult::Revert, None, output)
             }

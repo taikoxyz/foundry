@@ -554,7 +554,6 @@ mod tests {
     use foundry_evm::{
         backend::MemDb,
         revm::{
-            db::DatabaseRef,
             primitives::{AccountInfo, U256},
         },
     };

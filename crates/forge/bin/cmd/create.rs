@@ -420,6 +420,7 @@ pub type ContractFactory<P, T> = DeploymentTxFactory<Arc<P>, P, T>;
 /// Currently, we recommend using the [`ContractDeployer`] type alias.
 #[derive(Debug)]
 #[must_use = "ContractDeploymentTx does nothing unless you `send` it"]
+#[allow(dead_code)]
 pub struct ContractDeploymentTx<B, P, T, C> {
     /// the actual deployer, exposed for overriding the defaults
     pub deployer: Deployer<B, P, T>,

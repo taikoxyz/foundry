@@ -565,7 +565,7 @@ impl Cheatcodes {
         caller: ChainAddress,
         created_address: ChainAddress,
     ) {
-        println!("allow_cheatcodes_on_create: {:?}, {:?}", caller, created_address);
+        println!("allow_cheatcodes_on_create: {caller:?}, {created_address:?}");
         if ecx.journaled_state.depth <= 1 || ecx.db.has_cheatcode_access(&caller) {
             ecx.db.allow_cheatcode_access(created_address);
         }
@@ -651,7 +651,11 @@ impl Cheatcodes {
                     input.set_caller(broadcast.new_origin);
                     let is_fixed_gas_limit = check_if_fixed_gas_limit(ecx, input.gas_limit());
 
-                    println!("Broadcasting from {:?}[{:?}]", broadcast.new_origin, broadcast.chain_id);
+                    println!(
+                        "Broadcasting from {new_origin:?}[{chain_id:?}]",
+                        new_origin = broadcast.new_origin,
+                        chain_id = broadcast.chain_id
+                    );
 
                     let account = &ecx.journaled_state.state()[&broadcast.new_origin];
                     self.broadcastable_transactions.push_back(BroadcastableTransaction {
@@ -830,7 +834,7 @@ impl Cheatcodes {
     ) -> Option<CallOutcome> {
         let gas = Gas::new(call.gas_limit);
 
-        println!("[{:?}] call_with_executor: {:?}", call, self.chain_id);
+        println!("[{call:?}] call_with_executor: {chain_id:?}", chain_id = self.chain_id);
 
         // At the root call to test function or script `run()`/`setUp()` functions, we are
         // decreasing sender nonce to ensure that it matches on-chain nonce once we start
@@ -948,7 +952,11 @@ impl Cheatcodes {
             if ecx.journaled_state.depth() >= prank.depth && call.caller == prank.prank_caller {
                 let mut prank_applied = false;
 
-                println!("Applying prank: {:?} -> {:?}", call.caller, prank.new_caller);
+                println!(
+                    "Applying prank: {caller:?} -> {new_caller:?}",
+                    caller = call.caller,
+                    new_caller = prank.new_caller
+                );
 
                 // At the target depth we set `msg.sender`
                 if ecx.journaled_state.depth() == prank.depth {
@@ -989,7 +997,7 @@ impl Cheatcodes {
                 // broadcast.origin.
                 ecx.env.tx.caller = broadcast.new_origin;
 
-                println!("broadcast.new_origin: {:?}", broadcast.new_origin);
+                println!("broadcast.new_origin: {new_origin:?}", new_origin = broadcast.new_origin);
 
                 call.caller = broadcast.new_origin;
                 // Add a `legacy` transaction to the VecDeque. We use a legacy transaction here
@@ -1015,7 +1023,11 @@ impl Cheatcodes {
                     let account =
                         ecx.journaled_state.state().get_mut(&broadcast.new_origin).unwrap();
 
-                    println!("call_with_executor:: Broadcasting from {:?} (nonce: {})", broadcast.new_origin, account.info.nonce);
+                    println!(
+                        "call_with_executor:: Broadcasting from {new_origin:?} (nonce: {nonce})",
+                        new_origin = broadcast.new_origin,
+                        nonce = account.info.nonce
+                    );
 
                     self.broadcastable_transactions.push_back(BroadcastableTransaction {
                         rpc: ecx.db.active_fork_url(),

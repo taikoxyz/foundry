@@ -4,12 +4,12 @@ use crate::{
     backend::{RevertSnapshotAction, StateSnapshot},
     snapshot::Snapshots,
 };
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{B256, U256};
 use alloy_rpc_types::BlockId;
 use foundry_fork_db::{BlockchainDb, DatabaseError, SharedBackend};
 use parking_lot::Mutex;
 use revm::{
-    db::{CacheDB, DatabaseRef}, primitives::{Account, AccountInfo, Bytecode, ChainAddress, HashMap as Map}, Database, DatabaseCommit, SyncDatabase, SyncDatabaseRef
+    db::CacheDB, primitives::{Account, AccountInfo, Bytecode, ChainAddress, HashMap as Map}, DatabaseCommit, SyncDatabase, SyncDatabaseRef
 };
 use std::sync::Arc;
 
@@ -151,7 +151,7 @@ impl SyncDatabase for ForkedDatabase {
     type Error = DatabaseError;
 
     fn basic(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
-        println!("ForkedDatabase::basic: {:?}", address);
+        println!("ForkedDatabase::basic: {address:?}");
         // Note: this will always return Some, since the `SharedBackend` will always load the
         // account, this differs from `<CacheDB as Database>::basic`, See also
         // [MemDb::ensure_loaded](crate::backend::MemDb::ensure_loaded)
@@ -263,6 +263,7 @@ impl SyncDatabaseRef for ForkDbSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy_primitives::Address;
     use crate::backend::BlockchainDbMeta;
     use foundry_common::provider::get_http_provider;
     use std::collections::BTreeSet;

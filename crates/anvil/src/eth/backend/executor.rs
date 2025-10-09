@@ -240,7 +240,7 @@ impl<'a, DB: Db + ?Sized, Validator: TransactionValidator> TransactionExecutor<'
     }
 
     fn env_for(&self, tx: &PendingTransaction) -> EnvWithHandlerCfg {
-        let mut tx_env = tx.to_revm_tx_env(&self.block_env);
+        let tx_env = tx.to_revm_tx_env(&self.block_env);
         // if self.cfg_env.handler_cfg.is_optimism {
         //     tx_env.optimism.enveloped_tx =
         //         Some(alloy_rlp::encode(&tx.transaction.transaction).into());
@@ -353,10 +353,10 @@ impl<'a, 'b, DB: Db + ?Sized, Validator: TransactionValidator> Iterator
             ExecutionResult::Success { reason, gas_used, logs, output, .. } => {
                 (reason.into(), gas_used, Some(output), Some(logs))
             }
-            ExecutionResult::Revert { gas_used, output, gas_used_per_chain } => {
+            ExecutionResult::Revert { gas_used, output, gas_used_per_chain: _ } => {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)), None)
             }
-            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain } => (reason.into(), gas_used, None, None),
+            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => (reason.into(), gas_used, None, None),
         };
 
         if exit_reason == InstructionResult::OutOfGas {

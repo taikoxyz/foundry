@@ -106,6 +106,7 @@ impl WalletSigner {
         }
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn from_private_key(private_key: &B256) -> Result<Self> {
         Ok(Self::Local(PrivateKeySigner::from_bytes(private_key)?))
     }
@@ -159,6 +160,7 @@ impl WalletSigner {
         Ok(senders)
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn from_mnemonic(
         mnemonic: &str,
         passphrase: Option<&str>,
@@ -259,6 +261,7 @@ pub enum PendingSigner {
 }
 
 impl PendingSigner {
+    #[allow(clippy::result_large_err)]
     pub fn unlock(self) -> Result<WalletSigner> {
         match self {
             Self::Keystore(path) => {

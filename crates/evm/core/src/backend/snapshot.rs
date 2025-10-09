@@ -1,4 +1,4 @@
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{B256, U256};
 use revm::{
     primitives::{AccountInfo, ChainAddress, Env, HashMap},
     JournaledState,

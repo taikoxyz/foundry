@@ -1,5 +1,5 @@
 use crate::inspector::Cheatcodes;
-use alloy_primitives::{Address, Bytes, U256};
+use alloy_primitives::{Bytes, U256};
 use foundry_evm_core::backend::DatabaseExt;
 use revm::{
     interpreter::{CreateInputs, CreateScheme, EOFCreateInputs, EOFCreateKind}, primitives::ChainAddress, InnerEvmContext

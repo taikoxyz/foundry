@@ -423,7 +423,7 @@ pub fn to_alloy_transaction_with_hash_and_sender(
             max_priority_fee_per_gas: None,
             gas: t.gas_limit,
             input: t.input.clone().0.into(),
-            chain_id: t.chain_id().map(u64::from),
+            chain_id: t.chain_id(),
             signature: None,
             access_list: None,
             transaction_type: None,
@@ -508,7 +508,6 @@ impl PendingTransaction {
                 }
             }
             TypedTransaction::EIP2930(tx) => {
-                let chain_id = tx.tx().chain_id;
                 //let chain_ids = Some(vec![chain_id]);
                 let TxEip2930 {
                     chain_id,
@@ -536,7 +535,6 @@ impl PendingTransaction {
                 }
             }
             TypedTransaction::EIP1559(tx) => {
-                let chain_id = tx.tx().chain_id;
                 //let chain_ids = Some(vec![chain_id]);
                 let TxEip1559 {
                     chain_id,
@@ -565,7 +563,6 @@ impl PendingTransaction {
                 }
             }
             TypedTransaction::EIP4844(tx) => {
-                let chain_id = tx.tx().tx().chain_id;
                 //let chain_ids = Some(vec![chain_id]);
                 let TxEip4844 {
                     chain_id,
@@ -598,7 +595,6 @@ impl PendingTransaction {
                 }
             }
             TypedTransaction::EIP7702(tx) => {
-                let chain_id = tx.tx().chain_id;
                 //let chain_ids = Some(vec![chain_id]);
                 let TxEip7702 {
                     chain_id,
@@ -632,13 +628,13 @@ impl PendingTransaction {
                 //let chain_ids = Some(vec![chain_id]);
                 let DepositTransaction {
                     nonce,
-                    source_hash,
+                    source_hash: _,
                     gas_limit,
                     value,
                     kind,
-                    mint,
+                    mint: _,
                     input,
-                    is_system_tx,
+                    is_system_tx: _,
                     ..
                 } = tx;
                 TxEnv {

@@ -2,7 +2,7 @@
 
 use crate::{mem::storage::MinedTransaction, revm::primitives::AccountInfo};
 use alloy_consensus::Header;
-use alloy_primitives::{keccak256, Address, Bytes, B256, U256, U64};
+use alloy_primitives::{keccak256, Bytes, B256, U256, U64};
 use alloy_rpc_types::BlockId;
 use anvil_core::eth::{
     block::Block,
@@ -14,9 +14,9 @@ use foundry_evm::{
         BlockchainDb, DatabaseError, DatabaseResult, MemDb, RevertSnapshotAction, StateSnapshot,
     },
     revm::{
-        db::{CacheDB, DatabaseRef, DbAccount},
+        db::{CacheDB, DbAccount},
         primitives::{BlockEnv, Bytecode, HashMap, KECCAK_EMPTY},
-        Database, DatabaseCommit,
+        DatabaseCommit,
     },
 };
 use revm::{primitives::ChainAddress, SyncDatabase, SyncDatabaseRef};
@@ -168,7 +168,7 @@ pub trait Db:
     fn revert(&mut self, snapshot: U256, action: RevertSnapshotAction) -> bool;
 
     /// Returns the state root if possible to compute
-    fn maybe_state_root(&self, chain_id: u64) -> Option<B256> {
+    fn maybe_state_root(&self, _chain_id: u64) -> Option<B256> {
         None
     }
 
@@ -386,7 +386,7 @@ impl From<Block> for SerializableBlock {
         Self {
             header: block.header,
             transactions: block.transactions.into_iter().map(Into::into).collect(),
-            ommers: block.ommers.into_iter().map(Into::into).collect(),
+            ommers: block.ommers.into_iter().collect(),
         }
     }
 }
@@ -396,7 +396,7 @@ impl From<SerializableBlock> for Block {
         Self {
             header: block.header,
             transactions: block.transactions.into_iter().map(Into::into).collect(),
-            ommers: block.ommers.into_iter().map(Into::into).collect(),
+            ommers: block.ommers.into_iter().collect(),
         }
     }
 }

@@ -5,7 +5,6 @@ use revm::primitives::ChainAddress;
 use std::env;
 
 use crate::{Cheatcode, Cheatcodes, CheatsCtxt, DatabaseExt, Result, Vm::*};
-use alloy_primitives::Address;
 use alloy_sol_types::SolValue;
 use foundry_evm_core::constants::MAGIC_SKIP;
 

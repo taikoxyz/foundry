@@ -1,5 +1,5 @@
 use alloy_json_abi::{Function, JsonAbi};
-use alloy_primitives::{Address, Bytes, Selector};
+use alloy_primitives::{Bytes, Selector};
 use itertools::Either;
 use parking_lot::Mutex;
 use revm::primitives::ChainAddress;

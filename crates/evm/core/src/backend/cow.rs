@@ -9,17 +9,16 @@ use crate::{
     InspectorExt,
 };
 use alloy_genesis::GenesisAccount;
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{B256, U256};
 use alloy_rpc_types::TransactionRequest;
 use eyre::WrapErr;
 use foundry_fork_db::DatabaseError;
 use revm::{
-    db::DatabaseRef, primitives::{
+    primitives::{
         Account, AccountInfo, Bytecode, ChainAddress, Env, EnvWithHandlerCfg, HashMap as Map, ResultAndState, SpecId
-    }, Database, DatabaseCommit, JournaledState, SyncDatabase, SyncDatabaseRef
+    }, DatabaseCommit, JournaledState, SyncDatabase, SyncDatabaseRef
 };
 use std::{borrow::Cow, collections::BTreeMap};
-use alloy_primitives::address;
 
 /// A wrapper around `Backend` that ensures only `revm::DatabaseRef` functions are called.
 ///
@@ -271,7 +270,7 @@ impl<'a> SyncDatabaseRef for CowBackend<'a> {
     }
 
     fn code_by_hash_ref(&self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        println!("getting code: {} {}", chain_id, code_hash);
+        println!("getting code: {chain_id} {code_hash}");
         SyncDatabaseRef::code_by_hash_ref(self.backend.as_ref(), chain_id, code_hash)
     }
 
@@ -289,9 +288,8 @@ impl<'a> SyncDatabase for CowBackend<'a> {
 
     fn basic(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
         //println!("CowBackend::basic: {:?}", address);
-        let res = SyncDatabaseRef::basic_ref(self, address);
         //println!("account result: {:?}", res);
-        res
+        SyncDatabaseRef::basic_ref(self, address)
     }
 
     fn code_by_hash(&mut self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {

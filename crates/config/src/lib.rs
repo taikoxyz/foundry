@@ -586,6 +586,7 @@ impl Config {
     ///
     /// let config = Config::try_from(figment);
     /// ```
+    #[allow(clippy::result_large_err)]
     pub fn try_from<T: Provider>(provider: T) -> Result<Self, ExtractConfigError> {
         let figment = Figment::from(provider);
         //println!("figment: {:?}", figment);
@@ -2030,6 +2031,7 @@ impl AsRef<Path> for RootPath {
 /// src = "..."
 /// ```
 /// This ignores the `#[profile.default]` part in the toml
+#[allow(clippy::result_large_err)]
 pub fn parse_with_profile<T: serde::de::DeserializeOwned>(
     s: &str,
 ) -> Result<Option<(Profile, T)>, Error> {
@@ -2051,6 +2053,7 @@ impl Provider for Config {
     }
 
     #[track_caller]
+    #[allow(clippy::result_large_err)]
     fn data(&self) -> Result<Map<Profile, Dict>, figment::Error> {
         let mut data = Serialized::defaults(self).data()?;
         if let Some(entry) = data.get_mut(&self.profile) {
@@ -2288,6 +2291,7 @@ impl TomlFileProvider {
         self
     }
 
+    #[allow(clippy::result_large_err)]
     fn read(&self) -> Result<Map<Profile, Dict>, Error> {
         use serde::de::Error as _;
         if let Some(file) = self.env_val() {

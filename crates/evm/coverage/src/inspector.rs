@@ -1,6 +1,6 @@
 use crate::{HitMap, HitMaps};
 use alloy_primitives::B256;
-use revm::{interpreter::Interpreter, Database, EvmContext, Inspector, SyncDatabase};
+use revm::{interpreter::Interpreter, EvmContext, Inspector, SyncDatabase};
 
 #[derive(Clone, Debug, Default)]
 pub struct CoverageCollector {

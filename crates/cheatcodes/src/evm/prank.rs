@@ -1,5 +1,4 @@
 use crate::{Cheatcode, Cheatcodes, CheatsCtxt, DatabaseExt, Result, Vm::*};
-use alloy_primitives::Address;
 use revm::primitives::ChainAddress;
 
 /// Prank information.
@@ -47,35 +46,35 @@ impl Prank {
 
 impl Cheatcode for prank_0Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
-        let Self { msgSender } = self;
-        let msgSender = &ChainAddress(ccx.state.chain_id, *msgSender);
-        prank(ccx, msgSender, None, true)
+        let Self { msgSender: msg_sender } = self;
+        let msg_sender = &ChainAddress(ccx.state.chain_id, *msg_sender);
+        prank(ccx, msg_sender, None, true)
     }
 }
 
 impl Cheatcode for startPrank_0Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
-        let Self { msgSender } = self;
-        let msgSender = &ChainAddress(ccx.state.chain_id, *msgSender);
-        prank(ccx, msgSender, None, false)
+        let Self { msgSender: msg_sender } = self;
+        let msg_sender = &ChainAddress(ccx.state.chain_id, *msg_sender);
+        prank(ccx, msg_sender, None, false)
     }
 }
 
 impl Cheatcode for prank_1Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
-        let Self { msgSender, txOrigin } = self;
-        let msgSender = &ChainAddress(ccx.state.chain_id, *msgSender);
-        let txOrigin = &ChainAddress(ccx.state.chain_id, *txOrigin);
-        prank(ccx, msgSender, Some(txOrigin), true)
+        let Self { msgSender: msg_sender, txOrigin: tx_origin } = self;
+        let msg_sender = &ChainAddress(ccx.state.chain_id, *msg_sender);
+        let tx_origin = &ChainAddress(ccx.state.chain_id, *tx_origin);
+        prank(ccx, msg_sender, Some(tx_origin), true)
     }
 }
 
 impl Cheatcode for startPrank_1Call {
     fn apply_stateful<DB: DatabaseExt>(&self, ccx: &mut CheatsCtxt<DB>) -> Result {
-        let Self { msgSender, txOrigin } = self;
-        let msgSender = &ChainAddress(ccx.state.chain_id, *msgSender);
-        let txOrigin = &ChainAddress(ccx.cfg().chain_id, *txOrigin);
-        prank(ccx, msgSender, Some(txOrigin), false)
+        let Self { msgSender: msg_sender, txOrigin: tx_origin } = self;
+        let msg_sender = &ChainAddress(ccx.state.chain_id, *msg_sender);
+        let tx_origin = &ChainAddress(ccx.cfg().chain_id, *tx_origin);
+        prank(ccx, msg_sender, Some(tx_origin), false)
     }
 }
 

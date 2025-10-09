@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 use crate::utils::apply_chain_and_block_specific_env_changes;
-use alloy_primitives::{Address, U256};
+use alloy_primitives::U256;
 use alloy_provider::{
     network::{BlockResponse, HeaderResponse},
     Network, Provider,
 };
 use alloy_rpc_types::BlockNumberOrTag;
-use alloy_transport::{RpcError, Transport, TransportResult, TransportErrorKind};
+use alloy_transport::{Transport, TransportResult};
 use eyre::WrapErr;
 use foundry_common::NON_ARCHIVE_NODE_WARNING;
 
@@ -28,23 +28,31 @@ pub async fn environment<N: Network, T: Transport + Clone, P: Provider<T, N>>(
     //println!("provider_chain_id: {:?}", provider_chain_id);
 
     // Get the parent chain id from the provider
-    let result: TransportResult<String> = provider.client().request_noparams("eth_getParentChainId").await;
-    let parent_chain_id = if result.is_ok() {
-        let res = result.unwrap();
-        let without_prefix = res.trim_start_matches("0x");
-        // Parse as base 16
-        let parent_chain_id = u64::from_str_radix(without_prefix, 16).expect("Invalid hex input");
-        Some(parent_chain_id)
-    } else {
-        println!("error getting parent chain id: {:?}", result);
-        None
-    };
-    println!("parent_chain_id: {:?}", parent_chain_id);
-
-    let result: std::result::Result<bool, RpcError<TransportErrorKind>> = provider
+    let parent_chain_id = match provider
         .client()
-        .request("eth_setActiveChainId", (parent_chain_id,))
-        .await;
+        .request_noparams::<String>("eth_getParentChainId")
+        .await
+    {
+        Ok(res) => {
+            let without_prefix = res.trim_start_matches("0x");
+            // Parse as base 16
+            let parent_chain_id = u64::from_str_radix(without_prefix, 16).expect("Invalid hex input");
+            Some(parent_chain_id)
+        }
+        Err(err) => {
+            println!("error getting parent chain id: {err:?}");
+            None
+        }
+    };
+    println!("parent_chain_id: {parent_chain_id:?}");
+
+    if let Err(err) = provider
+        .client()
+        .request::<_, bool>("eth_setActiveChainId", (parent_chain_id,))
+        .await
+    {
+        println!("failed to set active chain id: {err:?}");
+    }
 
     let block_number = if let Some(pin_block) = pin_block {
         pin_block
@@ -120,11 +128,11 @@ pub async fn environment<N: Network, T: Transport + Clone, P: Provider<T, N>>(
                     default_ids.push(parent_id);
                 }
             }
-            println!("RPC doesn't support eth_getSupportedChains, using defaults: {:?}", default_ids);
+            println!("RPC doesn't support eth_getSupportedChains, using defaults: {default_ids:?}");
             Some(default_ids)
         }
     };
-    println!("chain_ids: {:?}", chain_ids);
+    println!("chain_ids: {chain_ids:?}");
 
     let mut blocks = HashMap::new();
     for &chain_id in chain_ids.as_ref().unwrap().iter() {

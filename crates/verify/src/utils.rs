@@ -15,7 +15,7 @@ use foundry_config::Config;
 use foundry_evm::{constants::DEFAULT_CREATE2_DEPLOYER, executors::TracingExecutor, opts::EvmOpts};
 use reqwest::Url;
 use revm_primitives::{
-    db::{Database, SyncDatabase}, env::{EnvWithHandlerCfg, HandlerCfg}, Bytecode, ChainAddress, Env, SpecId
+    db::SyncDatabase, env::{EnvWithHandlerCfg, HandlerCfg}, Bytecode, ChainAddress, Env, SpecId
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -310,7 +310,7 @@ pub fn check_args_len(
     args: &Bytes,
 ) -> Result<(), eyre::ErrReport> {
     if let Some(constructor) = artifact.abi.as_ref().and_then(|abi| abi.constructor()) {
-        if !constructor.inputs.is_empty() && args.len() == 0 {
+        if !constructor.inputs.is_empty() && args.is_empty() {
             eyre::bail!(
                 "Contract expects {} constructor argument(s), but none were provided",
                 constructor.inputs.len()

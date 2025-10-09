@@ -6,6 +6,7 @@ use forge::{
     revm::primitives::SpecId, MultiContractRunner, MultiContractRunnerBuilder, TestOptions,
     TestOptionsBuilder,
 };
+use foundry_common::DEV_CHAIN_ID;
 use foundry_compilers::{
     artifacts::{EvmVersion, Libraries, Settings},
     utils::RuntimeOrHandle,
@@ -127,11 +128,12 @@ impl ForgeTestProfile {
                 block_timestamp: 1,
                 ..Default::default()
             },
-            sender: ChainAddress(chain_id, CALLER),
+            sender: CALLER,
             initial_balance: U256::MAX,
             ffi: true,
             verbosity: 3,
             memory_limit: 1 << 26,
+            chain_ids: Some(vec![chain_id]),
             ..Default::default()
         }
     }
@@ -193,8 +195,15 @@ impl ForgeTestData {
     /// Builds a base runner
     pub fn base_runner(&self) -> MultiContractRunnerBuilder {
         init_tracing();
+        let chain_id = self
+            .evm_opts
+            .chain_ids
+            .as_ref()
+            .and_then(|ids| ids.first().copied())
+            .or_else(|| self.config.chain.map(|chain| chain.id()))
+            .unwrap_or(DEV_CHAIN_ID);
         let mut runner = MultiContractRunnerBuilder::new(Arc::new(self.config.clone()))
-            .sender(self.evm_opts.sender)
+            .sender(ChainAddress(chain_id, self.evm_opts.sender))
             .with_test_options(self.test_opts.clone());
         if self.profile.is_cancun() {
             runner = runner.evm_spec(SpecId::CANCUN);
@@ -226,7 +235,9 @@ impl ForgeTestData {
             opts.isolate = true;
         }
 
-        let sender = ChainAddress(config.chain.unwrap().id(), config.sender);
+        let chain_id =
+            config.chain.map(|chain| chain.id()).unwrap_or(DEV_CHAIN_ID);
+        let sender = ChainAddress(chain_id, config.sender);
 
         let mut builder = self.base_runner();
         builder.config = Arc::new(config);

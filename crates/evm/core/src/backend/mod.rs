@@ -15,14 +15,14 @@ use eyre::Context;
 use foundry_common::{is_known_system_sender, SYSTEM_TRANSACTION_TYPE};
 pub use foundry_fork_db::{cache::BlockchainDbMeta, BlockchainDb, SharedBackend};
 use revm::{
-    db::{CacheDB, DatabaseRef},
+    db::CacheDB,
     inspectors::NoOpInspector,
     precompile::{PrecompileSpecId, Precompiles},
     primitives::{
-        Account, AccountInfo, Bytecode, CfgEnv, ChainAddress, Env, EnvWithHandlerCfg, EvmState,
+        Account, AccountInfo, Bytecode, ChainAddress, Env, EnvWithHandlerCfg, EvmState,
         EvmStorageSlot, HashMap as Map, Log, ResultAndState, SpecId, TransactTo, KECCAK_EMPTY,
     },
-    Database, DatabaseCommit, JournaledState, SyncDatabase, SyncDatabaseRef,
+    DatabaseCommit, JournaledState, SyncDatabase, SyncDatabaseRef,
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -570,7 +570,7 @@ impl Backend {
     /// This will also grant cheatcode access to the test account
     pub fn set_test_contract(&mut self, acc: ChainAddress) -> &mut Self {
         trace!(?acc, "setting test account");
-        println!("set_test_contract: {:?}", acc);
+        println!("set_test_contract: {acc:?}");
         self.add_persistent_account(acc);
         self.allow_cheatcode_access(acc);
         self
@@ -579,7 +579,7 @@ impl Backend {
     /// Sets the caller address
     pub fn set_caller(&mut self, acc: ChainAddress) -> &mut Self {
         trace!(?acc, "setting caller account");
-        println!("set_caller: {:?}", acc);
+        println!("set_caller: {acc:?}");
         self.inner.caller = Some(acc);
         self.allow_cheatcode_access(acc);
         self
@@ -803,7 +803,7 @@ impl Backend {
             .fork_init_journaled_state
             .state
             .iter()
-            .filter(|(addr, _)| !self.is_existing_precompile(&addr.1) && !self.is_persistent(&addr))
+            .filter(|(addr, _)| !self.is_existing_precompile(&addr.1) && !self.is_persistent(addr))
             .map(|(addr, _)| addr)
             .copied()
             .collect::<Vec<_>>();
@@ -1545,7 +1545,7 @@ impl DatabaseCommit for Backend {
 impl SyncDatabase for Backend {
     type Error = DatabaseError;
     fn basic(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
-        println!("Backend::basic: {:?}", address);
+        println!("Backend::basic: {address:?}");
         if let Some(db) = self.active_fork_db_mut() {
             Ok(db.basic(address)?)
         } else {
@@ -1554,13 +1554,13 @@ impl SyncDatabase for Backend {
     }
 
     fn code_by_hash(&mut self, chain_id: u64, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        println!("Backend::code_by_hash: {:?}", code_hash);
+        println!("Backend::code_by_hash: {code_hash:?}");
         let res = if let Some(db) = self.active_fork_db_mut() {
             Ok(db.code_by_hash(chain_id, code_hash)?)
         } else {
             Ok(self.mem_db.code_by_hash(chain_id, code_hash)?)
         };
-        println!("code: {:?}", res);
+        println!("code: {res:?}");
         res
     }
 
@@ -1995,7 +1995,7 @@ pub fn update_state<DB: SyncDatabase>(
     persistent_accounts: Option<&HashSet<Address>>,
 ) -> Result<(), DB::Error> {
     for (addr, acc) in state.iter_mut() {
-        if !persistent_accounts.map_or(false, |accounts| accounts.contains(&addr.1)) {
+        if !persistent_accounts.is_some_and(|accounts| accounts.contains(&addr.1)) {
             acc.info = db.basic(*addr)?.unwrap_or_default();
             for (key, val) in acc.storage.iter_mut() {
                 val.present_value = db.storage(*addr, *key)?;
@@ -2033,12 +2033,12 @@ const fn convert_tx_kind(chain_id: u64, tx: TxKind) -> TransactTo {
 #[cfg(test)]
 mod tests {
     use crate::{backend::Backend, fork::CreateFork, opts::EvmOpts};
-    use alloy_primitives::{Address, U256};
+    use alloy_primitives::U256;
     use alloy_provider::Provider;
     use foundry_common::provider::get_http_provider;
     use foundry_config::{Config, NamedChain};
     use foundry_fork_db::cache::{BlockchainDb, BlockchainDbMeta};
-    use revm::{primitives::ChainAddress, DatabaseRef, SyncDatabaseRef};
+    use revm::{primitives::ChainAddress, SyncDatabaseRef};
 
     const ENDPOINT: Option<&str> = option_env!("ETH_RPC_URL");
 

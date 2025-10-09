@@ -98,6 +98,7 @@ impl<'a> RemappingsProvider<'a> {
     /// - `remappings.txt`
     /// - Environment variables
     /// - CLI parameters
+    #[allow(clippy::result_large_err)]
     fn get_remappings(&self, remappings: Vec<Remapping>) -> Result<Vec<Remapping>, Error> {
         trace!("get all remappings from {:?}", self.root);
         /// prioritizes remappings that are closer: shorter `path`

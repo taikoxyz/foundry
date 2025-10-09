@@ -29,7 +29,7 @@ use crate::{
         inspector::Inspector,
         storage::{BlockchainStorage, InMemoryBlockStates, MinedBlockOutcome},
     },
-    revm::{db::DatabaseRef, primitives::AccountInfo},
+    revm::primitives::AccountInfo,
     ForkChoice, NodeConfig, PrecompileFactory,
 };
 use alloy_consensus::{Account, Header, Receipt, ReceiptWithBloom};
@@ -87,7 +87,7 @@ use foundry_evm::{
 use futures::channel::mpsc::{unbounded, UnboundedSender};
 use parking_lot::{Mutex, RwLock};
 use revm::{
-    db::{DbAccount, WrapDatabaseRef},
+    db::WrapDatabaseRef,
     primitives::{
         calc_blob_gasprice, BlobExcessGasAndPrice, ChainAddress, HashMap, ResultAndState, TransactTo
     }, SyncDatabaseRef,
@@ -886,10 +886,10 @@ impl Backend {
             ExecutionResult::Success { reason, gas_used, logs, output, .. } => {
                 (reason.into(), gas_used, Some(output), Some(logs))
             }
-            ExecutionResult::Revert { gas_used, output, gas_used_per_chain } => {
+            ExecutionResult::Revert { gas_used, output, gas_used_per_chain: _ } => {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)), None)
             }
-            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain } => (reason.into(), gas_used, None, None),
+            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => (reason.into(), gas_used, None, None),
         };
 
         drop(evm);
@@ -1274,10 +1274,10 @@ impl Backend {
             ExecutionResult::Success { reason, gas_used, output, .. } => {
                 (reason.into(), gas_used, Some(output))
             }
-            ExecutionResult::Revert { gas_used, output, gas_used_per_chain } => {
+            ExecutionResult::Revert { gas_used, output, gas_used_per_chain: _ } => {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
             }
-            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain } => (reason.into(), gas_used, None),
+            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => (reason.into(), gas_used, None),
         };
         drop(evm);
         inspector.print_logs();
@@ -1304,7 +1304,7 @@ impl Backend {
                         GethDebugBuiltInTracerType::CallTracer => {
                             let call_config = tracer_config
                                 .into_call_config()
-                                .map_err(|e| (RpcError::invalid_params(e.to_string())))?;
+                                .map_err(|e| RpcError::invalid_params(e.to_string()))?;
 
                             let mut inspector = self.build_inspector().with_tracing_config(
                                 TracingInspectorConfig::from_geth_call_config(&call_config),
@@ -1350,10 +1350,10 @@ impl Backend {
                 ExecutionResult::Success { reason, gas_used, output, .. } => {
                     (reason.into(), gas_used, Some(output))
                 }
-                ExecutionResult::Revert { gas_used, output, gas_used_per_chain } => {
+                ExecutionResult::Revert { gas_used, output, gas_used_per_chain: _ } => {
                     (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
                 }
-                ExecutionResult::Halt { reason, gas_used, gas_used_per_chain } => (reason.into(), gas_used, None),
+                ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => (reason.into(), gas_used, None),
             };
 
             drop(evm);
@@ -1405,10 +1405,10 @@ impl Backend {
             ExecutionResult::Success { reason, gas_used, output, .. } => {
                 (reason.into(), gas_used, Some(output))
             }
-            ExecutionResult::Revert { gas_used, output, gas_used_per_chain } => {
+            ExecutionResult::Revert { gas_used, output, gas_used_per_chain: _ } => {
                 (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
             }
-            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain } => (reason.into(), gas_used, None),
+            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain: _ } => (reason.into(), gas_used, None),
         };
         drop(evm);
         let access_list = inspector.access_list();
@@ -2436,7 +2436,7 @@ impl Backend {
 
             let chain_id = address.0;
 
-            for (key, account) in trie_accounts(chain_id, &db) {
+            for (key, account) in trie_accounts(chain_id, db) {
                 builder.add_leaf(key, &account);
             }
 
@@ -2748,8 +2748,10 @@ pub fn transaction_build(
     base_fee: Option<u128>,
 ) -> WithOtherFields<Transaction> {
     let mut transaction: Transaction = eth_transaction.clone().into();
-    if info.is_some() && transaction.transaction_type == Some(0x7E) {
-        transaction.nonce = info.as_ref().unwrap().nonce;
+    if let Some(info) = info.as_ref() {
+        if transaction.transaction_type == Some(0x7E) {
+            transaction.nonce = info.nonce;
+        }
     }
 
     if eth_transaction.is_dynamic_fee() {

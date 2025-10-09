@@ -333,7 +333,7 @@ impl TestArgs {
         let env = evm_opts.evm_env().await?;
 
         let chain_id = env.cfg.chain_id;
-        println!("executing tests on chain id {}", chain_id);
+        println!("executing tests on chain id {chain_id}");
 
         // Enable internal tracing for more informative flamegraph.
         if should_draw {
@@ -415,7 +415,7 @@ impl TestArgs {
             let mut fst = folded_stack_trace::build(arena);
 
             let label = if self.flamegraph { "flamegraph" } else { "flamechart" };
-            let contract = suite_name.split(':').last().unwrap();
+            let contract = suite_name.split(':').next_back().unwrap();
             let test_name = test_name.trim_end_matches("()");
             let file_name = format!("cache/{label}_{contract}_{test_name}.svg");
             let file = std::fs::File::create(&file_name).wrap_err("failed to create file")?;
@@ -483,7 +483,7 @@ impl TestArgs {
 
         let num_filtered = runner.matching_test_functions(filter).count();
         if (self.debug.is_some() ||
-            self.decode_internal.as_ref().map_or(false, |v| v.is_some()) ||
+            self.decode_internal.as_ref().is_some_and(|v| v.is_some()) ||
             self.flamegraph ||
             self.flamechart) &&
             num_filtered != 1

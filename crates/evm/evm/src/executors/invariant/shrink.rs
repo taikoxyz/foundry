@@ -4,7 +4,7 @@ use crate::executors::{
     },
     Executor,
 };
-use alloy_primitives::{Address, Bytes, U256};
+use alloy_primitives::{Bytes, U256};
 use foundry_evm_fuzz::invariant::BasicTxDetails;
 use indicatif::ProgressBar;
 use proptest::bits::{BitSetLike, VarBitSet};

@@ -10,7 +10,7 @@ use revm::{
     interpreter::{
         CallInputs, CallOutcome, Gas, InstructionResult, Interpreter, InterpreterResult,
     },
-    Database, EvmContext, Inspector, SyncDatabase,
+    EvmContext, Inspector, SyncDatabase,
 };
 
 /// An inspector that collects logs during execution.

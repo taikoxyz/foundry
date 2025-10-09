@@ -120,6 +120,7 @@ pub fn remappings_from_env_var(env_var: &str) -> Option<Result<Vec<Remapping>, R
 /// Converts the `val` into a `figment::Value::Array`
 ///
 /// The values should be separated by commas, surrounding brackets are also supported `[a,b,c]`
+#[allow(clippy::result_large_err)]
 pub fn to_array_value(val: &str) -> Result<Value, figment::Error> {
     let value: Value = match Value::from(val) {
         Value::String(_, val) => val

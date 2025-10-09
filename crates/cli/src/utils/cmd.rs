@@ -206,6 +206,7 @@ pub fn has_batch_support(chain_id: u64) -> bool {
 ///
 /// Each function also has an `emit_warnings` form which does the same thing as its counterpart but
 /// also prints `Config::__warnings` to stderr
+#[allow(clippy::result_large_err)]
 pub trait LoadConfig {
     /// Load and sanitize the [`Config`] based on the options provided in self
     ///

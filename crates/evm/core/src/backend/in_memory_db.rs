@@ -1,10 +1,10 @@
 //! In-memory database.
 
 use crate::snapshot::Snapshots;
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{B256, U256};
 use foundry_fork_db::DatabaseError;
 use revm::{
-    db::{CacheDB, DatabaseRef, EmptyDB}, primitives::{Account, AccountInfo, Bytecode, ChainAddress, HashMap as Map}, Database, DatabaseCommit, SyncDatabase, SyncDatabaseRef
+    db::{CacheDB, EmptyDB}, primitives::{Account, AccountInfo, Bytecode, ChainAddress, HashMap as Map}, DatabaseCommit, SyncDatabase, SyncDatabaseRef
 };
 
 /// Type alias for an in-memory database.
@@ -118,7 +118,7 @@ impl SyncDatabaseRef for EmptyDBWrapper {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy_primitives::b256;
+    use alloy_primitives::{b256, Address};
 
     /// Ensures the `Database(Ref)` implementation for `revm::CacheDB` works as expected
     ///

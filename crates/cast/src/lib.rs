@@ -124,7 +124,7 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn call<'a>(
+    pub async fn call(
         &self,
         req: &WithOtherFields<TransactionRequest>,
         func: Option<&Function>,

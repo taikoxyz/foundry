@@ -1,8 +1,4 @@
-use alloy_primitives::{address, Address, Bytes, B256};
-use revm::{
-    precompile::PrecompileWithAddress,
-    primitives::{Precompile, PrecompileResult},
-};
+use alloy_primitives::{address, Address};
 
 /// The ECRecover precompile address.
 pub const EC_RECOVER: Address = address!("0000000000000000000000000000000000000001");

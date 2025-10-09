@@ -26,7 +26,7 @@ pub enum SenderKind<'a> {
     /// A refersnce to a signer.
     Signer(&'a WalletSigner),
     /// An owned signer.
-    OwnedSigner(WalletSigner),
+    OwnedSigner(Box<WalletSigner>),
 }
 
 impl SenderKind<'_> {
@@ -50,7 +50,7 @@ impl SenderKind<'_> {
         if let Some(from) = opts.from {
             Ok(from.into())
         } else if let Ok(signer) = opts.signer().await {
-            Ok(Self::OwnedSigner(signer))
+            Ok(Self::OwnedSigner(Box::new(signer)))
         } else {
             Ok(Address::ZERO.into())
         }
@@ -60,7 +60,7 @@ impl SenderKind<'_> {
     pub fn as_signer(&self) -> Option<&WalletSigner> {
         match self {
             Self::Signer(signer) => Some(signer),
-            Self::OwnedSigner(signer) => Some(signer),
+            Self::OwnedSigner(signer) => Some(signer.as_ref()),
             _ => None,
         }
     }
@@ -80,7 +80,7 @@ impl<'a> From<&'a WalletSigner> for SenderKind<'a> {
 
 impl From<WalletSigner> for SenderKind<'_> {
     fn from(signer: WalletSigner) -> Self {
-        Self::OwnedSigner(signer)
+        Self::OwnedSigner(Box::new(signer))
     }
 }
 
@@ -249,7 +249,7 @@ where
         };
 
         if self.state.to.is_none() && code.is_none() {
-            let has_value = self.tx.value.map_or(false, |v| !v.is_zero());
+            let has_value = self.tx.value.is_some_and(|v| !v.is_zero());
             let has_auth = self.auth.is_some();
             // We only allow user to omit the recipient address if transaction is an EIP-7702 tx
             // without a value.

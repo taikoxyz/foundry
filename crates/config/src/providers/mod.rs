@@ -45,6 +45,7 @@ impl<P> WarningsProvider<P> {
 
 impl<P: Provider> WarningsProvider<P> {
     /// Collects all warnings.
+    #[allow(clippy::result_large_err)]
     pub fn collect_warnings(&self) -> Result<Vec<Warning>, Error> {
         let data = self.provider.data().unwrap_or_default();
 

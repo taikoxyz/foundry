@@ -276,8 +276,8 @@ impl ScriptRunner {
         value: U256,
         commit: bool,
     ) -> Result<ScriptResult> {
-        println!("from: {:?}", from);
-        println!("to: {:?}", to);
+        println!("from: {from:?}");
+        println!("to: {to:?}");
 
         let mut res = self.executor.call_raw(from, to, calldata.clone(), value)?;
         let mut gas_used = res.gas_used;

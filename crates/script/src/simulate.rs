@@ -12,7 +12,6 @@ use crate::{
     sequence::get_commit_hash,
     ScriptArgs, ScriptConfig, ScriptResult,
 };
-use alloy_consensus::Transaction;
 use alloy_network::TransactionBuilder;
 use alloy_primitives::{utils::format_units, Address, Bytes, TxKind, U256};
 use eyre::{Context, Result};
@@ -285,7 +284,7 @@ impl FilledTransactionsState {
             let provider_info = manager.get_or_init_provider(&tx.rpc, self.args.legacy).await?;
 
             let chain_id = tx.tx().chain_id().unwrap_or(provider_info.chain);
-            println!("tx chain id: {:?}", chain_id);
+            println!("tx chain id: {chain_id:?}");
 
             if !self.args.skip_simulation {
                 let tx = tx.tx_mut();
@@ -405,7 +404,7 @@ impl FilledTransactionsState {
         chain: u64,
         transactions: VecDeque<TransactionWithMetadata>,
     ) -> Result<ScriptSequence> {
-        println!("create_sequence on {:?}", chain);
+        println!("create_sequence on {chain:?}");
 
         // Paths are set to None for multi-chain sequences parts, because they don't need to be
         // saved to a separate file.
