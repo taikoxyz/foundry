@@ -1,0 +1,15 @@
+[package]
+name = "svm-rs-builds"
+version = "0.5.7"
+edition = "2021"
+rust-version = "1.70"
+description = "Offline stub of svm-rs-builds providing bundled release metadata"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "svm_rs_builds"
+path = "src/lib.rs"
+
+[dependencies]
+const-hex = "1.12"
+semver = { version = "1", features = ["serde"] }
