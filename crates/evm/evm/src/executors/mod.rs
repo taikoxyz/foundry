@@ -31,7 +31,6 @@ use foundry_evm_core::{
 };
 use foundry_evm_coverage::HitMaps;
 use foundry_evm_traces::{SparsedTraceArena, TraceMode};
-use tracing::debug;
 use revm::{
     bytecode::Bytecode,
     context::{BlockEnv, TxEnv},
@@ -47,6 +46,7 @@ use std::{
     borrow::Cow,
     time::{Duration, Instant},
 };
+use tracing::debug;
 
 mod builder;
 pub use builder::ExecutorBuilder;

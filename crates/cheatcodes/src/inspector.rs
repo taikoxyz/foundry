@@ -1519,7 +1519,9 @@ impl Inspector<alloy_evm::eth::EthEvmContext<&mut dyn MultiChainDatabaseExt>> fo
 
         // if there's a revert and a previous call was diagnosed as fork related revert then we can
         // return a better error here
-        if outcome.result.is_revert() && let Some(err) = diag {
+        if outcome.result.is_revert()
+            && let Some(err) = diag
+        {
             outcome.result.output = Error::encode(err.to_error_msg(&self.labels));
             return;
         }

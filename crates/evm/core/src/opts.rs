@@ -15,8 +15,8 @@ use revm::{
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt::Write;
-use url::Url;
 use tracing::debug;
+use url::Url;
 
 /// Helper module for deserializing ChainAddress from string addresses
 mod chain_address_serde {

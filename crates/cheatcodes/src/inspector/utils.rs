@@ -94,11 +94,8 @@ impl CommonCreateInput for &mut EOFCreateInputs {
 
     fn log_debug(&self, _cheatcodes: &mut Cheatcodes, _scheme: &CreateScheme) {
         let created_address = self.kind.created_address().unwrap_or(&Address::ZERO);
-        let _ = sh_println!(
-            "Create2Factory EOF create: {:?} -> {:?}",
-            self.caller(),
-            created_address
-        );
+        let _ =
+            sh_println!("Create2Factory EOF create: {:?} -> {:?}", self.caller(), created_address);
     }
 
     fn allow_cheatcodes(&self, cheatcodes: &mut Cheatcodes, ecx: Ecx) -> ChainAddress {

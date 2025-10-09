@@ -96,7 +96,8 @@ mod tests {
         fn precompiles(&self) -> Vec<PrecompileWithAddress> {
             vec![PrecompileWithAddress::from((
                 PRECOMPILE_ADDR,
-                custom_echo_precompile as fn(&[u8], u64, &mut PrecompileContext) -> PrecompileResult,
+                custom_echo_precompile
+                    as fn(&[u8], u64, &mut PrecompileContext) -> PrecompileResult,
             ))]
         }
     }

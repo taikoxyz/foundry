@@ -39,7 +39,6 @@ use foundry_config::{
     },
     filter::GlobMatcher,
 };
-use tracing::debug;
 use foundry_debugger::Debugger;
 use foundry_evm::traces::identifier::TraceIdentifiers;
 use regex::Regex;
@@ -50,6 +49,7 @@ use std::{
     sync::{Arc, mpsc::channel},
     time::{Duration, Instant},
 };
+use tracing::debug;
 use yansi::Paint;
 
 mod filter;

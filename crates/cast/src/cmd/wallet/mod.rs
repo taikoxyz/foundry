@@ -329,7 +329,6 @@ impl WalletSubcommands {
                             }
                         }
                     }
-
                 } else {
                     for _ in 0..number {
                         let wallet = PrivateKeySigner::random_with(&mut rng);
