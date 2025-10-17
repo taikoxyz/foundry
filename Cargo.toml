@@ -240,7 +240,7 @@ alloy-hardforks = { version = "0.2.6", default-features = false }
 alloy-op-hardforks = { version = "0.2.6", default-features = false }
 
 ## alloy-core
-alloy-dyn-abi = "1.2.1"
+alloy-dyn-abi = "1.2.2"
 alloy-json-abi = "1.2.1"
 alloy-primitives = { version = "1.2.1", features = [
     "getrandom",
@@ -367,6 +367,7 @@ zip-extract = "=0.2.1"
 
 [patch.crates-io]
 svm-rs-builds = { path = "crates/vendor/svm-rs-builds-0.5.16" }
+alloy-dyn-abi = { path = "vendor/alloy-dyn-abi" }
 ## alloy-core
 # alloy-dyn-abi = { path = "../../alloy-rs/core/crates/dyn-abi" }
 # alloy-json-abi = { path = "../../alloy-rs/core/crates/json-abi" }
