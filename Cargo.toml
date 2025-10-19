@@ -263,7 +263,7 @@ op-alloy-flz = "0.13.1"
 
 ## revm
 #revm = { version = "24.0.1", default-features = false }
-revm = { git = "https://github.com/taikoxyz/revm-private.git", branch = "song/v75-gwyneth-claude",  default-features = false  }
+revm = { git = "https://github.com/taikoxyz/revm-private.git", branch = "song/v75-gwyneth-claude", default-features = false, features = ["std"] }
 revm-inspectors = { git = "https://github.com/taikoxyz/revm-inspectors.git", branch = "v0.23.0-gwyneth-claude" }
 #revm-inspectors = { version = "0.23.0", features = ["serde"] }
 #op-revm = { version = "5.0.1", default-features = false }
@@ -368,6 +368,7 @@ zip-extract = "=0.2.1"
 [patch.crates-io]
 svm-rs-builds = { path = "crates/vendor/svm-rs-builds-0.5.16" }
 alloy-dyn-abi = { path = "vendor/alloy-dyn-abi" }
+
 ## alloy-core
 # alloy-dyn-abi = { path = "../../alloy-rs/core/crates/dyn-abi" }
 # alloy-json-abi = { path = "../../alloy-rs/core/crates/json-abi" }

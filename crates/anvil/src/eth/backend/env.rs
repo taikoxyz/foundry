@@ -7,14 +7,14 @@ use revm::{
     primitives::HashMap,
 };
 
-/// Helper container type for [`EvmEnv`] and [`OpTransaction<TxEnd>`].
+/// Helper container type for [`EvmEnv`] and [`TxEnv`].
 #[derive(Clone, Debug, Default)]
 pub struct Env {
     pub evm_env: EvmEnv,
     pub tx: TxEnv,
 }
 
-/// Helper container type for [`EvmEnv`] and [`OpTransaction<TxEnv>`].
+/// Helper container type for [`EvmEnv`] and [`TxEnv`].
 impl Env {
     pub fn new(cfg: CfgEnv, block: BlockEnv, tx: TxEnv) -> Self {
         let mut block_env_map = HashMap::default();
