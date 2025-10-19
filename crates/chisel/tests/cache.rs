@@ -1,3 +1,5 @@
+#![cfg(not(foundry_network_restricted))]
+
 use chisel::session::ChiselSession;
 use foundry_compilers::artifacts::EvmVersion;
 use foundry_config::{Config, SolcReq};

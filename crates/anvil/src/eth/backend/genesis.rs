@@ -43,9 +43,8 @@ impl GenesisConfig {
         &self,
         mut db: RwLockWriteGuard<'_, Box<dyn Db>>,
     ) -> DatabaseResult<()> {
-        println!("apply_genesis_json_alloc");
-        let chain_id = self.genesis_init.as_ref().unwrap().config.chain_id;
-        if let Some(ref genesis) = self.genesis_init {
+        if let Some(genesis) = &self.genesis_init {
+            let chain_id = genesis.config.chain_id;
             for (addr, mut acc) in genesis.alloc.clone() {
                 let addr = ChainAddress(chain_id, addr);
                 let storage = std::mem::take(&mut acc.storage);

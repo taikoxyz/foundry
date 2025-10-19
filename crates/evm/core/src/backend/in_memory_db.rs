@@ -14,7 +14,7 @@ use revm::{
 /// See [`EmptyDBWrapper`].
 pub type FoundryEvmInMemoryDB = CacheDB<EmptyDBWrapper>;
 
-/// In-memory [`Database`] for Anvil.
+/// In-memory database for Anvil.
 ///
 /// This acts like a wrapper type for [`FoundryEvmInMemoryDB`] but is capable of applying snapshots.
 #[derive(Debug)]
@@ -84,11 +84,11 @@ impl DatabaseCommit for MemDb {
 ///
 /// This will also _always_ return `Some(AccountInfo)`:
 ///
-/// The [`Database`] implementation for `CacheDB` manages an `AccountState` for the
+/// The database implementation for `CacheDB` manages an `AccountState` for the
 /// `DbAccount`, this will be set to `AccountState::NotExisting` if the account does not exist yet.
 /// This is because there's a distinction between "non-existing" and "empty",
 /// see <https://github.com/bluealloy/revm/blob/8f4348dc93022cffb3730d9db5d3ab1aad77676a/crates/revm/src/db/in_memory_db.rs#L81-L83>.
-/// If an account is `NotExisting`, `Database::basic_ref` will always return `None` for the
+/// If an account is `NotExisting`, the `basic_ref` method will always return `None` for the
 /// requested `AccountInfo`.
 ///
 /// To prevent this, we ensure that a missing account is never marked as `NotExisting` by always

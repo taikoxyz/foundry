@@ -1,3 +1,5 @@
+#![cfg(not(foundry_network_restricted))]
+
 //! Contains various tests for checking cast commands
 
 use alloy_chains::NamedChain;
