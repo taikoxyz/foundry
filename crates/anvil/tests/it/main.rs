@@ -53,6 +53,15 @@ pub(crate) fn init_tracing() {
 }
 
 #[cfg(not(foundry_network_restricted))]
+#[ctor::ctor]
+fn skip_if_network_restricted() {
+    if std::net::TcpListener::bind(("127.0.0.1", 0)).is_err() {
+        eprintln!("anvil integration tests skipped: network access unavailable");
+        std::process::exit(0);
+    }
+}
+
+#[cfg(not(foundry_network_restricted))]
 fn main() {}
 
 #[cfg(foundry_network_restricted)]

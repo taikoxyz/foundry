@@ -92,6 +92,7 @@ anvil.workspace = true
 foundry-test-utils.workspace = true
 async-trait.workspace = true
 criterion = "0.5"
+ctor.workspace = true
 
 [features]
 default = ["rustls", "jemalloc"]

@@ -71,6 +71,7 @@ tikv-jemallocator = { workspace = true, optional = true }
 criterion = { version = "0.5", features = ["async_tokio"] }
 serial_test = "3"
 tracing-subscriber.workspace = true
+ctor.workspace = true
 
 [features]
 default = ["rustls", "jemalloc"]

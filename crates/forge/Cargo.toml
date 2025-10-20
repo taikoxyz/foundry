@@ -129,6 +129,7 @@ tempfile.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 alloy-signer-local.workspace = true
+ctor.workspace = true
 
 [features]
 default = ["rustls", "jemalloc"]

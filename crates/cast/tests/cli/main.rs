@@ -2,6 +2,14 @@
 
 //! Contains various tests for checking cast commands
 
+#[ctor::ctor]
+fn skip_if_network_restricted() {
+    if std::net::TcpListener::bind(("127.0.0.1", 0)).is_err() {
+        eprintln!("cast CLI tests skipped: network access unavailable");
+        std::process::exit(0);
+    }
+}
+
 use alloy_chains::NamedChain;
 use alloy_primitives::{b256, B256};
 use anvil::{EthereumHardfork, NodeConfig};

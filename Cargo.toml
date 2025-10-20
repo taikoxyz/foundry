@@ -272,6 +272,7 @@ tower-http = "0.5"
 soldeer = "=0.3.4"
 proptest = "1"
 comfy-table = "7"
+ctor = "0.2"
 
 [patch.crates-io]
 revm = { git = "https://github.com/taikoxyz/revm-private.git", branch = "v43-gwyneth" }
