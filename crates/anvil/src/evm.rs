@@ -21,11 +21,12 @@ pub fn inject_precompiles<DB, I>(
     DB: alloy_evm::MultiDatabase,
     I: Inspector<EthEvmContext<DB>>,
 {
+    use alloy_evm::precompiles::{DynPrecompile, Precompile};
+
     for p in precompiles {
         let precompile_fn = *p.precompile();
-        evm.precompiles_mut().apply_precompile(p.address(), |_| {
-            // We'll use unsafe to create DynPrecompile since the constructor is private
-            // but this is the same pattern used in the alloy-evm codebase itself
+        evm.precompiles_mut().apply_precompile(p.address(), move |_| {
+            // Wrapper to adapt revm's precompile function to the Precompile trait
             struct PrecompileWrapper {
                 inner: fn(
                     &[u8],
@@ -34,7 +35,7 @@ pub fn inject_precompiles<DB, I>(
                 ) -> revm::precompile::PrecompileResult,
             }
 
-            impl alloy_evm::precompiles::Precompile for PrecompileWrapper {
+            impl Precompile for PrecompileWrapper {
                 fn call(
                     &self,
                     data: &[u8],
@@ -45,13 +46,10 @@ pub fn inject_precompiles<DB, I>(
                 }
             }
 
-            let _wrapper = PrecompileWrapper { inner: precompile_fn };
+            let wrapper = PrecompileWrapper { inner: precompile_fn };
 
-            // Unfortunately, we can't easily create DynPrecompile due to private constructor
-            // For now, let's return None until we find another approach
-            // TODO: Find a way to inject custom precompiles with the new alloy-evm API
-
-            None
+            // Create DynPrecompile using the public constructor
+            Some(DynPrecompile::new(wrapper))
         });
     }
 }
@@ -116,11 +114,28 @@ mod tests {
     fn create_eth_evm(
         spec: SpecId,
     ) -> (foundry_evm::Env, EthEvm<EmptyDBTyped<Infallible>, NoOpInspector, PrecompilesMap>) {
+        use revm::primitives::B256;
+
+        let mut block_env = revm::context::BlockEnv::default();
+        // Set prevrandao for post-Merge specs
+        if spec >= SpecId::MERGE {
+            block_env.prevrandao = Some(B256::ZERO);
+        }
+
         let eth_env = foundry_evm::Env {
-            evm_env: EvmEnv { block_env: Default::default(), cfg_env: CfgEnv::new_with_spec(spec) },
+            evm_env: EvmEnv {
+                block_env: {
+                    let mut map = revm::primitives::HashMap::default();
+                    map.insert(0, block_env);
+                    map
+                },
+                cfg_env: CfgEnv::new_with_spec(spec)
+            },
             tx: TxEnv {
                 kind: MultiChainTxKind::Call(ChainAddress(0, PRECOMPILE_ADDR)),
                 data: PAYLOAD.into(),
+                caller: ChainAddress(0, Address::ZERO),
+                gas_limit: 1_000_000,
                 ..Default::default()
             },
         };

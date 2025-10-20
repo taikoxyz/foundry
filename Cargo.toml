@@ -270,7 +270,8 @@ revm-inspectors = { git = "https://github.com/taikoxyz/revm-inspectors.git", bra
 
 ## alloy-evm
 #alloy-evm = "0.10.0"
-alloy-evm = { git = "https://github.com/taikoxyz/alloy-evm.git", branch = "v0.10-gwyneth-claude" }
+#alloy-evm = { git = "https://github.com/taikoxyz/alloy-evm.git", branch = "v0.10-gwyneth-claude" }
+alloy-evm = { path = "../alloy-evm/crates/evm" }
 #alloy-op-evm = "0.10.0"
 
 ## cli
