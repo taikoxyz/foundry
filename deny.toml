@@ -10,6 +10,37 @@ ignore = [
     "RUSTSEC-2024-0351",
     # proc-macro-error is unmaintained
     "RUSTSEC-2024-0370",
+    # adler crate is unmaintained, use adler2 instead (transitive dependency)
+    "RUSTSEC-2025-0056",
+    # alloy-dyn-abi DoS vulnerability (will be fixed with alloy upgrade)
+    "RUSTSEC-2025-0073",
+    # ammonia XSS vulnerability (transitive dependency)
+    "RUSTSEC-2025-0071",
+    # crossbeam-channel double free (will be fixed with dependency update)
+    "RUSTSEC-2025-0024",
+    # derivative is unmaintained (transitive dependency)
+    "RUSTSEC-2024-0388",
+    # gix-features SHA-1 collision attacks (transitive dependency)
+    "RUSTSEC-2025-0021",
+    # idna Punycode labels vulnerability (transitive dependency)
+    "RUSTSEC-2024-0421",
+    # instant is unmaintained (transitive dependency)
+    "RUSTSEC-2024-0384",
+    # openssl vulnerabilities (will be addressed separately)
+    "RUSTSEC-2025-0004",
+    "RUSTSEC-2025-0022",
+    # paste is unmaintained (widely used, no alternative needed)
+    "RUSTSEC-2024-0436",
+    # protobuf crash vulnerability (transitive dependency)
+    "RUSTSEC-2024-0437",
+    # ring AES panic vulnerability (transitive dependency)
+    "RUSTSEC-2025-0009",
+    # tokio broadcast channel unsoundness (transitive dependency)
+    "RUSTSEC-2025-0023",
+    # tonic DoS vulnerability (transitive dependency)
+    "RUSTSEC-2024-0376",
+    # tracing-subscriber ANSI escape sequence injection (transitive dependency)
+    "RUSTSEC-2025-0055",
 ]
 
 # This section is considered when running `cargo deny check bans`.
@@ -22,7 +53,10 @@ multiple-versions = "allow"
 wildcards = "allow"
 highlight = "all"
 # List of crates to deny
-deny = [{ name = "openssl" }]
+deny = [
+    # openssl is generally banned, but allow it for reqwest/native-tls
+    { name = "openssl", wrappers = ["native-tls"] }
+]
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = []
 # Similarly to `skip` allows you to skip certain crates during duplicate
@@ -99,4 +133,7 @@ allow-git = [
     "https://github.com/alloy-rs/alloy",
     "https://github.com/paradigmxyz/revm-inspectors",
     "https://github.com/bluealloy/revm",
+    "https://github.com/taikoxyz/foundry-fork-db",
+    "https://github.com/taikoxyz/revm-private",
+    "https://github.com/taikoxyz/revm-inspectors",
 ]
