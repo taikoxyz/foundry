@@ -1097,7 +1097,6 @@ impl Cheatcodes {
                     let account =
                         ecx.journaled_state.inner.state().get_mut(&broadcast.new_origin).unwrap();
 
-
                     println!(
                         "call_with_executor:: Broadcasting from {:?} (nonce: {})",
                         broadcast.new_origin, account.info.nonce
