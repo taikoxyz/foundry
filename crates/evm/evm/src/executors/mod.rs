@@ -708,6 +708,21 @@ impl Executor {
     /// If using a backend with cheatcodes, `tx.gas_price` and `block.number` will be overwritten by
     /// the cheatcode state in between calls.
     fn build_test_env(&self, caller: Address, kind: TxKind, data: Bytes, value: U256) -> Env {
+        let chain_id = self.env().evm_env.cfg_env.chain_id;
+        let mut base_tx = self.env().tx.clone();
+        match &mut base_tx.chain_ids {
+            Some(ids) => {
+                if !ids.contains(&chain_id) {
+                    ids.push(chain_id);
+                }
+            }
+            None => base_tx.chain_ids = Some(vec![chain_id]),
+        }
+        debug_assert!(base_tx.chain_ids.as_ref().map_or(false, |ids| ids.contains(&chain_id)));
+        if base_tx.chain_ids.as_ref().map(|ids| ids.is_empty()).unwrap_or(true) {
+            panic!("empty allowed_chain_ids for chain_id {}", chain_id);
+        }
+
         Env {
             evm_env: EvmEnv {
                 cfg_env: {
@@ -719,7 +734,6 @@ impl Executor {
                 // network conditions - the actual gas price is kept in `self.block` and is applied
                 // by the cheatcode handler if it is enabled
                 block_env: {
-                    let chain_id = self.env().evm_env.cfg_env.chain_id;
                     let base_block =
                         self.env().evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
                     let mut block_env_map = HashMap::default();
@@ -731,12 +745,9 @@ impl Executor {
                 },
             },
             tx: TxEnv {
-                caller: ChainAddress(self.env().evm_env.cfg_env.chain_id, caller),
+                caller: ChainAddress(chain_id, caller),
                 kind: match kind {
-                    TxKind::Call(addr) => MultiChainTxKind::Call(ChainAddress(
-                        self.env().evm_env.cfg_env.chain_id,
-                        addr,
-                    )),
+                    TxKind::Call(addr) => MultiChainTxKind::Call(ChainAddress(chain_id, addr)),
                     TxKind::Create => MultiChainTxKind::Create,
                 },
                 data,
@@ -745,8 +756,8 @@ impl Executor {
                 gas_price: 0,
                 gas_priority_fee: None,
                 gas_limit: self.gas_limit,
-                chain_id: Some(self.env().evm_env.cfg_env.chain_id),
-                ..self.env().tx.clone()
+                chain_id: Some(chain_id),
+                ..base_tx
             },
         }
     }

@@ -6,6 +6,7 @@ use alloy_provider::{
 use foundry_common::provider::{
     ProviderBuilder, RetryProvider, RetryProviderWithSigner, get_http_provider,
 };
+use std::path::PathBuf;
 
 pub fn http_provider(http_endpoint: &str) -> RetryProvider {
     get_http_provider(http_endpoint)
@@ -63,4 +64,9 @@ pub async fn ipc_provider_with_wallet(
     ProviderBuilder::new(ipc_endpoint)
         .build_with_wallet(wallet)
         .expect("failed to build Alloy IPC provider with signer")
+}
+
+/// Resolve a test-data file relative to the anvil crate root.
+pub fn test_data_path(file: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file)
 }

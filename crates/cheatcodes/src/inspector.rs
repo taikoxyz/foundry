@@ -497,6 +497,8 @@ pub struct Cheatcodes {
 
     /// Active delegations for EIP-7702.
     pub active_delegations: HashMap<Address, U256>,
+    /// Script wallets configured for the current execution.
+    script_wallets: Option<Wallets>,
     // Active blob sidecar.
     // Note: SidecarBlob type needs to be imported correctly
     // pub active_blob_sidecar: Option<SidecarBlob>,
@@ -548,19 +550,24 @@ impl Cheatcodes {
             intercept_next_create_call: Default::default(),
             arbitrary_storage: Default::default(),
             active_delegations: Default::default(),
+            script_wallets: Default::default(),
             // active_blob_sidecar: Default::default(),
         }
     }
 
     /// Returns the configured script wallets.
     pub fn script_wallets(&self) -> Option<&Wallets> {
-        // TODO: script_wallets field removed from config
-        None
+        self.script_wallets.as_ref()
     }
 
     /// Returns the configured script wallets for cheatcode usage.
     pub fn wallets(&self) -> &Wallets {
         self.script_wallets().expect("script wallets should be configured")
+    }
+
+    /// Sets the script wallets that cheatcodes should operate on.
+    pub fn set_wallets(&mut self, wallets: Wallets) {
+        self.script_wallets = Some(wallets);
     }
 
     // Adds a delegation for EIP-7702.

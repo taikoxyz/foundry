@@ -49,6 +49,12 @@ pub enum EthRequest {
     #[serde(rename = "eth_networkId", alias = "net_version", with = "empty_params")]
     EthNetworkId(()),
 
+    #[serde(rename = "eth_setActiveChainId", with = "sequence")]
+    EthSetActiveChainId(u64),
+
+    #[serde(rename = "eth_getActiveChainId", with = "empty_params")]
+    EthGetActiveChainId(()),
+
     #[serde(rename = "net_listening", with = "empty_params")]
     NetListening(()),
 

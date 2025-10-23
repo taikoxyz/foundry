@@ -765,6 +765,36 @@ impl Backend {
         self.env.write().evm_env.cfg_env.chain_id = chain_id;
     }
 
+    pub fn set_active_chain_id(&self, chain_id: u64) {
+        let mut env = self.env.write();
+        env.evm_env.cfg_env.chain_id = chain_id;
+
+        env.evm_env
+            .block_env
+            .entry(chain_id)
+            .and_modify(|block| block.beneficiary = ChainAddress(chain_id, block.beneficiary.1))
+            .or_insert_with(|| {
+                let mut block = BlockEnv::default();
+                block.beneficiary = ChainAddress(chain_id, Address::ZERO);
+                block
+            });
+
+        match &mut env.tx.chain_ids {
+            Some(ids) => {
+                if !ids.contains(&chain_id) {
+                    ids.push(chain_id);
+                }
+            }
+            None => env.tx.chain_ids = Some(vec![chain_id]),
+        }
+
+        env.tx.chain_id = Some(chain_id);
+    }
+
+    pub fn active_chain_id(&self) -> u64 {
+        self.env.read().evm_env.cfg_env.chain_id
+    }
+
     /// Returns balance of the given account.
     pub async fn current_balance(&self, address: Address) -> DatabaseResult<U256> {
         Ok(self.get_account(address).await?.balance)
@@ -1077,9 +1107,11 @@ impl Backend {
         self.blockchain.storage.write().load_blocks(state.blocks.clone());
         self.blockchain.storage.write().load_transactions(state.transactions.clone());
         // reset the block env
-        if let Some(block) = state.block.clone() {
+        if let Some(mut block) = state.block.clone() {
             let mut env = self.env.write();
             let chain_id = env.evm_env.cfg_env.chain_id;
+            let ChainAddress(_, beneficiary) = block.beneficiary;
+            block.beneficiary = ChainAddress(chain_id, beneficiary);
             env.evm_env.block_env.insert(chain_id, block.clone());
 
             // Set the current best block number.

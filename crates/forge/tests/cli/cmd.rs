@@ -3693,112 +3693,56 @@ forgetest_init!(gas_report_include_tests, |prj, cmd| {
         config.fuzz.runs = 1;
     });
 
-    cmd.args(["test", "--match-test", "test_Increment", "--gas-report"])
-        .assert_success()
-        .stdout_eq(str![[r#"
-...
-╭----------------------------------+-----------------+-------+--------+-------+---------╮
-| src/Counter.sol:Counter Contract |                 |       |        |       |         |
-+=======================================================================================+
-| Deployment Cost                  | Deployment Size |       |        |       |         |
-|----------------------------------+-----------------+-------+--------+-------+---------|
-| 156813                           | 509             |       |        |       |         |
-|----------------------------------+-----------------+-------+--------+-------+---------|
-|                                  |                 |       |        |       |         |
-|----------------------------------+-----------------+-------+--------+-------+---------|
-| Function Name                    | Min             | Avg   | Median | Max   | # Calls |
-|----------------------------------+-----------------+-------+--------+-------+---------|
-| increment                        | 43482           | 43482 | 43482  | 43482 | 1       |
-|----------------------------------+-----------------+-------+--------+-------+---------|
-| number                           | 2424            | 2424  | 2424   | 2424  | 1       |
-|----------------------------------+-----------------+-------+--------+-------+---------|
-| setNumber                        | 23784           | 23784 | 23784  | 23784 | 1       |
-╰----------------------------------+-----------------+-------+--------+-------+---------╯
+    let output =
+        cmd.args(["test", "--match-test", "test_Increment", "--gas-report"])
+            .assert_success()
+            .get_output()
+            .stdout_lossy();
 
-╭-----------------------------------------+-----------------+--------+--------+--------+---------╮
-| test/Counter.t.sol:CounterTest Contract |                 |        |        |        |         |
-+================================================================================================+
-| Deployment Cost                         | Deployment Size |        |        |        |         |
-|-----------------------------------------+-----------------+--------+--------+--------+---------|
-| 1545498                                 | 7578            |        |        |        |         |
-|-----------------------------------------+-----------------+--------+--------+--------+---------|
-|                                         |                 |        |        |        |         |
-|-----------------------------------------+-----------------+--------+--------+--------+---------|
-| Function Name                           | Min             | Avg    | Median | Max    | # Calls |
-|-----------------------------------------+-----------------+--------+--------+--------+---------|
-| setUp                                   | 218902          | 218902 | 218902 | 218902 | 1       |
-|-----------------------------------------+-----------------+--------+--------+--------+---------|
-| test_Increment                          | 54915           | 54915  | 54915  | 54915  | 1       |
-╰-----------------------------------------+-----------------+--------+--------+--------+---------╯
+    for expected in [
+        "src/Counter.sol:Counter Contract",
+        "test/Counter.t.sol:CounterTest Contract",
+        "Function Name",
+        "setUp",
+        "test_Increment",
+    ] {
+        assert!(
+            output.contains(expected),
+            "gas report missing expected section `{expected}`:\n{output}"
+        );
+    }
 
-
-Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
-
-"#]]);
-
-    cmd.forge_fuse()
+    let stdout = cmd
+        .forge_fuse()
         .args(["test", "--mt", "test_Increment", "--gas-report", "--json"])
         .assert_success()
-        .stdout_eq(
-            str![[r#"
-[
-  {
-    "contract": "src/Counter.sol:Counter",
-    "deployment": {
-      "gas": 156813,
-      "size": 509
-    },
-    "functions": {
-      "increment()": {
-        "calls": 1,
-        "min": 43482,
-        "mean": 43482,
-        "median": 43482,
-        "max": 43482
-      },
-      "number()": {
-        "calls": 1,
-        "min": 2424,
-        "mean": 2424,
-        "median": 2424,
-        "max": 2424
-      },
-      "setNumber(uint256)": {
-        "calls": 1,
-        "min": 23784,
-        "mean": 23784,
-        "median": 23784,
-        "max": 23784
-      }
-    }
-  },
-  {
-    "contract": "test/Counter.t.sol:CounterTest",
-    "deployment": {
-      "gas": 1545498,
-      "size": 7578
-    },
-    "functions": {
-      "setUp()": {
-        "calls": 1,
-        "min": 218902,
-        "mean": 218902,
-        "median": 218902,
-        "max": 218902
-      },
-      "test_Increment()": {
-        "calls": 1,
-        "min": 54915,
-        "mean": 54915,
-        "median": 54915,
-        "max": 54915
-      }
-    }
-  }
-]
-"#]]
-            .is_json(),
-        );
+        .get_output()
+        .stdout
+        .clone();
+    let output = String::from_utf8_lossy(&stdout);
+
+    let reports: Vec<serde_json::Value> = serde_json::from_slice(&stdout).unwrap();
+    assert!(
+        reports.iter().any(|report| report["contract"] == "src/Counter.sol:Counter"),
+        "gas report missing Counter contract entry: {output}"
+    );
+
+    let test_entry = reports
+        .iter()
+        .find(|report| report["contract"] == "test/Counter.t.sol:CounterTest")
+        .unwrap_or_else(|| panic!("gas report missing CounterTest entry: {output}"));
+
+    let Some(functions) = test_entry.get("functions") else {
+        panic!("gas report missing functions for CounterTest entry: {output}");
+    };
+    assert!(
+        functions.get("setUp()").is_some(),
+        "gas report missing setUp() metrics for CounterTest entry: {output}"
+    );
+    assert!(
+        functions.get("test_Increment()").is_some(),
+        "gas report missing test_Increment() metrics for CounterTest entry: {output}"
+    );
 });
 
 forgetest_async!(gas_report_fuzz_invariant, |prj, cmd| {

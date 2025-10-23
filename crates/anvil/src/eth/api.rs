@@ -194,6 +194,12 @@ impl EthApi {
             }
             EthRequest::EthChainId(_) => self.eth_chain_id().to_rpc_result(),
             EthRequest::EthNetworkId(_) => self.network_id().to_rpc_result(),
+            EthRequest::EthSetActiveChainId(id) => {
+                self.eth_set_active_chain_id(id).await.to_rpc_result()
+            }
+            EthRequest::EthGetActiveChainId(()) => {
+                self.eth_get_active_chain_id().await.to_rpc_result()
+            }
             EthRequest::NetListening(_) => self.net_listening().to_rpc_result(),
             EthRequest::EthGasPrice(_) => self.eth_gas_price().to_rpc_result(),
             EthRequest::EthMaxPriorityFeePerGas(_) => {
@@ -626,6 +632,19 @@ impl EthApi {
         node_info!("eth_networkId");
         let chain_id = self.backend.chain_id().to::<u64>();
         Ok(Some(format!("{chain_id}")))
+    }
+
+    /// Handler for ETH RPC call: `eth_setActiveChainId`
+    pub async fn eth_set_active_chain_id(&self, chain_id: u64) -> Result<bool> {
+        node_info!("eth_setActiveChainId");
+        self.backend.set_active_chain_id(chain_id);
+        Ok(true)
+    }
+
+    /// Handler for ETH RPC call: `eth_getActiveChainId`
+    pub async fn eth_get_active_chain_id(&self) -> Result<U64> {
+        node_info!("eth_getActiveChainId");
+        Ok(U64::from(self.backend.active_chain_id()))
     }
 
     /// Returns true if client is actively listening for network connections.

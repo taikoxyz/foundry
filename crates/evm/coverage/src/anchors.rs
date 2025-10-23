@@ -32,7 +32,7 @@ pub fn find_anchors(
                 }
                 _ => find_anchor_simple(source_map, ic_pc_map, item_id, &item.loc),
             }
-            .inspect_err(|err| warn!(%item, %err, "could not find anchor"))
+            .inspect_err(|err| debug!(%item, %err, "could not find anchor"))
             .ok()
         })
         .collect()

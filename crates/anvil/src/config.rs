@@ -48,7 +48,7 @@ use rand_08::thread_rng;
 use revm::{
     context::{BlockEnv, CfgEnv, TxEnv},
     context_interface::block::BlobExcessGasAndPrice,
-    primitives::hardfork::SpecId,
+    primitives::{ChainAddress, hardfork::SpecId},
 };
 use serde_json::{Value, json};
 use std::{
@@ -1240,6 +1240,7 @@ latest block number: {latest_block}"
 
         // Get current block environment or default for the chain
         let chain_id = env.evm_env.cfg_env.chain_id;
+        let previous_chain_id = chain_id;
         let current_block_env = env.evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
 
         let new_block_env = BlockEnv {
@@ -1315,6 +1316,13 @@ latest block number: {latest_block}"
             self.set_chain_id(Some(chain_id));
             env.evm_env.cfg_env.chain_id = chain_id;
             env.tx.chain_id = chain_id.into();
+
+            if chain_id != previous_chain_id {
+                if let Some(mut block_env) = env.evm_env.block_env.remove(&previous_chain_id) {
+                    block_env.beneficiary = ChainAddress::new(chain_id, block_env.beneficiary.1);
+                    env.evm_env.block_env.insert(chain_id, block_env);
+                }
+            }
             chain_id
         };
         let override_chain_id = self.chain_id;

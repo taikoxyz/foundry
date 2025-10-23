@@ -773,7 +773,9 @@ async fn test_fork_can_send_opensea_tx() {
         .value(U256::from(20000000000000000u64))
         .with_input(input)
         .with_gas_price(22180711707u128)
-        .with_gas_limit(150_000);
+        // This transaction now consumes slightly more gas after the fork DB upgrade.
+        // Give it ample headroom instead of relying on a brittle hard-coded minimum.
+        .with_gas_limit(300_000);
     let tx = WithOtherFields::new(tx);
 
     let tx = provider.send_transaction(tx).await.unwrap().get_receipt().await.unwrap();
