@@ -409,8 +409,6 @@ alloy-dyn-abi = { path = "vendor/alloy-dyn-abi" }
 # alloy-evm = { git = "https://github.com/alloy-rs/evm.git", rev = "dce752f" }
 # alloy-op-evm = { git = "https://github.com/alloy-rs/evm.git", rev = "dce752f" }
 
-[patch."https://github.com/taikoxyz/foundry-fork-db.git"]
-foundry-fork-db = { path = "../foundry-fork-db" }
 
 ## revm
 # revm = { git = "https://github.com/bluealloy/revm.git", rev = "b5808253" }
