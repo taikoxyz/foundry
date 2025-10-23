@@ -15,7 +15,6 @@ use revm::{
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt::Write;
-use tracing::debug;
 use url::Url;
 
 /// Helper module for deserializing ChainAddress from string addresses
@@ -203,8 +202,8 @@ impl EvmOpts {
 
     /// Returns the `revm::Env` configured with only local settings
     pub fn local_evm_env(&self) -> crate::Env {
-        debug!(target: "evm::opts", "initializing local env");
-        debug!(target: "evm::opts", chain_ids = ?self.chain_ids);
+        println!("CORE!!!");
+        println!("chain_ids: {:?}", self.chain_ids);
 
         let mut cfg = configure_env(
             self.env.chain_id.unwrap_or(foundry_common::DEV_CHAIN_ID),

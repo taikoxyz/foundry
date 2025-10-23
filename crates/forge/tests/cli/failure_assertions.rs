@@ -193,10 +193,7 @@ forgetest!(expect_emit_tests_should_fail, |prj, cmd| {
 
     prj.update_config(|config| {
         config.offline = true;
-        if !config
-            .ignored_error_codes
-            .contains(&SolidityErrorCode::ReturnValueOfCallsNotUsed)
-        {
+        if !config.ignored_error_codes.contains(&SolidityErrorCode::ReturnValueOfCallsNotUsed) {
             config.ignored_error_codes.push(SolidityErrorCode::ReturnValueOfCallsNotUsed);
         }
     });
@@ -212,9 +209,7 @@ forgetest!(expect_emit_tests_should_fail, |prj, cmd| {
 
     let stderr = String::from_utf8_lossy(&result.stderr);
     if stderr.contains("Compiler run successful with warnings") {
-        eprintln!(
-            "skipping expect_emit_tests_should_fail: compiler emitted warnings\n{stderr}"
-        );
+        eprintln!("skipping expect_emit_tests_should_fail: compiler emitted warnings\n{stderr}");
         return;
     }
 
@@ -239,10 +234,7 @@ forgetest!(expect_emit_tests_should_fail, |prj, cmd| {
     ];
 
     for name in expected_tests {
-        assert!(
-            combined.contains(name),
-            "expected failure entry for {name} missing\n{combined}"
-        );
+        assert!(combined.contains(name), "expected failure entry for {name} missing\n{combined}");
     }
 
     let summary = "Suite result: FAILED. 0 passed; 15 failed;";
@@ -302,9 +294,7 @@ forgetest!(mem_safety_test_should_fail, |prj, cmd| {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     if stderr.contains("Attempted to create a NULL object") {
-        eprintln!(
-            "skipping mem_safety_test_should_fail: system proxy unavailable ({stderr})"
-        );
+        eprintln!("skipping mem_safety_test_should_fail: system proxy unavailable ({stderr})");
         return;
     }
 
@@ -335,10 +325,7 @@ forgetest!(mem_safety_test_should_fail, |prj, cmd| {
     ];
 
     for test_name in expected_tests {
-        assert!(
-            stdout.contains(test_name),
-            "expected {test_name} failure missing\n{stdout}"
-        );
+        assert!(stdout.contains(test_name), "expected {test_name} failure missing\n{stdout}");
     }
 
     assert!(

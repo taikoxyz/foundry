@@ -974,9 +974,7 @@ forgetest_async!(check_broadcast_log, |prj, cmd| {
     let (api, handle) = match try_spawn(NodeConfig::test()).await {
         Ok(res) => res,
         Err(err) => {
-            eprintln!(
-                "skipping check_broadcast_log: failed to spawn anvil ({err})"
-            );
+            eprintln!("skipping check_broadcast_log: failed to spawn anvil ({err})");
             return;
         }
     };
@@ -1919,7 +1917,6 @@ contract SimpleScript is Script {
     };
 
     cmd.args([
-
         "script",
         "SimpleScript",
         "--fork-url",

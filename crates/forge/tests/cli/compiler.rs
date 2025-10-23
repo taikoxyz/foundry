@@ -9,9 +9,7 @@ static HAS_VYPER_BINARY: LazyLock<bool> = LazyLock::new(|| {
         return true;
     }
 
-    std::env::var_os("VYPER_BINARY")
-        .and_then(|path| Vyper::new(PathBuf::from(path)).ok())
-        .is_some()
+    std::env::var_os("VYPER_BINARY").and_then(|path| Vyper::new(PathBuf::from(path)).ok()).is_some()
 });
 
 fn has_vyper() -> bool {
@@ -166,7 +164,9 @@ forgetest!(can_list_resolved_multiple_compiler_versions, |prj, cmd| {
     prj.add_raw_source("Counter.vy", VYPER_CONTRACT).unwrap();
 
     if !has_vyper() {
-        eprintln!("skipping can_list_resolved_multiple_compiler_versions: vyper binary not available");
+        eprintln!(
+            "skipping can_list_resolved_multiple_compiler_versions: vyper binary not available"
+        );
         return;
     }
 

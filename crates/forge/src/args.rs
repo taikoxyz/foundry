@@ -8,7 +8,6 @@ use eyre::Result;
 use foundry_cli::{handler, utils};
 use foundry_common::shell;
 use foundry_evm::inspectors::cheatcodes::{ForgeContext, set_execution_context};
-use tracing::debug;
 
 /// Run the `forge` command line interface.
 pub fn run() -> Result<()> {
@@ -24,7 +23,7 @@ pub fn run() -> Result<()> {
 pub fn setup() -> Result<()> {
     utils::install_crypto_provider();
     handler::install();
-    debug!("load_dotenv");
+    println!("load_dotenv");
     utils::load_dotenv();
     utils::subscriber();
     utils::enable_paint();

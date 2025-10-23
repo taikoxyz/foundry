@@ -248,7 +248,7 @@ impl Cheatcode for attachBlobCall {
 
 impl Cheatcode for startBroadcast_0Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
-        debug!("startBroadcast_0Call");
+        println!("startBroadcast_0Call");
         let Self {} = self;
         broadcast(ccx, None, false)
     }
@@ -256,7 +256,7 @@ impl Cheatcode for startBroadcast_0Call {
 
 impl Cheatcode for startBroadcast_1Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
-        debug!("startBroadcast_1Call");
+        println!("startBroadcast_1Call");
         let Self { signer } = self;
         broadcast(ccx, Some(signer), false)
     }

@@ -3693,11 +3693,11 @@ forgetest_init!(gas_report_include_tests, |prj, cmd| {
         config.fuzz.runs = 1;
     });
 
-    let output =
-        cmd.args(["test", "--match-test", "test_Increment", "--gas-report"])
-            .assert_success()
-            .get_output()
-            .stdout_lossy();
+    let output = cmd
+        .args(["test", "--match-test", "test_Increment", "--gas-report"])
+        .assert_success()
+        .get_output()
+        .stdout_lossy();
 
     for expected in [
         "src/Counter.sol:Counter Contract",

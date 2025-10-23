@@ -2970,10 +2970,15 @@ casttest!(odyssey_can_run_p256_precompile, |_prj, cmd| {
     }
 
     let stdout = output.success().get_output().stdout_lossy();
-    assert!(stdout.contains("0xc2FF493F28e894742b968A7DB5D3F21F0aD80C6c::execute"), "missing execute trace\n{stdout}");
-    assert!(stdout.contains("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913::balanceOf"), "missing balanceOf trace\n{stdout}");
+    assert!(
+        stdout.contains("0xc2FF493F28e894742b968A7DB5D3F21F0aD80C6c::execute"),
+        "missing execute trace\n{stdout}"
+    );
+    assert!(
+        stdout.contains("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913::balanceOf"),
+        "missing balanceOf trace\n{stdout}"
+    );
     assert!(stdout.contains("\"status\":\"success\""), "missing success status\n{stdout}");
-
 });
 
 // tests cast send gas estimate execution failure message contains decoded custom error

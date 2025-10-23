@@ -585,7 +585,7 @@ impl Cheatcodes {
         call: &CallInputs,
         executor: &mut E,
     ) -> Result {
-        trace!(target: "cheatcodes", "apply_cheatcode");
+        println!("apply_cheatcode");
         // decode the cheatcode call
         let decoded = Vm::VmCalls::abi_decode(&call.input.bytes(ecx)).map_err(|e| {
             if let alloy_sol_types::Error::UnknownSelector { name: _, selector } = e {
@@ -628,12 +628,7 @@ impl Cheatcodes {
         caller: ChainAddress,
         created_address: ChainAddress,
     ) {
-        trace!(
-            target: "cheatcodes",
-            ?caller,
-            ?created_address,
-            "allow_cheatcodes_on_create"
-        );
+        println!("allow_cheatcodes_on_create: {caller:?}, {created_address:?}");
         if ecx.journaled_state.inner.depth <= 1
             || ecx.journaled_state.database.has_cheatcode_access(&caller)
         {
@@ -720,12 +715,7 @@ impl Cheatcodes {
                 input.set_caller(broadcast.new_origin);
                 let is_fixed_gas_limit = check_if_fixed_gas_limit(ecx, input.gas_limit());
 
-                trace!(
-                    target: "cheatcodes",
-                    origin = ?broadcast.new_origin,
-                    chain_id = broadcast.chain_id,
-                    "broadcasting create"
-                );
+                println!("Broadcasting from {:?}[{:?}]", broadcast.new_origin, broadcast.chain_id);
 
                 let account = &ecx.journaled_state.inner.state()[&broadcast.new_origin];
                 self.broadcastable_transactions.push_back(BroadcastableTransaction {
@@ -924,21 +914,20 @@ impl Cheatcodes {
 
         let input_bytes = call.input.bytes(ecx);
         let input_hex = format!("0x{}", hex::encode(&input_bytes));
-        trace!(
-            target: "cheatcodes",
-            input = %input_hex,
-            return_start = call.return_memory_offset.start,
-            return_end = call.return_memory_offset.end,
-            gas_limit = call.gas_limit,
-            bytecode = ?call.bytecode_address,
-            target = ?call.target_address,
-            caller = ?call.caller,
-            value = ?call.value,
-            scheme = ?call.scheme,
-            is_static = call.is_static,
-            is_eof = call.is_eof,
-            chain_id = self.chain_id,
-            "call_with_executor"
+        println!(
+            "[CallInputs {{ input: {}, return_memory_offset: {}..{}, gas_limit: {}, bytecode_address: {:?}, target_address: {:?}, caller: {:?}, value: {:?}, scheme: {:?}, is_static: {}, is_eof: {} }}] call_with_executor: {:?}",
+            input_hex,
+            call.return_memory_offset.start,
+            call.return_memory_offset.end,
+            call.gas_limit,
+            call.bytecode_address,
+            call.target_address,
+            call.caller,
+            call.value,
+            call.scheme,
+            call.is_static,
+            call.is_eof,
+            self.chain_id
         );
 
         // Extract needed data early to avoid borrowing conflicts later
@@ -1047,12 +1036,7 @@ impl Cheatcodes {
         {
             let mut prank_applied = false;
 
-            trace!(
-                target: "cheatcodes",
-                caller = ?call.caller,
-                new_caller = ?prank.new_caller,
-                "applying prank"
-            );
+            println!("Applying prank: {:?} -> {:?}", call.caller, prank.new_caller);
 
             // At the target depth we set `msg.sender`
             if ecx.journaled_state.inner.depth == prank.depth as usize {
@@ -1089,12 +1073,7 @@ impl Cheatcodes {
                 // broadcast.origin.
                 ecx.tx.caller = broadcast.new_origin;
 
-                trace!(
-                    target: "cheatcodes",
-                    origin = ?broadcast.new_origin,
-                    depth = broadcast.depth,
-                    "apply broadcast"
-                );
+                println!("broadcast.new_origin: {:?}", broadcast.new_origin);
 
                 call.caller = broadcast.new_origin;
                 // Add a `legacy` transaction to the VecDeque. We use a legacy transaction here
@@ -1118,11 +1097,10 @@ impl Cheatcodes {
                     let account =
                         ecx.journaled_state.inner.state().get_mut(&broadcast.new_origin).unwrap();
 
-                    trace!(
-                        target: "cheatcodes",
-                        origin = ?broadcast.new_origin,
-                        nonce = account.info.nonce,
-                        "call_with_executor broadcast"
+
+                    println!(
+                        "call_with_executor:: Broadcasting from {:?} (nonce: {})",
+                        broadcast.new_origin, account.info.nonce
                     );
 
                     self.broadcastable_transactions.push_back(BroadcastableTransaction {
