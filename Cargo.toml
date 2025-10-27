@@ -214,7 +214,7 @@ solar-sema = { version = "=0.1.4", default-features = false }
 solar-data-structures = { version = "=0.1.4", default-features = false }
 
 ## alloy
-alloy-consensus = { version = "1.0.11", default-features = false }
+alloy-consensus = { version = "1.0.11", default-features = false, features = ["serde"] }
 alloy-contract = { version = "1.0.11", default-features = false }
 alloy-eips = { version = "1.0.11", default-features = false }
 alloy-ens = { version = "1.0.11", default-features = false }
@@ -240,17 +240,17 @@ alloy-hardforks = { version = "0.2.6", default-features = false }
 alloy-op-hardforks = { version = "0.2.6", default-features = false }
 
 ## alloy-core
-alloy-dyn-abi = "1.2.2"
-alloy-json-abi = "1.2.1"
-alloy-primitives = { version = "1.2.1", features = [
+alloy-dyn-abi = "1.4.1"
+alloy-json-abi = "1.4.1"
+alloy-primitives = { version = "1.4.1", features = [
     "getrandom",
     "rand",
     "map-fxhash",
     "map-foldhash",
 ] }
-alloy-sol-macro-expander = "1.2.1"
-alloy-sol-macro-input = "1.2.1"
-alloy-sol-types = "1.2.1"
+alloy-sol-macro-expander = "1.4.1"
+alloy-sol-macro-input = "1.4.1"
+alloy-sol-types = "1.4.1"
 
 alloy-chains = "0.2"
 alloy-rlp = "0.3"
@@ -334,7 +334,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 rustls = "0.23"
 semver = "1"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "=1.0.219", features = ["derive"] }
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 similar-asserts = "1.7"
 soldeer-commands = "=0.5.4"
@@ -367,7 +367,6 @@ zip-extract = "=0.2.1"
 
 [patch.crates-io]
 svm-rs-builds = { path = "crates/vendor/svm-rs-builds-0.5.16" }
-alloy-dyn-abi = { path = "vendor/alloy-dyn-abi" }
 
 ## alloy-core
 # alloy-dyn-abi = { path = "../../alloy-rs/core/crates/dyn-abi" }
