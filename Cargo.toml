@@ -365,9 +365,6 @@ idna_adapter = "=1.1.0"
 # Avoid duplicating `zip 2` and `zip 3`. Remove once all `zip` dependencies are updated to `zip 3`.
 zip-extract = "=0.2.1"
 
-[patch.crates-io]
-svm-rs-builds = { path = "crates/vendor/svm-rs-builds-0.5.16" }
-
 ## alloy-core
 # alloy-dyn-abi = { path = "../../alloy-rs/core/crates/dyn-abi" }
 # alloy-json-abi = { path = "../../alloy-rs/core/crates/json-abi" }
