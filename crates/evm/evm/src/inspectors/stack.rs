@@ -197,11 +197,9 @@ impl InspectorStackBuilder {
 
         // inspectors
         if let Some(config) = cheatcodes {
-            let cheatcodes = Cheatcodes::new(config);
-            // Set wallets if they are provided
-            if let Some(_wallets) = wallets {
-                // TODO: Implement set_wallets method in cheatcodes
-                // cheatcodes.set_wallets(wallets);
+            let mut cheatcodes = Cheatcodes::new(config);
+            if let Some(wallets) = wallets {
+                cheatcodes.set_wallets(wallets);
             }
             stack.set_cheatcodes(cheatcodes);
         }

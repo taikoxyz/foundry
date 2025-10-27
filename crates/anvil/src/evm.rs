@@ -129,7 +129,7 @@ mod tests {
                     map.insert(0, block_env);
                     map
                 },
-                cfg_env: CfgEnv::new_with_spec(spec)
+                cfg_env: CfgEnv::new_with_spec(spec),
             },
             tx: TxEnv {
                 kind: MultiChainTxKind::Call(ChainAddress(0, PRECOMPILE_ADDR)),

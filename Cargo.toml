@@ -205,7 +205,7 @@ foundry-linking = { path = "crates/linking" }
 # solc & compilation utilities
 foundry-block-explorers = { version = "0.19.1", default-features = false }
 foundry-compilers = { version = "0.17.3", default-features = false }
-foundry-fork-db = { git = "https://github.com/taikoxyz/foundry-fork-db.git", branch = "v75-gwyneth-claude" }
+foundry-fork-db = { git = "https://github.com/taikoxyz/foundry-fork-db.git", branch = "v86-gwyneth" }
 solang-parser = { version = "=0.3.9", package = "foundry-solang-parser" }
 solar-ast = { version = "=0.1.4", default-features = false }
 solar-parse = { version = "=0.1.4", default-features = false }
@@ -225,6 +225,7 @@ alloy-provider = { version = "1.0.11", default-features = false }
 alloy-pubsub = { version = "1.0.11", default-features = false }
 alloy-rpc-client = { version = "1.0.11", default-features = false }
 alloy-rpc-types = { version = "1.0.11", default-features = true }
+alloy-rpc-types-eth = { version = "1.0.11", default-features = false }
 alloy-serde = { version = "1.0.11", default-features = false }
 alloy-signer = { version = "1.0.11", default-features = false }
 alloy-signer-aws = { version = "1.0.11", default-features = false }
@@ -263,15 +264,13 @@ op-alloy-flz = "0.13.1"
 
 ## revm
 #revm = { version = "24.0.1", default-features = false }
-revm = { git = "https://github.com/taikoxyz/revm-private.git", branch = "song/v75-gwyneth-claude", default-features = false, features = ["std"] }
-revm-inspectors = { git = "https://github.com/taikoxyz/revm-inspectors.git", branch = "v0.23.0-gwyneth-claude" }
+revm = { git = "https://github.com/taikoxyz/revm-private.git", branch = "v86-gwyneth", default-features = false, features = ["std"] }
+revm-inspectors = { git = "https://github.com/taikoxyz/revm-inspectors.git", branch = "v0.29.0-gwyneth" }
 #revm-inspectors = { version = "0.23.0", features = ["serde"] }
 #op-revm = { version = "5.0.1", default-features = false }
 
 ## alloy-evm
-#alloy-evm = "0.10.0"
-#alloy-evm = { git = "https://github.com/taikoxyz/alloy-evm.git", branch = "v0.10-gwyneth-claude" }
-alloy-evm = { path = "../alloy-evm/crates/evm" }
+alloy-evm = { git = "https://github.com/taikoxyz/alloy-evm.git", branch = "v0.20.1-gwyneth" }
 #alloy-op-evm = "0.10.0"
 
 ## cli
@@ -409,6 +408,7 @@ alloy-dyn-abi = { path = "vendor/alloy-dyn-abi" }
 ## alloy-evm
 # alloy-evm = { git = "https://github.com/alloy-rs/evm.git", rev = "dce752f" }
 # alloy-op-evm = { git = "https://github.com/alloy-rs/evm.git", rev = "dce752f" }
+
 
 ## revm
 # revm = { git = "https://github.com/bluealloy/revm.git", rev = "b5808253" }
