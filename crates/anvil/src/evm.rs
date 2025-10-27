@@ -1,6 +1,10 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, mem::ManuallyDrop, ptr, sync::Arc};
 
-use alloy_evm::{EthEvm, Evm, eth::EthEvmContext, precompiles::PrecompilesMap};
+use alloy_evm::{
+    EthEvm, Evm,
+    eth::EthEvmContext,
+    precompiles::{DynPrecompile, Precompile, PrecompilesMap},
+};
 // use revm::Database; // Unused after multi-chain migration
 //use foundry_evm_core::either_evm::EitherEvm;
 //use op_revm::OpContext;
@@ -21,8 +25,6 @@ pub fn inject_precompiles<DB, I>(
     DB: alloy_evm::MultiDatabase,
     I: Inspector<EthEvmContext<DB>>,
 {
-    use alloy_evm::precompiles::{DynPrecompile, Precompile};
-
     for p in precompiles {
         let precompile_fn = *p.precompile();
         evm.precompiles_mut().apply_precompile(p.address(), move |_| {
@@ -48,10 +50,20 @@ pub fn inject_precompiles<DB, I>(
 
             let wrapper = PrecompileWrapper { inner: precompile_fn };
 
-            // Create DynPrecompile using the public constructor
-            Some(DynPrecompile::new(wrapper))
+            Some(dyn_precompile_from(wrapper))
         });
     }
+}
+
+fn dyn_precompile_from<P>(precompile: P) -> DynPrecompile
+where
+    P: Precompile + Send + Sync + 'static,
+{
+    let arc: Arc<dyn Precompile + Send + Sync> = Arc::new(precompile);
+    let arc = ManuallyDrop::new(arc);
+    // SAFETY: `DynPrecompile` is a newtype wrapper around `Arc<dyn Precompile + Send + Sync>`.
+    // Reinterpreting the pointer preserves layout and transfers ownership.
+    unsafe { ptr::read(&*arc as *const Arc<_> as *const DynPrecompile) }
 }
 
 #[cfg(test)]
