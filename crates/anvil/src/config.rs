@@ -1317,11 +1317,11 @@ latest block number: {latest_block}"
             env.evm_env.cfg_env.chain_id = chain_id;
             env.tx.chain_id = chain_id.into();
 
-            if chain_id != previous_chain_id {
-                if let Some(mut block_env) = env.evm_env.block_env.remove(&previous_chain_id) {
-                    block_env.beneficiary = ChainAddress::new(chain_id, block_env.beneficiary.1);
-                    env.evm_env.block_env.insert(chain_id, block_env);
-                }
+            if chain_id != previous_chain_id
+                && let Some(mut block_env) = env.evm_env.block_env.remove(&previous_chain_id)
+            {
+                block_env.beneficiary = ChainAddress::new(chain_id, block_env.beneficiary.1);
+                env.evm_env.block_env.insert(chain_id, block_env);
             }
             chain_id
         };

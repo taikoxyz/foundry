@@ -6,7 +6,6 @@ use alloy_primitives::{Address, B256, Selector, TxKind, U256};
 use alloy_provider::{Network, network::BlockResponse};
 use alloy_rpc_types::{Transaction, TransactionRequest};
 use foundry_config::NamedChain;
-use revm::context::BlockEnv;
 pub use revm::{
     primitives::{ChainAddress, MultiChainTxKind},
     state::EvmState as StateChangeset,
@@ -25,7 +24,7 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
     use NamedChain::*;
     let chain_id = env.cfg.chain_id;
 
-    env.block.entry(chain_id).or_insert_with(BlockEnv::default);
+    env.block.entry(chain_id).or_default();
 
     if let Ok(chain) = NamedChain::try_from(chain_id) {
         let block_number = block.header().number();
@@ -33,11 +32,11 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
         match chain {
             Mainnet => {
                 // after merge difficulty is supplanted with prevrandao EIP-4399
-                if block_number >= 15_537_351u64 {
-                    if let Some(block_env) = env.block.get_mut(&chain_id) {
-                        let prevrandao = block_env.prevrandao.unwrap_or_default();
-                        block_env.difficulty = prevrandao.into();
-                    }
+                if block_number >= 15_537_351u64
+                    && let Some(block_env) = env.block.get_mut(&chain_id)
+                {
+                    let prevrandao = block_env.prevrandao.unwrap_or_default();
+                    block_env.difficulty = prevrandao.into();
                 }
 
                 return;
@@ -56,10 +55,8 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
             }
             Moonbeam | Moonbase | Moonriver | MoonbeamDev | Rsk | RskTestnet => {
                 if let Some(block_env) = env.block.get_mut(&chain_id) {
-                    if block_env.prevrandao.is_none() {
-                        // <https://github.com/foundry-rs/foundry/issues/4232>
-                        block_env.prevrandao = Some(B256::random());
-                    }
+                    // <https://github.com/foundry-rs/foundry/issues/4232>
+                    block_env.prevrandao.get_or_insert_with(B256::random);
                 }
             }
             c if c.is_arbitrum() => {
@@ -71,10 +68,9 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
                     .and_then(|l1_block_number| {
                         serde_json::from_value::<U256>(l1_block_number).ok()
                     })
+                    && let Some(block_env) = env.block.get_mut(&chain_id)
                 {
-                    if let Some(block_env) = env.block.get_mut(&chain_id) {
-                        block_env.number = l1_block_number.to();
-                    }
+                    block_env.number = l1_block_number.to();
                 }
             }
             _ => {}
@@ -82,11 +78,11 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
     }
 
     // if difficulty is `0` we assume it's past merge
-    if block.header().difficulty().is_zero() {
-        if let Some(block_env) = env.block.get_mut(&chain_id) {
-            let prevrandao = block_env.prevrandao.unwrap_or_default();
-            block_env.difficulty = prevrandao.into();
-        }
+    if block.header().difficulty().is_zero()
+        && let Some(block_env) = env.block.get_mut(&chain_id)
+    {
+        let prevrandao = block_env.prevrandao.unwrap_or_default();
+        block_env.difficulty = prevrandao.into();
     }
 }
 

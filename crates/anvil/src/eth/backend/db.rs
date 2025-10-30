@@ -482,14 +482,13 @@ where
         return Ok(None);
     };
 
-    if let Some(obj) = value.as_object_mut() {
-        if let Some(beneficiary) = obj.get_mut("beneficiary") {
-            if let Some(hex) = beneficiary.as_str() {
-                let address = Address::from_str(hex).map_err(DeError::custom)?;
-                // The chain id will be overwritten with the active chain during load_state.
-                *beneficiary = serde_json::json!([0u64, address]);
-            }
-        }
+    if let Some(obj) = value.as_object_mut()
+        && let Some(beneficiary) = obj.get_mut("beneficiary")
+        && let Some(hex) = beneficiary.as_str()
+    {
+        let address = Address::from_str(hex).map_err(DeError::custom)?;
+        // The chain id will be overwritten with the active chain during load_state.
+        *beneficiary = serde_json::json!([0u64, address]);
     }
 
     serde_json::from_value(value).map(Some).map_err(|err| DeError::custom(err.to_string()))

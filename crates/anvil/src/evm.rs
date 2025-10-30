@@ -55,6 +55,7 @@ pub fn inject_precompiles<DB, I>(
     }
 }
 
+#[allow(clippy::borrow_as_ptr)]
 fn dyn_precompile_from<P>(precompile: P) -> DynPrecompile
 where
     P: Precompile + Send + Sync + 'static,

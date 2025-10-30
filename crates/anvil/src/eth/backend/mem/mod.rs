@@ -773,10 +773,9 @@ impl Backend {
             .block_env
             .entry(chain_id)
             .and_modify(|block| block.beneficiary = ChainAddress(chain_id, block.beneficiary.1))
-            .or_insert_with(|| {
-                let mut block = BlockEnv::default();
-                block.beneficiary = ChainAddress(chain_id, Address::ZERO);
-                block
+            .or_insert_with(|| BlockEnv {
+                beneficiary: ChainAddress(chain_id, Address::ZERO),
+                ..Default::default()
             });
 
         match &mut env.tx.chain_ids {
