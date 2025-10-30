@@ -366,7 +366,6 @@ idna_adapter = "=1.1.0"
 zip-extract = "=0.2.1"
 
 [patch.crates-io]
-svm-rs-builds = { path = "crates/vendor/svm-rs-builds-0.5.16" }
 alloy-dyn-abi = { path = "../alloy-core/crates/dyn-abi" }
 
 ## alloy-core

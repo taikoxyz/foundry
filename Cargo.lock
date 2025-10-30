@@ -9143,6 +9143,8 @@ dependencies = [
 [[package]]
 name = "svm-rs-builds"
 version = "0.5.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ed5035d2abae3cd98c201b116ff22a82861589c060f3e4b687ce951cf381a6e"
 dependencies = [
  "const-hex",
  "semver 1.0.26",
