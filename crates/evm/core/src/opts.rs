@@ -229,9 +229,9 @@ impl EvmOpts {
             blocks.insert(
                 chain_id,
                 BlockEnv {
-                    number: self.env.block_number,
+                    number: U256::from(self.env.block_number),
                     beneficiary: ChainAddress(chain_id, coinbase.address()),
-                    timestamp: self.env.block_timestamp,
+                    timestamp: U256::from(self.env.block_timestamp),
                     gas_limit: self.gas_limit(),
                     basefee: self.env.block_base_fee_per_gas,
                     difficulty: U256::from(self.env.block_difficulty),

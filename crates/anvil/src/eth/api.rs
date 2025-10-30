@@ -3499,7 +3499,7 @@ impl TryFrom<Result<(InstructionResult, Option<Output>, u128, State)>> for GasEs
             }
             Err(err) => Err(err),
             Ok((exit, output, gas, _)) => match exit {
-                return_ok!() | InstructionResult::CallOrCreate => Ok(Self::Success(gas)),
+                return_ok!() => Ok(Self::Success(gas)),
 
                 // Revert opcodes:
                 InstructionResult::Revert => Ok(Self::Revert(output.map(|o| o.into_data()))),

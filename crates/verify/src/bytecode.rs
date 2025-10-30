@@ -249,7 +249,7 @@ impl VerifyBytecodeArgs {
 
             let chain_id = env.evm_env.cfg_env.chain_id;
             if let Some(block_env) = env.evm_env.block_env.get_mut(&chain_id) {
-                block_env.number = 0;
+                block_env.number = U256::ZERO;
             }
             let genesis_block = provider.get_block(gen_blk_num.into()).full().await?;
 
@@ -470,7 +470,7 @@ impl VerifyBytecodeArgs {
             .await?;
             let chain_id = env.evm_env.cfg_env.chain_id;
             if let Some(block_env) = env.evm_env.block_env.get_mut(&chain_id) {
-                block_env.number = simulation_block;
+                block_env.number = U256::from(simulation_block);
             }
             let block = provider.get_block(simulation_block.into()).full().await?;
 

@@ -12,7 +12,7 @@ use revm::{
     inspector::JournalExt,
     interpreter::{
         CallInputs, CallOutcome, CallScheme, InstructionResult, Interpreter, InterpreterAction,
-        InterpreterResult, interpreter::EthInterpreter, interpreter_types::Jumps,
+        interpreter::EthInterpreter, interpreter_types::{Jumps, LoopControl},
     },
     primitives::ChainAddress,
 };
@@ -22,7 +22,7 @@ const IGNORE: [Address; 2] = [HARDHAT_CONSOLE_ADDRESS, CHEATCODE_ADDRESS];
 
 /// Checks if the call scheme corresponds to any sort of delegate call
 pub fn is_delegatecall(scheme: CallScheme) -> bool {
-    matches!(scheme, CallScheme::DelegateCall | CallScheme::ExtDelegateCall | CallScheme::CallCode)
+    matches!(scheme, CallScheme::DelegateCall | CallScheme::CallCode)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -105,14 +105,12 @@ impl RevertDiagnostic {
     /// Injects the revert diagnostic into the debug traces. Should only be called after a revert.
     fn broadcast_diagnostic(&self, interp: &mut Interpreter) {
         if let Some(reason) = self.reason() {
-            interp.control.instruction_result = InstructionResult::Revert;
-            interp.control.next_action = InterpreterAction::Return {
-                result: InterpreterResult {
-                    output: reason.to_string().abi_encode().into(),
-                    gas: interp.control.gas.clone(),
-                    result: InstructionResult::Revert,
-                },
-            };
+            let gas = interp.gas;
+            interp.bytecode.set_action(InterpreterAction::new_return(
+                InstructionResult::Revert,
+                reason.to_string().abi_encode().into(),
+                gas,
+            ));
         }
     }
 
@@ -209,11 +207,13 @@ where
             return None;
         }
 
-        if let Ok(state) = ctx.journal().code(ChainAddress(1, target))
-            && state.is_empty()
-            && !inputs.input.is_empty()
-        {
-            self.non_contract_call = Some((target, inputs.scheme, ctx.journal_ref().depth()));
+        if !inputs.input.is_empty() {
+            let depth = ctx.journal_ref().depth();
+            if let Ok(state) = ctx.journal_mut().code(ChainAddress(1, target))
+                && state.is_empty()
+            {
+                self.non_contract_call = Some((target, inputs.scheme, depth));
+            }
         }
         None
     }

@@ -1,9 +1,8 @@
 use super::Ecx;
 use crate::inspector::Cheatcodes;
-use alloy_primitives::{Address, Bytes, U256};
-use foundry_common::sh_println;
+use alloy_primitives::{Bytes, U256};
 use revm::{
-    interpreter::{CreateInputs, CreateScheme, EOFCreateInputs},
+    interpreter::{CreateInputs, CreateScheme},
     primitives::ChainAddress,
 };
 
@@ -55,51 +54,6 @@ impl CommonCreateInput for &mut CreateInputs {
             .map(|acc| acc.info.nonce)
             .unwrap_or_default();
         let created_address = self.created_address(old_nonce);
-        let created_chain_address = ChainAddress(ecx.cfg.chain_id, created_address);
-        // SAFETY: Transmute to bypass lifetime variance restrictions - ecx outlives this call
-        let ecx_transmuted: &mut alloy_evm::eth::EthEvmContext<
-            &mut dyn foundry_evm_core::backend::MultiChainDatabaseExt,
-        > = unsafe { std::mem::transmute(ecx) };
-        cheatcodes.allow_cheatcodes_on_create(ecx_transmuted, self.caller, created_chain_address);
-        created_chain_address
-    }
-}
-
-impl CommonCreateInput for &mut EOFCreateInputs {
-    fn caller(&self) -> ChainAddress {
-        self.caller
-    }
-
-    fn gas_limit(&self) -> u64 {
-        self.gas_limit
-    }
-
-    fn value(&self) -> U256 {
-        self.value
-    }
-
-    fn init_code(&self) -> Bytes {
-        // For EOF creates, we approximate with empty bytes since the initcode is in a different
-        // format
-        Bytes::new()
-    }
-
-    fn scheme(&self) -> Option<CreateScheme> {
-        None // EOF creates don't use traditional schemes
-    }
-
-    fn set_caller(&mut self, caller: ChainAddress) {
-        self.caller = caller;
-    }
-
-    fn log_debug(&self, _cheatcodes: &mut Cheatcodes, _scheme: &CreateScheme) {
-        let created_address = self.kind.created_address().unwrap_or(&Address::ZERO);
-        let _ =
-            sh_println!("Create2Factory EOF create: {:?} -> {:?}", self.caller(), created_address);
-    }
-
-    fn allow_cheatcodes(&self, cheatcodes: &mut Cheatcodes, ecx: Ecx) -> ChainAddress {
-        let created_address = *self.kind.created_address().unwrap_or(&Address::ZERO);
         let created_chain_address = ChainAddress(ecx.cfg.chain_id, created_address);
         // SAFETY: Transmute to bypass lifetime variance restrictions - ecx outlives this call
         let ecx_transmuted: &mut alloy_evm::eth::EthEvmContext<

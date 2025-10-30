@@ -31,6 +31,7 @@ use revm::{
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
+    fmt,
     time::Instant,
 };
 use tracing::{debug, trace};
@@ -903,9 +904,14 @@ impl Backend {
         let fork_id = self.ensure_fork_id(id)?.clone();
 
         let fork = self.inner.get_fork_by_id_mut(id)?;
-        let full_block = fork.db.db.get_full_block(
-            env.evm_env.block_env.get(&env.evm_env.cfg_env.chain_id).unwrap().number,
-        )?;
+        let block_number = env
+            .evm_env
+            .block_env
+            .get(&env.evm_env.cfg_env.chain_id)
+            .unwrap()
+            .number
+            .to::<u64>();
+        let full_block = fork.db.db.get_full_block(block_number)?;
 
         for tx in full_block.inner.transactions.txns() {
             // System transactions such as on L2s don't contain any pricing info so we skip them
@@ -1075,10 +1081,11 @@ impl DatabaseExt for Backend {
         // Update block number and timestamp of active fork (if any) with current env values,
         // in order to preserve values changed by using `roll` and `warp` cheatcodes.
         if let Some(active_fork_id) = self.active_fork_id() {
+            let block = env.block.get(&env.cfg.chain_id).unwrap();
             self.forks.update_block(
                 self.ensure_fork_id(active_fork_id).cloned()?,
-                env.block.get(&env.cfg.chain_id).unwrap().number,
-                env.block.get(&env.cfg.chain_id).unwrap().timestamp,
+                block.number.to::<u64>(),
+                block.timestamp.to::<u64>(),
             )?;
         }
 
@@ -1487,6 +1494,7 @@ impl DatabaseExt for Backend {
                                 .map(|s| s.present_value)
                                 .unwrap_or_default(),
                             U256::from_be_bytes(value.0),
+                            0,
                         ),
                     )
                 })
@@ -1641,6 +1649,12 @@ pub trait MultiChainDatabaseManager {
 /// Combined trait that extends MultiChainDatabase with DatabaseExt methods
 /// This allows the same interface to provide both multi-chain and fork functionality
 pub trait MultiChainDatabaseExt: MultiChainDatabase<Error = DatabaseError> + DatabaseExt {}
+
+impl fmt::Debug for dyn MultiChainDatabaseExt + '_ {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("MultiChainDatabaseExt")
+    }
+}
 
 /// Wrapper for SimpleMultiChainDB that works with DatabaseExt trait objects
 pub struct DatabaseExtWrapper {
@@ -2656,20 +2670,12 @@ impl BackendInner {
         Precompiles::new(PrecompileSpecId::from_spec_id(self.spec_id), false)
     }
 
-    /// Returns a new, empty, `JournaledState` with set precompiles
+    /// Returns a new, empty, `JournaledState` initialised for the current spec
     pub fn new_journaled_state(&self) -> JournaledState {
         trace!("new_journaled_state");
-        let mut journal = {
-            let mut journal_inner = JournalInner::new();
-            journal_inner.set_spec_id(self.spec_id);
-            journal_inner
-        };
-        // XXX FIXME YSG
-        let chain_id = 0;
-        journal
-            .precompiles
-            .extend(self.precompiles().addresses().copied().map(|a| ChainAddress(chain_id, a)));
-        journal
+        let mut journal_inner = JournalInner::new();
+        journal_inner.set_spec_id(self.spec_id);
+        journal_inner
     }
 }
 
@@ -2785,17 +2791,18 @@ fn is_contract_in_state(journaled_state: &JournaledState, acc: ChainAddress) -> 
 /// Updates the env's block with the block's data
 fn update_env_block(env: &mut EnvMut<'_>, block: &AnyRpcBlock) {
     let block_env = env.block.get_mut(&env.cfg.chain_id).unwrap();
-    block_env.timestamp = block.header.timestamp;
+    block_env.timestamp = U256::from(block.header.timestamp);
     block_env.beneficiary =
         ChainAddress(env.tx.chain_ids.clone().unwrap()[0], block.header.beneficiary);
     block_env.difficulty = block.header.difficulty;
     block_env.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
     block_env.basefee = block.header.base_fee_per_gas.unwrap_or_default();
     block_env.gas_limit = block.header.gas_limit;
-    block_env.number = block.header.number;
+    block_env.number = U256::from(block.header.number);
     if let Some(excess_blob_gas) = block.header.excess_blob_gas {
+        let update_fraction = env.cfg.blob_base_fee_update_fraction.unwrap_or_default();
         block_env.blob_excess_gas_and_price =
-            Some(BlobExcessGasAndPrice::new(excess_blob_gas, false));
+            Some(BlobExcessGasAndPrice::new(excess_blob_gas, update_fraction));
     }
 }
 

@@ -29,21 +29,25 @@ impl EvmFoldedStackTraceBuilder {
     pub fn process_call_node(&mut self, nodes: &[CallTraceNode], idx: usize) {
         let node = &nodes[idx];
 
+        let decoded_trace = node.trace.decoded.as_deref();
+
         let func_name = if node.trace.kind.is_any_create() {
-            let contract_name = node.trace.decoded.label.as_deref().unwrap_or("Contract");
+            let contract_name =
+                decoded_trace.and_then(|decoded| decoded.label.as_deref()).unwrap_or("Contract");
             format!("new {contract_name}")
         } else {
             let selector = node
                 .selector()
                 .map(|selector| selector.encode_hex_with_prefix())
                 .unwrap_or_else(|| "fallback".to_string());
-            let signature =
-                node.trace.decoded.call_data.as_ref().map(|dc| &dc.signature).unwrap_or(&selector);
+            let signature = decoded_trace
+                .and_then(|decoded| decoded.call_data.as_ref().map(|dc| dc.signature.as_str()))
+                .unwrap_or(&selector);
 
-            if let Some(label) = &node.trace.decoded.label {
+            if let Some(label) = decoded_trace.and_then(|decoded| decoded.label.as_deref()) {
                 format!("{label}.{signature}")
             } else {
-                signature.clone()
+                signature.to_string()
             }
         };
 
@@ -86,7 +90,7 @@ impl EvmFoldedStackTraceBuilder {
         step_exits: &mut Vec<usize>,
     ) {
         let step = &steps[step_idx];
-        if let Some(decoded_step) = &step.decoded {
+        if let Some(decoded_step) = step.decoded.as_deref() {
             match decoded_step {
                 DecodedTraceStep::InternalCall(decoded_internal_call, step_end_idx) => {
                     let gas_used = steps[*step_end_idx].gas_used.saturating_sub(step.gas_used);

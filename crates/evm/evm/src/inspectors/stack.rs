@@ -10,7 +10,7 @@ use alloy_primitives::{
 use foundry_cheatcodes::{CheatcodesExecutor, Wallets};
 use foundry_evm_core::{
     ContextExt, Env, InspectorExt,
-    backend::{JournaledState, MultiChainDatabaseExt},
+    backend::MultiChainDatabaseExt,
     evm::new_evm_with_inspector,
 };
 use foundry_evm_coverage::HitMaps;
@@ -27,7 +27,7 @@ use revm::{
         Interpreter, InterpreterResult,
     },
     primitives::{ChainAddress, MultiChainTxKind},
-    state::{Account, AccountStatus},
+    state::Account,
 };
 use revm_inspectors::edge_cov::EdgeCovInspector;
 use std::{
@@ -278,8 +278,7 @@ pub struct InnerContextData {
 
 /// An inspector that calls multiple inspectors in sequence.
 ///
-/// If a call to an inspector returns a value other than [InstructionResult::Continue] (or
-/// equivalent) the remaining inspectors are not called.
+/// If a call to an inspector returns a value, the remaining inspectors are not called.
 ///
 /// Stack is divided into [Cheatcodes] and `InspectorStackInner`. This is done to allow assembling
 /// `InspectorStackRefMut` inside [Cheatcodes] to allow usage of it as [revm::Inspector]. This gives
@@ -647,15 +646,8 @@ impl InspectorStackRefMut<'_> {
             evm.journaled_state.inner.state = {
                 let mut state = journal.state.clone();
 
-                for (addr, acc_mut) in &mut state {
-                    // mark all accounts cold, besides preloaded addresses
-                    if !journal.warm_preloaded_addresses.contains(addr) {
-                        acc_mut.mark_cold();
-                    }
-
-                    // mark all slots cold
+                for acc_mut in state.values_mut() {
                     for slot_mut in acc_mut.storage.values_mut() {
-                        slot_mut.is_cold = true;
                         slot_mut.original_value = slot_mut.present_value;
                     }
                 }
@@ -691,28 +683,14 @@ impl InspectorStackRefMut<'_> {
             return (result, None);
         };
 
-        for (addr, mut acc) in res.state {
-            let Some(acc_mut) = ecx.journaled_state.inner.state.get_mut(&addr) else {
-                ecx.journaled_state.inner.state.insert(addr, acc);
-                continue;
-            };
-
-            // make sure accounts that were warmed earlier do not become cold
-            if acc.status.contains(AccountStatus::Cold)
-                && !acc_mut.status.contains(AccountStatus::Cold)
-            {
-                acc.status -= AccountStatus::Cold;
-            }
-            acc_mut.info = acc.info;
-            acc_mut.status |= acc.status;
-
-            for (key, val) in acc.storage {
-                let Some(slot_mut) = acc_mut.storage.get_mut(&key) else {
-                    acc_mut.storage.insert(key, val);
-                    continue;
-                };
-                slot_mut.present_value = val.present_value;
-                slot_mut.is_cold &= val.is_cold;
+        for (addr, acc) in res.state {
+            match ecx.journaled_state.inner.state.entry(addr) {
+                std::collections::hash_map::Entry::Occupied(mut occupied) => {
+                    *occupied.get_mut() = acc;
+                }
+                std::collections::hash_map::Entry::Vacant(vacant) => {
+                    vacant.insert(acc);
+                }
             }
         }
 
@@ -887,13 +865,9 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
                 &mut self.revert_diag
             ],
             |inspector| {
-                let mut out = None;
-                if let Some(output) = inspector.call(ecx, call)
-                    && output.result.result != InstructionResult::Continue
-                {
-                    out = Some(Some(output));
-                }
-                out
+                inspector
+                    .call(ecx, call)
+                    .map(Some)
             },
         );
 
@@ -909,9 +883,7 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
                 }
             }
 
-            if let Some(output) = cheatcodes.call_with_executor(ecx, call, self.inner)
-                && output.result.result != InstructionResult::Continue
-            {
+            if let Some(output) = cheatcodes.call_with_executor(ecx, call, self.inner) {
                 return Some(output);
             }
         }
@@ -919,7 +891,7 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
         if self.enable_isolation && !self.in_inner_context && ecx.journaled_state.inner.depth == 1 {
             match call.scheme {
                 // Isolate CALLs
-                CallScheme::Call | CallScheme::ExtCall => {
+                CallScheme::Call => {
                     let input = call.input.bytes(ecx);
                     let (result, _) = self.transact_inner(
                         ecx,
@@ -935,28 +907,9 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
                     });
                 }
                 // Mark accounts and storage cold before STATICCALLs
-                CallScheme::StaticCall | CallScheme::ExtStaticCall => {
-                    let JournaledState { state, warm_preloaded_addresses, .. } =
-                        &mut ecx.journaled_state.inner;
-                    for (addr, acc_mut) in state {
-                        // Do not mark accounts and storage cold accounts with arbitrary storage.
-                        if let Some(_cheatcodes) = &self.cheatcodes {
-                            // TODO: implement has_arbitrary_storage check
-                            // && cheatcodes.has_arbitrary_storage(addr)
-                            // For now, continue processing normally
-                        }
-
-                        if !warm_preloaded_addresses.contains(addr) {
-                            acc_mut.mark_cold();
-                        }
-
-                        for slot_mut in acc_mut.storage.values_mut() {
-                            slot_mut.is_cold = true;
-                        }
-                    }
-                }
+                CallScheme::StaticCall => {}
                 // Process other variants as usual
-                CallScheme::CallCode | CallScheme::DelegateCall | CallScheme::ExtDelegateCall => {}
+                CallScheme::CallCode | CallScheme::DelegateCall => {}
             }
         }
 

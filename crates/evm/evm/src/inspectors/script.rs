@@ -1,4 +1,4 @@
-use alloy_primitives::Address;
+use alloy_primitives::{Address, Bytes};
 use foundry_common::sh_err;
 use foundry_evm_core::backend::DatabaseError;
 use revm::{
@@ -7,7 +7,8 @@ use revm::{
     context::ContextTr,
     inspector::JournalExt,
     interpreter::{
-        InstructionResult, Interpreter, interpreter::EthInterpreter, interpreter_types::Jumps,
+        InstructionResult, Interpreter, InterpreterAction, interpreter::EthInterpreter,
+        interpreter_types::{Jumps, LoopControl},
     },
     primitives::ChainAddress,
 };
@@ -41,10 +42,15 @@ where
                 "Usage of `address(this)` detected in script contract. Script contracts are ephemeral and their addresses should not be relied upon."
             );
             // Set the instruction result to Revert to stop execution
-            interpreter.control.instruction_result = InstructionResult::Revert;
+            let gas = interpreter.gas;
+            interpreter.bytecode.set_action(InterpreterAction::new_return(
+                InstructionResult::Revert,
+                Bytes::new(),
+                gas,
+            ));
         }
         // Note: We don't return anything here as step returns void.
-        // The original check returned InstructionResult::Continue, but that's the default
-        // behavior.
+        // The original check explicitly signaled to continue; leaving the action unset keeps the
+        // default behavior.
     }
 }
