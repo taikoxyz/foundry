@@ -10910,7 +10910,3 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "alloy-dyn-abi"
-version = "1.2.1"
