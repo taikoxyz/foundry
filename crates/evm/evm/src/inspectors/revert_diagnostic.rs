@@ -12,7 +12,8 @@ use revm::{
     inspector::JournalExt,
     interpreter::{
         CallInputs, CallOutcome, CallScheme, InstructionResult, Interpreter, InterpreterAction,
-        interpreter::EthInterpreter, interpreter_types::{Jumps, LoopControl},
+        interpreter::EthInterpreter,
+        interpreter_types::{Jumps, LoopControl},
     },
     primitives::ChainAddress,
 };

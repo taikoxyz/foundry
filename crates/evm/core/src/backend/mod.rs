@@ -904,13 +904,8 @@ impl Backend {
         let fork_id = self.ensure_fork_id(id)?.clone();
 
         let fork = self.inner.get_fork_by_id_mut(id)?;
-        let block_number = env
-            .evm_env
-            .block_env
-            .get(&env.evm_env.cfg_env.chain_id)
-            .unwrap()
-            .number
-            .to::<u64>();
+        let block_number =
+            env.evm_env.block_env.get(&env.evm_env.cfg_env.chain_id).unwrap().number.to::<u64>();
         let full_block = fork.db.db.get_full_block(block_number)?;
 
         for tx in full_block.inner.transactions.txns() {

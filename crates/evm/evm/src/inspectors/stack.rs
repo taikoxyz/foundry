@@ -9,9 +9,7 @@ use alloy_primitives::{
 };
 use foundry_cheatcodes::{CheatcodesExecutor, Wallets};
 use foundry_evm_core::{
-    ContextExt, Env, InspectorExt,
-    backend::MultiChainDatabaseExt,
-    evm::new_evm_with_inspector,
+    ContextExt, Env, InspectorExt, backend::MultiChainDatabaseExt, evm::new_evm_with_inspector,
 };
 use foundry_evm_coverage::HitMaps;
 use foundry_evm_traces::{SparsedTraceArena, TraceMode};
@@ -22,9 +20,10 @@ use revm::{
         result::{ExecutionResult, Output},
     },
     context_interface::CreateScheme,
+    inspector::inspectors::MultiChainGasInspector,
     interpreter::{
         CallInputs, CallOutcome, CallScheme, CreateInputs, CreateOutcome, Gas, InstructionResult,
-        Interpreter, InterpreterResult,
+        Interpreter, InterpreterResult, interpreter::EthInterpreter,
     },
     primitives::{ChainAddress, MultiChainTxKind},
     state::Account,
@@ -66,6 +65,8 @@ pub struct InspectorStackBuilder {
     /// In isolation mode all top-level calls are executed as a separate transaction in a separate
     /// EVM context, enabling more precise gas accounting and transaction state changes.
     pub enable_isolation: bool,
+    /// Whether to enable the multi-chain gas inspector.
+    pub multichain_gas: bool,
     /// Whether to enable Odyssey features.
     pub odyssey: bool,
     /// The wallets to set in the cheatcodes context.
@@ -162,6 +163,13 @@ impl InspectorStackBuilder {
         self
     }
 
+    /// Set whether to enable multi-chain gas accounting.
+    #[inline]
+    pub fn multichain_gas(mut self, yes: bool) -> Self {
+        self.multichain_gas = yes;
+        self
+    }
+
     /// Set whether to enable Odyssey features.
     /// For description of call isolation, see [`InspectorStack::enable_isolation`].
     #[inline]
@@ -189,6 +197,7 @@ impl InspectorStackBuilder {
             print,
             chisel_state,
             enable_isolation,
+            multichain_gas,
             odyssey,
             wallets,
             create2_deployer,
@@ -217,6 +226,9 @@ impl InspectorStackBuilder {
         stack.tracing(trace_mode);
 
         stack.enable_isolation(enable_isolation);
+        if multichain_gas {
+            stack.enable_multichain_gas(true);
+        }
         stack.odyssey(odyssey);
         stack.set_create2_deployer(create2_deployer);
 
@@ -300,6 +312,7 @@ pub struct InspectorStackInner {
     pub line_coverage: Option<LineCoverageCollector>,
     pub edge_coverage: Option<EdgeCovInspector>,
     pub fuzzer: Option<Fuzzer>,
+    pub multi_chain_gas: Option<MultiChainGasInspector>,
     pub log_collector: Option<LogCollector>,
     pub printer: Option<CustomPrintTracer>,
     pub tracer: Option<TracingInspector>,
@@ -443,6 +456,16 @@ impl InspectorStack {
         self.log_collector = yes.then(Default::default);
     }
 
+    /// Set whether to enable the multi-chain gas inspector.
+    #[inline]
+    pub fn enable_multichain_gas(&mut self, yes: bool) {
+        if yes {
+            self.multi_chain_gas.get_or_insert_with(Default::default);
+        } else {
+            self.multi_chain_gas = None;
+        }
+    }
+
     /// Set whether to enable the trace printer.
     #[inline]
     pub fn print(&mut self, yes: bool) {
@@ -548,6 +571,12 @@ impl InspectorStackRefMut<'_> {
         outcome: &mut CallOutcome,
     ) -> CallOutcome {
         let result = outcome.result.result;
+        if let Some(inspector) = self.multi_chain_gas.as_mut() {
+            <MultiChainGasInspector as Inspector<
+                EthEvmContext<&mut dyn MultiChainDatabaseExt>,
+                EthInterpreter,
+            >>::call_end(inspector, ecx, inputs, outcome);
+        }
         call_inspectors!(
             #[ret]
             [
@@ -580,6 +609,12 @@ impl InspectorStackRefMut<'_> {
         outcome: &mut CreateOutcome,
     ) -> CreateOutcome {
         let result = outcome.result.result;
+        if let Some(inspector) = self.multi_chain_gas.as_mut() {
+            <MultiChainGasInspector as Inspector<
+                EthEvmContext<&mut dyn MultiChainDatabaseExt>,
+                EthInterpreter,
+            >>::create_end(inspector, ecx, call, outcome);
+        }
         call_inspectors!(
             #[ret]
             [&mut self.tracer, &mut self.cheatcodes, &mut self.printer],
@@ -780,6 +815,9 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
         interpreter: &mut Interpreter,
         ecx: &mut EthEvmContext<&mut dyn MultiChainDatabaseExt>,
     ) {
+        if let Some(inspector) = self.multi_chain_gas.as_mut() {
+            inspector.initialize_interp(interpreter, ecx);
+        }
         call_inspectors!(
             [
                 &mut self.line_coverage,
@@ -797,6 +835,9 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
         interpreter: &mut Interpreter,
         ecx: &mut EthEvmContext<&mut dyn MultiChainDatabaseExt>,
     ) {
+        if let Some(inspector) = self.multi_chain_gas.as_mut() {
+            inspector.step(interpreter, ecx);
+        }
         call_inspectors!(
             [
                 &mut self.fuzzer,
@@ -817,6 +858,9 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
         interpreter: &mut Interpreter,
         ecx: &mut EthEvmContext<&mut dyn MultiChainDatabaseExt>,
     ) {
+        if let Some(inspector) = self.multi_chain_gas.as_mut() {
+            inspector.step_end(interpreter, ecx);
+        }
         call_inspectors!(
             [
                 &mut self.tracer,
@@ -855,6 +899,15 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
             self.top_level_frame_start(ecx);
         }
 
+        if let Some(inspector) = self.multi_chain_gas.as_mut() {
+            if let Some(outcome) = <MultiChainGasInspector as Inspector<
+                EthEvmContext<&mut dyn MultiChainDatabaseExt>,
+                EthInterpreter,
+            >>::call(inspector, ecx, call)
+            {
+                return Some(outcome);
+            }
+        }
         call_inspectors!(
             #[ret]
             [
@@ -864,11 +917,7 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
                 &mut self.printer,
                 &mut self.revert_diag
             ],
-            |inspector| {
-                inspector
-                    .call(ecx, call)
-                    .map(Some)
-            },
+            |inspector| inspector.call(ecx, call).map(Some),
         );
 
         if let Some(cheatcodes) = self.cheatcodes.as_deref_mut() {
@@ -949,6 +998,15 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
             self.top_level_frame_start(ecx);
         }
 
+        if let Some(inspector) = self.multi_chain_gas.as_mut() {
+            if let Some(outcome) = <MultiChainGasInspector as Inspector<
+                EthEvmContext<&mut dyn MultiChainDatabaseExt>,
+                EthInterpreter,
+            >>::create(inspector, ecx, create)
+            {
+                return Some(outcome);
+            }
+        }
         call_inspectors!(
             #[ret]
             [&mut self.tracer, &mut self.line_coverage, &mut self.cheatcodes],

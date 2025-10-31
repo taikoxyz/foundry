@@ -18,8 +18,9 @@ use rand::Rng;
 use revm::{
     context_interface::{JournalTr, block::Block},
     primitives::{
-        ChainAddress, KECCAK_EMPTY, hardfork::SpecId,
+        ChainAddress, KECCAK_EMPTY,
         eip4844::{BLOB_BASE_FEE_UPDATE_FRACTION_CANCUN, BLOB_BASE_FEE_UPDATE_FRACTION_PRAGUE},
+        hardfork::SpecId,
     },
     state::{Account, Bytecode},
 };

@@ -5,7 +5,8 @@ use revm::{
     context::ContextTr,
     inspector::JournalExt,
     interpreter::{
-        InstructionResult, Interpreter, interpreter::EthInterpreter,
+        InstructionResult, Interpreter,
+        interpreter::EthInterpreter,
         interpreter_types::{Jumps, LoopControl},
     },
 };
@@ -44,11 +45,8 @@ where
                 .as_ref()
                 .and_then(|action| action.instruction_result())
                 .unwrap_or_default();
-            self.state = Some((
-                interp.stack.data().clone(),
-                interp.memory.context_memory().to_vec(),
-                result,
-            ))
+            self.state =
+                Some((interp.stack.data().clone(), interp.memory.context_memory().to_vec(), result))
         }
     }
 }

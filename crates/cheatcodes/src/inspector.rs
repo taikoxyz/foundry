@@ -33,7 +33,7 @@ use foundry_evm_core::{
     abi::Vm::stopExpectSafeMemoryCall,
     backend::{DatabaseExt, MultiChainDatabaseExt, RevertDiagnostic},
     constants::{CHEATCODE_ADDRESS, HARDHAT_CONSOLE_ADDRESS, MAGIC_ASSUME},
-    evm::{new_evm_with_existing_context, FoundryEvm},
+    evm::{FoundryEvm, new_evm_with_existing_context},
 };
 use foundry_evm_traces::TracingInspector;
 use itertools::Itertools;
@@ -349,7 +349,9 @@ impl ArbitraryStorage {
                 storage_cache.insert(slot, new_value);
                 // Update source storage with new value.
                 if let Ok(mut source_account) = ecx.journaled_state.load_account(*source) {
-                    source_account.storage.insert(slot, EvmStorageSlot::new(new_value, transaction_id));
+                    source_account
+                        .storage
+                        .insert(slot, EvmStorageSlot::new(new_value, transaction_id));
                 }
                 new_value
             }
@@ -1637,7 +1639,6 @@ impl Inspector<alloy_evm::eth::EthEvmContext<&mut dyn MultiChainDatabaseExt>> fo
     ) {
         self.create_end_common(ecx, outcome);
     }
-
 }
 
 impl InspectorExt for Cheatcodes {

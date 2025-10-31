@@ -10,7 +10,9 @@ use alloy_primitives::{
 };
 use revm::{
     context::JournalTr,
-    interpreter::{InstructionResult, Interpreter, InterpreterAction, interpreter_types::LoopControl},
+    interpreter::{
+        InstructionResult, Interpreter, InterpreterAction, interpreter_types::LoopControl,
+    },
 };
 
 use super::revert_handlers::RevertParameters;
@@ -826,9 +828,11 @@ pub(crate) fn handle_expect_emit(
         } else {
             let error = Error::encode("use vm.expectEmitAnonymous to match anonymous events");
             let gas = interpreter.gas;
-            interpreter
-                .bytecode
-                .set_action(InterpreterAction::new_return(InstructionResult::Revert, error, gas));
+            interpreter.bytecode.set_action(InterpreterAction::new_return(
+                InstructionResult::Revert,
+                error,
+                gas,
+            ));
         }
         return;
     };

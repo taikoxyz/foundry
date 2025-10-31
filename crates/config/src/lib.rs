@@ -2373,7 +2373,7 @@ impl Default for Config {
             block_number: 1,
             fork_block_number: None,
             chain: None,
-            gas_limit: (1u64 << 30).into(), // ~1B
+            gas_limit: u64::MAX.into(),
             code_size_limit: None,
             gas_price: None,
             block_base_fee_per_gas: 0,

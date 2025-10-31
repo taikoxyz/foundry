@@ -5,17 +5,18 @@ use alloy_evm::{Evm, EvmEnv, eth::EthEvmContext, precompiles::PrecompilesMap};
 use alloy_primitives::Bytes;
 use foundry_fork_db::DatabaseError;
 use revm::{
-    Context, Journal,
+    Context, ExecuteEvm, InspectEvm, InspectSystemCallEvm, Journal, SystemCallEvm,
     context::{
         BlockEnv, CfgEnv, ContextTr, Evm as RevmEvm, JournalTr, LocalContext, TxEnv,
         result::{EVMError, HaltReason, ResultAndState},
     },
+    context_interface::LocalContextTr,
     handler::{EthFrame, FrameResult, Handler, MainnetHandler, instructions::EthInstructions},
     inspector::InspectorHandler,
-    interpreter::{FrameInput, SharedMemory, interpreter::EthInterpreter, interpreter_action::FrameInit},
+    interpreter::{
+        FrameInput, SharedMemory, interpreter::EthInterpreter, interpreter_action::FrameInit,
+    },
     primitives::{ChainAddress, HashMap, MultiChainTxKind, hardfork::SpecId},
-    ExecuteEvm, InspectEvm, InspectSystemCallEvm, SystemCallEvm,
-    context_interface::LocalContextTr,
 };
 
 /// Constructs a [`FoundryEvm`] with a mutable inspector reference.
@@ -113,13 +114,8 @@ impl<I: InspectorExt> FoundryEvm<'_, I> {
         let parent_chain_id = Some(self.inner.ctx.journal().current_chain_id());
         let parent_execution_mode = self.inner.ctx.journal().current_execution_mode();
 
-        let frame_init = FrameInit {
-            depth,
-            memory,
-            frame_input: frame,
-            parent_chain_id,
-            parent_execution_mode,
-        };
+        let frame_init =
+            FrameInit { depth, memory, frame_input: frame, parent_chain_id, parent_execution_mode };
 
         let mut frame_result =
             InspectorHandler::inspect_run_exec_loop(&mut handler, &mut self.inner, frame_init)?;
@@ -157,14 +153,11 @@ impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
         &mut self,
         mut tx: Self::Tx,
     ) -> Result<ResultAndState<Self::HaltReason>, Self::Error> {
-        // If no explicit chain id is provided, use the parent if available, otherwise default chain id.
+        // If no explicit chain id is provided, use the parent if available, otherwise default chain
+        // id.
         if tx.chain_id.is_none() {
-            let default_chain_id = self
-                .inner
-                .ctx
-                .cfg
-                .parent_chain_id
-                .unwrap_or(self.inner.ctx.cfg.chain_id);
+            let default_chain_id =
+                self.inner.ctx.cfg.parent_chain_id.unwrap_or(self.inner.ctx.cfg.chain_id);
             tx.chain_id = Some(default_chain_id);
             tx.caller = ChainAddress::new(default_chain_id, tx.caller.address());
             if let MultiChainTxKind::Call(ref mut addr) = tx.kind {
@@ -177,11 +170,7 @@ impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
             tx.chain_ids = Some(self.inner.ctx.block.keys().copied().collect());
         }
 
-        if self.inspect {
-            self.inner.inspect_tx(tx)
-        } else {
-            self.inner.transact(tx)
-        }
+        if self.inspect { self.inner.inspect_tx(tx) } else { self.inner.transact(tx) }
     }
 
     fn transact_system_call(
@@ -222,11 +211,7 @@ impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
     }
 
     fn components(&self) -> (&Self::DB, &Self::Inspector, &Self::Precompiles) {
-        (
-            &self.inner.ctx.journaled_state.database,
-            &self.inner.inspector,
-            &self.inner.precompiles,
-        )
+        (&self.inner.ctx.journaled_state.database, &self.inner.inspector, &self.inner.precompiles)
     }
 
     fn components_mut(&mut self) -> (&mut Self::DB, &mut Self::Inspector, &mut Self::Precompiles) {

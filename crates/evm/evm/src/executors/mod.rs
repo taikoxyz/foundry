@@ -132,17 +132,8 @@ impl Executor {
     }
 
     fn clone_with_backend(&self, backend: Backend) -> Self {
-        let env = Env::new_with_spec_id(
-            self.env.evm_env.cfg_env.clone(),
-            self.env
-                .evm_env
-                .block_env
-                .get(&self.env.evm_env.cfg_env.chain_id)
-                .cloned()
-                .unwrap_or_default(),
-            self.env.tx.clone(),
-            self.spec_id(),
-        );
+        let mut env = self.env.clone();
+        env.evm_env.cfg_env.spec = self.spec_id();
         Self::new(backend, env, self.inspector().clone(), self.gas_limit, self.legacy_assertions)
     }
 
@@ -388,6 +379,14 @@ impl Executor {
 
         let from = from.unwrap_or(CALLER);
         let chain_id = self.env().evm_env.cfg_env.chain_id;
+        debug!(
+            target: "forge::test",
+            cfg = chain_id,
+            tx = ?self.env().tx.chain_id,
+            allowed = ?self.env().tx.chain_ids,
+            block_keys = ?self.env().evm_env.block_env.keys().collect::<Vec<_>>(),
+            "executor setup env"
+        );
         self.backend_mut()
             .set_test_contract(ChainAddress(chain_id, to))
             .set_caller(ChainAddress(chain_id, from));
@@ -734,13 +733,20 @@ impl Executor {
                 // network conditions - the actual gas price is kept in `self.block` and is applied
                 // by the cheatcode handler if it is enabled
                 block_env: {
-                    let base_block =
-                        self.env().evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
-                    let mut block_env_map = HashMap::default();
+                    let mut block_env_map = self.env().evm_env.block_env.clone();
+
+                    let base_block = block_env_map.get(&chain_id).cloned().unwrap_or_default();
                     block_env_map.insert(
                         chain_id,
                         BlockEnv { basefee: 0_u64, gas_limit: self.gas_limit, ..base_block },
                     );
+
+                    if let Some(chain_ids) = base_tx.chain_ids.as_ref() {
+                        for &id in chain_ids {
+                            block_env_map.entry(id).or_insert_with(BlockEnv::default);
+                        }
+                    }
+
                     block_env_map
                 },
             },

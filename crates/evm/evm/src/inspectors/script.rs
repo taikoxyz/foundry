@@ -7,7 +7,8 @@ use revm::{
     context::ContextTr,
     inspector::JournalExt,
     interpreter::{
-        InstructionResult, Interpreter, InterpreterAction, interpreter::EthInterpreter,
+        InstructionResult, Interpreter, InterpreterAction,
+        interpreter::EthInterpreter,
         interpreter_types::{Jumps, LoopControl},
     },
     primitives::ChainAddress,

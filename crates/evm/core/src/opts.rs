@@ -211,16 +211,22 @@ impl EvmOpts {
             self.memory_limit,
             self.disable_block_gas_limit,
         );
-        cfg.xchain = true;
-        cfg.allow_mocking = true;
-        cfg.parent_chain_id = Some(self.env.parent_chain_id.unwrap_or(cfg.chain_id));
-        cfg.extension_oracle = Some(address!("1ADB9959EB142bE128E6dfEcc8D571f07cd66DeE"));
-
         let canonical_chain_id = cfg.chain_id;
         let mut block_chain_ids = self.chain_ids.clone().unwrap_or_default();
         if !block_chain_ids.contains(&canonical_chain_id) {
             block_chain_ids.push(canonical_chain_id);
         }
+
+        cfg.xchain = true;
+        cfg.allow_mocking = true;
+        cfg.extension_oracle = Some(address!("1ADB9959EB142bE128E6dfEcc8D571f07cd66DeE"));
+        cfg.gwyneth = Some(address!("9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7"));
+        cfg.parent_chain_id = Some(
+            self.env
+                .parent_chain_id
+                .or_else(|| block_chain_ids.iter().copied().find(|&id| id != canonical_chain_id))
+                .unwrap_or(canonical_chain_id),
+        );
 
         let tx_chain_ids = Some(block_chain_ids.clone());
         let coinbase = self.env.block_coinbase;
@@ -241,16 +247,14 @@ impl EvmOpts {
             );
         }
 
-        crate::Env {
-            evm_env: EvmEnv { cfg_env: cfg, block_env: blocks },
-            tx: TxEnv {
-                gas_price: self.env.gas_price.unwrap_or_default().into(),
-                gas_limit: self.gas_limit(),
-                caller: ChainAddress(canonical_chain_id, self.sender),
-                chain_ids: tx_chain_ids,
-                ..Default::default()
-            },
-        }
+        let mut tx = TxEnv::default();
+        tx.gas_price = self.env.gas_price.unwrap_or_default().into();
+        tx.gas_limit = self.gas_limit();
+        tx.caller = ChainAddress(canonical_chain_id, self.sender);
+        tx.chain_id = Some(canonical_chain_id);
+        tx.chain_ids = tx_chain_ids;
+
+        crate::Env { evm_env: EvmEnv { cfg_env: cfg, block_env: blocks }, tx }
     }
 
     /// Helper function that returns the [CreateFork] to use, if any.
