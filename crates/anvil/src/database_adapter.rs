@@ -8,7 +8,7 @@ use alloy_primitives::{Address, B256, U256, map::HashMap};
 use alloy_rpc_types::BlockId;
 use foundry_evm::backend::{BlockchainDb, DatabaseError, DatabaseResult, RevertStateSnapshotAction, StateSnapshot};
 use revm::{
-    database::{CacheDB, DatabaseRef, WrapDatabaseRef}, 
+    database::{DatabaseRef, WrapDatabaseRef}, 
     context_interface::MultiChainDatabase,
     database_interface::MultiChainDatabaseCommit,
     primitives::ChainAddress,
@@ -20,7 +20,7 @@ use foundry_evm::{backend::MemDb, fork::database::ForkedDatabase};
 use std::fmt;
 
 use crate::eth::backend::db::{
-    MaybeForkedDatabase, MaybeFullDatabase, SerializableAccountRecord, SerializableBlock,
+    AnvilCacheDB, MaybeForkedDatabase, MaybeFullDatabase, SerializableAccountRecord, SerializableBlock,
     SerializableHistoricalStates, SerializableState, SerializableTransaction, StateDb,
 };
 
@@ -65,11 +65,11 @@ pub trait AnvilDatabase: fmt::Debug + Send + Sync {
 /// Adapter for CacheDB
 #[derive(Debug)]
 pub struct CacheDbAdapter<T> {
-    pub inner: CacheDB<T>,
+    pub inner: AnvilCacheDB<T>,
 }
 
 impl<T: DatabaseRef<Error = DatabaseError> + Send + Sync + Clone + fmt::Debug> CacheDbAdapter<T> {
-    pub fn new(inner: CacheDB<T>) -> Self {
+    pub fn new(inner: AnvilCacheDB<T>) -> Self {
         Self { inner }
     }
 }

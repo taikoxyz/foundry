@@ -1,6 +1,5 @@
 use super::{
     backend::{
-        db::MaybeFullDatabase,
         mem::{BlockRequest, State, state},
     },
     sign::build_typed_transaction,
@@ -83,17 +82,17 @@ use anvil_core::{
 };
 use anvil_rpc::{error::RpcError, response::ResponseResult};
 use foundry_common::provider::ProviderBuilder;
-use foundry_evm::{backend::DatabaseError, decode::RevertDecoder};
+use foundry_evm::decode::RevertDecoder;
 use futures::{
     StreamExt,
     channel::{mpsc::Receiver, oneshot},
 };
 use parking_lot::RwLock;
+use crate::eth::backend::db::{AnvilCacheDB, Db};
 use revm::{
     bytecode::Bytecode,
     context::BlockEnv,
     context_interface::{block::BlobExcessGasAndPrice, result::Output},
-    database::{CacheDB, DatabaseRef},
     interpreter::{InstructionResult, return_ok, return_revert},
     primitives::eip7702::PER_EMPTY_ACCOUNT_COST,
 };
@@ -1283,8 +1282,10 @@ impl EthApi {
 
         self.backend
             .with_database_at(Some(block_request), |state, block_env| {
+                let cache_db = AnvilCacheDB::new(state);
+                let db = cache_db.as_db();
                 let (exit, out, _, access_list) = self.backend.build_access_list_with_state(
-                    &state,
+                    db,
                     request.clone(),
                     FeeDetails::zero(),
                     block_env.clone(),
@@ -1295,7 +1296,7 @@ impl EthApi {
                 request.access_list = Some(access_list.clone());
 
                 let (exit, out, gas_used, _) = self.backend.call_with_state(
-                    &state,
+                    db,
                     request.clone(),
                     FeeDetails::zero(),
                     block_env,
@@ -2220,7 +2221,7 @@ impl EthApi {
                 env.evm_env
                     .block_env
                     .get(&chain_id)
-                    .map(|block_env| block_env.timestamp)
+                    .map(|block_env| block_env.timestamp.saturating_to::<u64>())
                     .unwrap_or_default()
             },
             current_block_hash: self.backend.best_hash(),
@@ -2954,7 +2955,7 @@ impl EthApi {
         self.on_blocking_task(|this| async move {
             this.backend
                 .with_database_at(Some(block_request), |state, mut block| {
-                    let mut cache_db = CacheDB::new(state);
+                    let mut cache_db = AnvilCacheDB::new(state);
                     if let Some(state_overrides) = overrides.state {
                         state::apply_state_overrides(
                             state_overrides.into_iter().collect(),
@@ -2964,7 +2965,7 @@ impl EthApi {
                     if let Some(block_overrides) = overrides.block {
                         state::apply_block_overrides(*block_overrides, &mut cache_db, &mut block);
                     }
-                    this.do_estimate_gas_with_state(request, cache_db.as_dyn(), block)
+                    this.do_estimate_gas_with_state(request, cache_db.as_db(), block)
                 })
                 .await?
         })
@@ -2977,7 +2978,7 @@ impl EthApi {
     fn do_estimate_gas_with_state(
         &self,
         mut request: WithOtherFields<TransactionRequest>,
-        state: &dyn DatabaseRef<Error = DatabaseError>,
+        state: &dyn Db,
         block_env: BlockEnv,
     ) -> Result<u128> {
         // If the request is a simple native token transfer we can optimize
@@ -2993,7 +2994,7 @@ impl EthApi {
 
         if maybe_transfer
             && let Some(to) = to
-            && let Ok(target_code) = self.backend.get_code_with_state(&state, *to)
+            && let Ok(target_code) = self.backend.get_code_with_state(state, *to)
             && target_code.as_ref().is_empty()
         {
             return Ok(MIN_TRANSACTION_GAS);
@@ -3034,7 +3035,7 @@ impl EthApi {
 
         // execute the call without writing to db
         let ethres =
-            self.backend.call_with_state(&state, call_to_estimate, fees.clone(), block_env.clone());
+            self.backend.call_with_state(state, call_to_estimate, fees.clone(), block_env.clone());
 
         let gas_used = match ethres.try_into()? {
             GasEstimationCallResult::Success(gas) => Ok(gas),
@@ -3065,12 +3066,8 @@ impl EthApi {
         // Binary search for the ideal gas limit
         while (highest_gas_limit - lowest_gas_limit) > 1 {
             request.gas = Some(mid_gas_limit as u64);
-            let ethres = self.backend.call_with_state(
-                &state,
-                request.clone(),
-                fees.clone(),
-                block_env.clone(),
-            );
+            let ethres =
+                self.backend.call_with_state(state, request.clone(), fees.clone(), block_env.clone());
 
             match ethres.try_into()? {
                 GasEstimationCallResult::Success(_) => {
@@ -3518,29 +3515,7 @@ impl TryFrom<Result<(InstructionResult, Option<Output>, u128, State)>> for GasEs
                 | InstructionResult::ReentrancySentryOOG => Ok(Self::OutOfGas),
 
                 // Other errors:
-                InstructionResult::OpcodeNotFound
-                | InstructionResult::CallNotAllowedInsideStatic
-                | InstructionResult::StateChangeDuringStaticCall
-                | InstructionResult::InvalidFEOpcode
-                | InstructionResult::InvalidJump
-                | InstructionResult::NotActivated
-                | InstructionResult::StackUnderflow
-                | InstructionResult::StackOverflow
-                | InstructionResult::OutOfOffset
-                | InstructionResult::CreateCollision
-                | InstructionResult::OverflowPayment
-                | InstructionResult::PrecompileError
-                | InstructionResult::NonceOverflow
-                | InstructionResult::CreateContractSizeLimit
-                | InstructionResult::CreateContractStartingWithEF
-                | InstructionResult::CreateInitCodeSizeLimit
-                | InstructionResult::FatalExternalError
-                | InstructionResult::ReturnContractInNotInitEOF
-                | InstructionResult::EOFOpcodeDisabledInLegacy
-                | InstructionResult::SubRoutineStackOverflow
-                | InstructionResult::EofAuxDataOverflow
-                | InstructionResult::EofAuxDataTooSmall
-                | InstructionResult::InvalidEXTCALLTarget => Ok(Self::EvmError(exit)),
+                _ => Ok(Self::EvmError(exit)),
             },
         }
     }

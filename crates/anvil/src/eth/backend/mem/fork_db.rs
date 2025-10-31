@@ -20,13 +20,13 @@ pub use foundry_evm::fork::database::ForkedDatabase;
 
 impl Db for ForkedDatabase {
     fn insert_account(&mut self, address: Address, account: AccountInfo) {
-        self.database_mut().insert_account(address, account)
+        self.database_mut().insert_account_info(address, account)
     }
 
     fn set_storage_at(&mut self, address: Address, slot: B256, val: B256) -> DatabaseResult<()> {
         // this ensures the account is loaded first
         let _ = Database::basic(self, address)?;
-        self.database_mut().set_storage_at(address, slot, val)
+        self.database_mut().insert_account_storage(address, slot.into(), val.into())
     }
 
     fn insert_block_hash(&mut self, number: U256, hash: B256) {

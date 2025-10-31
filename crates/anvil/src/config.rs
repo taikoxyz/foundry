@@ -48,7 +48,9 @@ use rand_08::thread_rng;
 use revm::{
     context::{BlockEnv, CfgEnv, TxEnv},
     context_interface::block::BlobExcessGasAndPrice,
-    primitives::{ChainAddress, hardfork::SpecId},
+    primitives::{
+        eip4844::BLOB_BASE_FEE_UPDATE_FRACTION_PRAGUE, ChainAddress, hardfork::SpecId,
+    },
 };
 use serde_json::{Value, json};
 use std::{
@@ -515,12 +517,13 @@ impl NodeConfig {
     pub fn get_blob_excess_gas_and_price(&self) -> BlobExcessGasAndPrice {
         if let Some(blob_excess_gas_and_price) = &self.blob_excess_gas_and_price {
             *blob_excess_gas_and_price
-        } else if let Some(excess_blob_gas) = self.genesis.as_ref().and_then(|g| g.excess_blob_gas)
+        } else if let Some(excess_blob_gas) =
+            self.genesis.as_ref().and_then(|g| g.excess_blob_gas)
         {
-            BlobExcessGasAndPrice::new(excess_blob_gas, false)
+            BlobExcessGasAndPrice::new(excess_blob_gas, BLOB_BASE_FEE_UPDATE_FRACTION_PRAGUE)
         } else {
             // If no excess blob gas is configured, default to 0
-            BlobExcessGasAndPrice::new(0, false)
+            BlobExcessGasAndPrice::new(0, BLOB_BASE_FEE_UPDATE_FRACTION_PRAGUE)
         }
     }
 
@@ -1081,12 +1084,12 @@ impl NodeConfig {
             let chain_id = env.evm_env.cfg_env.chain_id;
             let block_env = env.evm_env.block_env.entry(chain_id).or_default();
 
-            block_env.timestamp = genesis.timestamp;
+            block_env.timestamp = U256::from(genesis.timestamp);
             if let Some(base_fee) = genesis.base_fee_per_gas {
                 block_env.basefee = base_fee.try_into()?;
             }
             if let Some(number) = genesis.number {
-                block_env.number = number;
+                block_env.number = U256::from(number);
             }
             block_env.beneficiary = revm::primitives::ChainAddress::new(chain_id, genesis.coinbase);
         }
@@ -1244,8 +1247,8 @@ latest block number: {latest_block}"
         let current_block_env = env.evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
 
         let new_block_env = BlockEnv {
-            number: fork_block_number,
-            timestamp: block.header.timestamp,
+            number: U256::from(fork_block_number),
+            timestamp: U256::from(block.header.timestamp),
             difficulty: block.header.difficulty,
             // ensures prevrandao is set
             prevrandao: Some(block.header.mix_hash.unwrap_or_default()),
@@ -1281,14 +1284,16 @@ latest block number: {latest_block}"
                 (block.header.excess_blob_gas, block.header.blob_gas_used)
             {
                 if let Some(block_env) = env.evm_env.block_env.get_mut(&chain_id) {
-                    block_env.blob_excess_gas_and_price =
-                        Some(BlobExcessGasAndPrice::new(blob_excess_gas, false));
+                    block_env.blob_excess_gas_and_price = Some(BlobExcessGasAndPrice::new(
+                        blob_excess_gas,
+                        BLOB_BASE_FEE_UPDATE_FRACTION_PRAGUE,
+                    ));
                 }
                 let next_block_blob_excess_gas =
                     fees.get_next_block_blob_excess_gas(blob_excess_gas, blob_gas_used);
                 fees.set_blob_excess_gas_and_price(BlobExcessGasAndPrice::new(
                     next_block_blob_excess_gas,
-                    false,
+                    BLOB_BASE_FEE_UPDATE_FRACTION_PRAGUE,
                 ));
             }
         }
