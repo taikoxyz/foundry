@@ -1077,13 +1077,9 @@ fn convert_executed_result(
             (reason.into(), 0_u64, gas_used, None, vec![])
         }
     };
-    let gas = revm::interpreter::gas::calculate_initial_tx_gas(
+    let gas = revm::interpreter::gas::calculate_initial_tx_gas_for_tx(
+        env.tx.clone(),
         env.evm_env.cfg_env.spec,
-        &env.tx.data,
-        env.tx.kind.is_create(),
-        env.tx.access_list.len().try_into()?,
-        0,
-        0,
     );
 
     let result = match &out {
