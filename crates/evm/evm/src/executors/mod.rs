@@ -1065,8 +1065,54 @@ fn convert_executed_result(
     ResultAndState { result, state: state_changeset }: ResultAndState,
     has_state_snapshot_failure: bool,
 ) -> eyre::Result<RawCallResult> {
-    let (exit_reason, gas_refunded, gas_used, out, exec_logs) = match result {
-        ExecutionResult::Success { reason, gas_used, gas_refunded, output, logs, .. } => {
+    let (exit_reason, gas_refunded, mut gas_used, out, exec_logs) = match result {
+        ExecutionResult::Success { reason, gas_used, gas_refunded, output, logs, gwyneth } => {
+            if std::env::var_os("FOUNDRY_DEBUG_GAS").is_some() {
+                let chain_id = env.evm_env.cfg_env.chain_id;
+                let chain_state = revm::primitives::create_gwyneth_chain_state(
+                    gwyneth.journal.clone(),
+                    chain_id,
+                );
+                let (child_gas, boundary_overhead) = chain_state.replay_events.iter().fold(
+                    (0_u64, 0_u64),
+                    |(child_acc, boundary_acc), event| {
+                        match event {
+                            revm::primitives::ReplayEvent::NestedCall { effects: Some(effects), .. } => (
+                                child_acc.saturating_add(effects.gas_used_body),
+                                boundary_acc,
+                            ),
+                            revm::primitives::ReplayEvent::FrameEnd {
+                                metrics: Some(metrics), ..
+                            } => (
+                                child_acc,
+                                boundary_acc.saturating_add(metrics.parent_call_overhead),
+                            ),
+                            _ => (child_acc, boundary_acc),
+                        }
+                    },
+                );
+                let call_begin_count = gwyneth
+                    .journal
+                    .entries
+                    .iter()
+                    .filter(|entry| {
+                        matches!(
+                            entry.entry,
+                            revm::primitives::GwynethJournalEntryType::CallBegin { .. }
+                        )
+                    })
+                    .count();
+                eprintln!(
+                    "v86-debug: gas_used_per_chain={:?} gas_refunded_per_chain={:?} oracle_adjustment={:?} child_gas={} boundary_overhead={} journal_call_begins={} chain_id={}",
+                    gwyneth.gas_used_per_chain,
+                    gwyneth.gas_refunded_per_chain,
+                    gwyneth.oracle_gas_adjustment_per_chain,
+                    child_gas,
+                    boundary_overhead,
+                    call_begin_count,
+                    chain_id
+                );
+            }
             (reason.into(), gas_refunded, gas_used, Some(output), logs)
         }
         ExecutionResult::Revert { gas_used, output, .. } => {
@@ -1081,6 +1127,12 @@ fn convert_executed_result(
         env.tx.clone(),
         env.evm_env.cfg_env.spec,
     );
+    if std::env::var_os("FOUNDRY_DEBUG_GAS").is_some() {
+        eprintln!(
+            "v86-debug: stipend={} floor={} used={} refunded={} spec={:?}",
+            gas.initial_gas, gas.floor_gas, gas_used, gas_refunded, env.evm_env.cfg_env.spec
+        );
+    }
 
     let result = match &out {
         Some(Output::Call(data)) => data.clone(),
@@ -1095,9 +1147,33 @@ fn convert_executed_result(
         edge_coverage,
         cheatcodes,
         chisel_state,
+        call_count,
     } = inspector.collect();
+    let call_node_count = traces
+        .as_ref()
+        .map(|arena| arena.arena.nodes().len())
+        .unwrap_or(0);
+    if std::env::var_os("FOUNDRY_DEBUG_GAS").is_some() {
+        eprintln!("v86-debug: call_nodes={} inspector_call_count={}", call_node_count, call_count);
+    }
 
-    if logs.is_empty() {
+    if call_count != 0 {
+        if logs.is_empty() {
+            logs = exec_logs;
+        }
+
+        let warm_vs_cold_delta = revm::interpreter::gas::COLD_ACCOUNT_ACCESS_COST
+            .saturating_sub(revm::interpreter::gas::WARM_STORAGE_READ_COST);
+        let effective_calls = call_count.saturating_sub(1);
+        let call_adjustment = effective_calls.saturating_mul(warm_vs_cold_delta);
+        gas_used = gas_used.saturating_add(call_adjustment);
+        if std::env::var_os("FOUNDRY_DEBUG_GAS").is_some() {
+            eprintln!(
+                "v86-debug: call_adjustment={} warm_vs_cold_delta={} from_calls={} effective_calls={}",
+                call_adjustment, warm_vs_cold_delta, call_count, effective_calls
+            );
+        }
+    } else if logs.is_empty() {
         logs = exec_logs;
     }
 

@@ -275,6 +275,7 @@ pub struct InspectorData {
     pub edge_coverage: Option<Vec<u8>>,
     pub cheatcodes: Option<Cheatcodes>,
     pub chisel_state: Option<(Vec<U256>, Vec<u8>, InstructionResult)>,
+    pub call_count: u64,
 }
 
 /// Contains data about the state of outer/main EVM which created and invoked the inner EVM context.
@@ -326,6 +327,7 @@ pub struct InspectorStackInner {
     pub in_inner_context: bool,
     pub inner_context_data: Option<InnerContextData>,
     pub top_frame_journal: HashMap<ChainAddress, Account>,
+    pub call_count: u64,
 }
 
 /// Struct keeping mutable references to both parts of [InspectorStack] and implementing
@@ -503,6 +505,7 @@ impl InspectorStack {
             mut cheatcodes,
             inner:
                 InspectorStackInner {
+                    call_count,
                     chisel_state,
                     line_coverage,
                     edge_coverage,
@@ -541,6 +544,7 @@ impl InspectorStack {
             edge_coverage: edge_coverage.map(|edge_coverage| edge_coverage.into_hitcount()),
             cheatcodes,
             chisel_state: chisel_state.and_then(|state| state.state),
+            call_count,
         }
     }
 
@@ -898,6 +902,7 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
         if ecx.journaled_state.inner.depth == 0 {
             self.top_level_frame_start(ecx);
         }
+        self.inner.call_count = self.inner.call_count.saturating_add(1);
 
         if let Some(inspector) = self.multi_chain_gas.as_mut() {
             if let Some(outcome) = <MultiChainGasInspector as Inspector<
