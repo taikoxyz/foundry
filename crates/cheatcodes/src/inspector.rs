@@ -583,7 +583,7 @@ impl Cheatcodes {
         call: &CallInputs,
         executor: &mut E,
     ) -> Result {
-        trace!(target: "cheatcodes", "apply_cheatcode");
+        println!("apply_cheatcode");
         // decode the cheatcode call
         let decoded = Vm::VmCalls::abi_decode(&call.input.bytes(ecx)).map_err(|e| {
             if let alloy_sol_types::Error::UnknownSelector { name: _, selector } = e {
@@ -626,12 +626,7 @@ impl Cheatcodes {
         caller: ChainAddress,
         created_address: ChainAddress,
     ) {
-        trace!(
-            target: "cheatcodes",
-            ?caller,
-            ?created_address,
-            "allow_cheatcodes_on_create"
-        );
+        println!("allow_cheatcodes_on_create: {caller:?}, {created_address:?}");
         if ecx.journaled_state.inner.depth <= 1
             || ecx.journaled_state.database.has_cheatcode_access(&caller)
         {
@@ -922,20 +917,20 @@ impl Cheatcodes {
 
         let input_bytes = call.input.bytes(ecx);
         let input_hex = format!("0x{}", hex::encode(&input_bytes));
-        trace!(
-            target: "cheatcodes",
-            input = %input_hex,
-            return_start = call.return_memory_offset.start,
-            return_end = call.return_memory_offset.end,
-            gas_limit = call.gas_limit,
-            bytecode = ?call.bytecode_address,
-            target = ?call.target_address,
-            caller = ?call.caller,
-            value = ?call.value,
-            scheme = ?call.scheme,
-            is_static = call.is_static,
-            chain_id = self.chain_id,
-            "call_with_executor"
+        println!(
+            "[CallInputs {{ input: {input_hex}, return_memory_offset: {}..{}, gas_limit: {}, \
+bytecode_address: {:?}, target_address: {:?}, caller: {:?}, value: {:?}, scheme: {:?}, \
+is_static: {}, is_eof: false }}] call_with_executor: {}",
+            call.return_memory_offset.start,
+            call.return_memory_offset.end,
+            call.gas_limit,
+            call.bytecode_address,
+            call.target_address,
+            call.caller,
+            call.value,
+            call.scheme,
+            call.is_static,
+            self.chain_id
         );
 
         // Extract needed data early to avoid borrowing conflicts later
@@ -1044,11 +1039,10 @@ impl Cheatcodes {
         {
             let mut prank_applied = false;
 
-            trace!(
-                target: "cheatcodes",
-                caller = ?call.caller,
-                new_caller = ?prank.new_caller,
-                "applying prank"
+            println!(
+                "Applying prank: {caller:?} -> {new_caller:?}",
+                caller = call.caller,
+                new_caller = prank.new_caller
             );
 
             // At the target depth we set `msg.sender`
