@@ -1069,26 +1069,19 @@ fn convert_executed_result(
         ExecutionResult::Success { reason, gas_used, gas_refunded, output, logs, gwyneth } => {
             if std::env::var_os("FOUNDRY_DEBUG_GAS").is_some() {
                 let chain_id = env.evm_env.cfg_env.chain_id;
-                let chain_state = revm::primitives::create_gwyneth_chain_state(
-                    gwyneth.journal.clone(),
-                    chain_id,
-                );
+                let chain_state =
+                    revm::primitives::create_gwyneth_chain_state(gwyneth.journal.clone(), chain_id);
                 let (child_gas, boundary_overhead) = chain_state.replay_events.iter().fold(
                     (0_u64, 0_u64),
-                    |(child_acc, boundary_acc), event| {
-                        match event {
-                            revm::primitives::ReplayEvent::NestedCall { effects: Some(effects), .. } => (
-                                child_acc.saturating_add(effects.gas_used_body),
-                                boundary_acc,
-                            ),
-                            revm::primitives::ReplayEvent::FrameEnd {
-                                metrics: Some(metrics), ..
-                            } => (
-                                child_acc,
-                                boundary_acc.saturating_add(metrics.parent_call_overhead),
-                            ),
-                            _ => (child_acc, boundary_acc),
-                        }
+                    |(child_acc, boundary_acc), event| match event {
+                        revm::primitives::ReplayEvent::NestedCall {
+                            effects: Some(effects),
+                            ..
+                        } => (child_acc.saturating_add(effects.gas_used_body), boundary_acc),
+                        revm::primitives::ReplayEvent::FrameEnd {
+                            metrics: Some(metrics), ..
+                        } => (child_acc, boundary_acc.saturating_add(metrics.parent_call_overhead)),
+                        _ => (child_acc, boundary_acc),
                     },
                 );
                 let call_begin_count = gwyneth
@@ -1149,15 +1142,12 @@ fn convert_executed_result(
         chisel_state,
         call_count,
     } = inspector.collect();
-    let call_node_count = traces
-        .as_ref()
-        .map(|arena| arena.arena.nodes().len())
-        .unwrap_or(0);
+    let call_node_count = traces.as_ref().map(|arena| arena.arena.nodes().len()).unwrap_or(0);
     if std::env::var_os("FOUNDRY_DEBUG_GAS").is_some() {
         eprintln!("v86-debug: call_nodes={} inspector_call_count={}", call_node_count, call_count);
     }
 
-    if call_count != 0 {
+    if env.evm_env.cfg_env.xchain && call_count != 0 {
         if logs.is_empty() {
             logs = exec_logs;
         }

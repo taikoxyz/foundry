@@ -7,7 +7,7 @@ use crate::{
     eth::{
         backend::{
             cheats::CheatsManager,
-            db::{Db, MaybeFullDatabase, SerializableState},
+            db::{AnvilCacheDB, Db, MaybeFullDatabase, SerializableState},
             env::Env,
             executor::{ExecutedTransactions, TransactionExecutor},
             fork::ClientFork,
@@ -90,7 +90,6 @@ use foundry_evm::{
     inspectors::AccessListInspector,
     traces::TracingInspectorConfig,
 };
-use crate::eth::backend::db::AnvilCacheDB;
 //use foundry_evm_core::either_evm::EitherEvm;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
 use op_alloy_consensus::DEPOSIT_TX_TYPE_ID;
@@ -110,8 +109,8 @@ use revm::{
     interpreter::InstructionResult,
     precompile::secp256r1::P256VERIFY,
     primitives::{
-        ChainAddress, KECCAK_EMPTY, MultiChainTxKind, hardfork::SpecId,
-        eip4844::BLOB_BASE_FEE_UPDATE_FRACTION_PRAGUE,
+        ChainAddress, KECCAK_EMPTY, MultiChainTxKind,
+        eip4844::BLOB_BASE_FEE_UPDATE_FRACTION_PRAGUE, hardfork::SpecId,
     },
     state::AccountInfo,
 };
@@ -127,7 +126,7 @@ use std::{
 use storage::{Blockchain, DEFAULT_HISTORY_LIMIT, MinedTransaction};
 use tokio::sync::RwLock as AsyncRwLock;
 
-use super::executor::{new_evm_with_inspector_ref, RefDatabase};
+use super::executor::{RefDatabase, new_evm_with_inspector_ref};
 
 pub mod cache;
 pub mod fork_db;
@@ -1983,10 +1982,7 @@ impl Backend {
         opts: GethDebugTracingCallOptions,
     ) -> Result<GethTrace, BlockchainError> {
         let GethDebugTracingCallOptions {
-            tracing_options,
-            block_overrides,
-            state_overrides,
-            ..
+            tracing_options, block_overrides, state_overrides, ..
         } = opts;
         let GethDebugTracingOptions { config, tracer, tracer_config, .. } = tracing_options;
 
@@ -2501,8 +2497,7 @@ impl Backend {
         let current_block_number = {
             let env = self.env.read();
             let chain_id = env.evm_env.cfg_env.chain_id;
-            env
-                .evm_env
+            env.evm_env
                 .block_env
                 .get(&chain_id)
                 .map_or(0, |block| block.number.saturating_to::<u64>())

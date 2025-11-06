@@ -1,7 +1,5 @@
 use super::{
-    backend::{
-        mem::{BlockRequest, State, state},
-    },
+    backend::mem::{BlockRequest, State, state},
     sign::build_typed_transaction,
 };
 use crate::{
@@ -9,7 +7,7 @@ use crate::{
     eth::{
         backend::{
             self,
-            db::SerializableState,
+            db::{AnvilCacheDB, Db, SerializableState},
             mem::{MIN_CREATE_GAS, MIN_TRANSACTION_GAS},
             notifications::NewBlockNotifications,
             validate::TransactionValidator,
@@ -88,7 +86,6 @@ use futures::{
     channel::{mpsc::Receiver, oneshot},
 };
 use parking_lot::RwLock;
-use crate::eth::backend::db::{AnvilCacheDB, Db};
 use revm::{
     bytecode::Bytecode,
     context::BlockEnv,
@@ -3066,8 +3063,12 @@ impl EthApi {
         // Binary search for the ideal gas limit
         while (highest_gas_limit - lowest_gas_limit) > 1 {
             request.gas = Some(mid_gas_limit as u64);
-            let ethres =
-                self.backend.call_with_state(state, request.clone(), fees.clone(), block_env.clone());
+            let ethres = self.backend.call_with_state(
+                state,
+                request.clone(),
+                fees.clone(),
+                block_env.clone(),
+            );
 
             match ethres.try_into()? {
                 GasEstimationCallResult::Success(_) => {

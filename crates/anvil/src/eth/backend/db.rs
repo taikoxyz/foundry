@@ -17,7 +17,7 @@ use revm::{
     bytecode::Bytecode,
     context::BlockEnv,
     database::{CacheDB, DatabaseRef, DbAccount},
-    primitives::{ChainAddress, StorageKey, StorageValue, KECCAK_EMPTY},
+    primitives::{ChainAddress, KECCAK_EMPTY, StorageKey, StorageValue},
     state::{Account, AccountInfo},
 };
 use serde::{
@@ -25,7 +25,13 @@ use serde::{
     de::{Error as DeError, MapAccess, Visitor},
 };
 use serde_json::Value;
-use std::{collections::BTreeMap, fmt, ops::{Deref, DerefMut}, path::Path, str::FromStr};
+use std::{
+    collections::BTreeMap,
+    fmt,
+    ops::{Deref, DerefMut},
+    path::Path,
+    str::FromStr,
+};
 
 /// Multi-chain aware wrapper around [`revm::database::CacheDB`] that provides the
 /// additional trait implementations required by the Foundry fork.
@@ -125,10 +131,7 @@ where
 {
     type Error = DatabaseError;
 
-    fn basic_multi(
-        &mut self,
-        address: ChainAddress,
-    ) -> Result<Option<AccountInfo>, Self::Error> {
+    fn basic_multi(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
         self.inner.basic(address.1)
     }
 
@@ -172,10 +175,7 @@ where
 {
     type Error = DatabaseError;
 
-    fn basic_ref_multi(
-        &self,
-        address: ChainAddress,
-    ) -> Result<Option<AccountInfo>, Self::Error> {
+    fn basic_ref_multi(&self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
         self.inner.basic_ref(address.1)
     }
 
@@ -201,9 +201,7 @@ where
 }
 
 /// Helper trait get access to the full state data of the database
-pub trait MaybeFullDatabase:
-    DatabaseRef<Error = DatabaseError> + fmt::Debug + Send + Sync
-{
+pub trait MaybeFullDatabase: DatabaseRef<Error = DatabaseError> + fmt::Debug + Send + Sync {
     /// Returns a reference to the database as a `dyn DatabaseRef`.
     // TODO: Required until trait upcasting is stabilized: <https://github.com/rust-lang/rust/issues/65991>
     fn as_dyn(&self) -> &dyn DatabaseRef<Error = DatabaseError>;

@@ -127,11 +127,7 @@ impl MultiChainDatabaseRef for MemDb {
         self.code_by_hash_ref(code_hash)
     }
 
-    fn storage_ref_multi(
-        &self,
-        address: ChainAddress,
-        index: U256,
-    ) -> Result<U256, Self::Error> {
+    fn storage_ref_multi(&self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
         self.storage_ref(address.1, index)
     }
 

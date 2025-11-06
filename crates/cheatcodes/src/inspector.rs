@@ -64,6 +64,14 @@ use std::{
 
 mod utils;
 
+const CHEATCODE_WARM_ACCESS_PENALTY: u64 = revm::interpreter::gas::COLD_ACCOUNT_ACCESS_COST
+    .saturating_sub(revm::interpreter::gas::WARM_STORAGE_READ_COST)
+    .saturating_sub(
+        (revm::interpreter::gas::COLD_ACCOUNT_ACCESS_COST
+            - revm::interpreter::gas::WARM_STORAGE_READ_COST)
+            / 64,
+    );
+
 pub type Ecx<'a, 'b, 'c> = &'a mut alloy_evm::eth::EthEvmContext<
     &'b mut (dyn foundry_evm_core::backend::MultiChainDatabaseExt + 'c),
 >;
@@ -469,6 +477,9 @@ pub struct Cheatcodes {
     /// Gas metering state.
     pub gas_metering: GasMetering,
 
+    /// Tracks how many times a cheatcode/hardhat call target was invoked in the current execution.
+    cheatcode_call_counters: HashMap<ChainAddress, u64>,
+
     /// Mapping slots.
     pub mapping_slots: Option<AddressHashMap<MappingSlots>>,
 
@@ -539,6 +550,7 @@ impl Cheatcodes {
             serialized_jsons: Default::default(),
             eth_deals: Default::default(),
             gas_metering: Default::default(),
+            cheatcode_call_counters: Default::default(),
             mapping_slots: Default::default(),
             pc: Default::default(),
             chain_id: Default::default(),
@@ -913,6 +925,42 @@ impl Cheatcodes {
         call: &mut CallInputs,
         executor: &mut impl CheatcodesExecutor,
     ) -> Option<CallOutcome> {
+        let depth = ecx.journaled_state.inner.depth;
+        if depth == 0 {
+            self.cheatcode_call_counters.clear();
+        }
+        let is_xchain = ecx.cfg.xchain;
+        if matches!(call.target_address.1, CHEATCODE_ADDRESS | HARDHAT_CONSOLE_ADDRESS) {
+            let original_gas_limit = call.gas_limit;
+            let counter = self.cheatcode_call_counters.entry(call.target_address).or_insert(0);
+            if is_xchain && CHEATCODE_WARM_ACCESS_PENALTY != 0 {
+                let adjustment =
+                    counter.saturating_add(1).saturating_mul(CHEATCODE_WARM_ACCESS_PENALTY);
+                if adjustment != 0 {
+                    call.gas_limit = call.gas_limit.saturating_sub(adjustment);
+                }
+                if std::env::var_os("DEBUG_CHEATCODE_GAS").is_some() {
+                    eprintln!(
+                        "cheatcode_adjust target={:?} depth={} counter={} original={} new={} delta={}",
+                        call.target_address,
+                        depth,
+                        *counter,
+                        original_gas_limit,
+                        call.gas_limit,
+                        adjustment
+                    );
+                }
+            } else if std::env::var_os("DEBUG_CHEATCODE_GAS").is_some()
+                && CHEATCODE_WARM_ACCESS_PENALTY != 0
+            {
+                eprintln!(
+                    "cheatcode_adjust target={:?} depth={} counter={} original={} new={} delta={}",
+                    call.target_address, depth, *counter, original_gas_limit, call.gas_limit, 0
+                );
+            }
+            *counter = counter.saturating_add(1);
+        }
+
         let gas = Gas::new(call.gas_limit);
 
         let input_bytes = call.input.bytes(ecx);
@@ -936,7 +984,6 @@ is_static: {}, is_eof: false }}] call_with_executor: {}",
         // Extract needed data early to avoid borrowing conflicts later
         let fork_id = ecx.journaled_state.database.active_fork_id().unwrap_or_default();
         let chain_id = ecx.cfg.chain_id;
-        let depth = ecx.journaled_state.inner.depth;
 
         // `expectRevert`: track the max call depth during `expectRevert`
         if let Some(expected_revert) = &mut self.expected_revert {

@@ -51,7 +51,10 @@ mod tests {
         handler::{EthPrecompiles, instructions::EthInstructions},
         inspector::NoOpInspector,
         interpreter::interpreter::EthInterpreter,
-        precompile::{Precompile, PrecompileId, PrecompileOutput, PrecompileResult, PrecompileSpecId, Precompiles},
+        precompile::{
+            Precompile, PrecompileId, PrecompileOutput, PrecompileResult, PrecompileSpecId,
+            Precompiles,
+        },
         primitives::{ChainAddress, MultiChainTxKind, hardfork::SpecId},
     };
 

@@ -565,10 +565,7 @@ where
 {
     type Error = DatabaseError;
 
-    fn basic_multi(
-        &mut self,
-        address: ChainAddress,
-    ) -> Result<Option<AccountInfo>, Self::Error> {
+    fn basic_multi(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
         self.0.basic_ref_multi(address)
     }
 
@@ -580,11 +577,7 @@ where
         self.0.code_by_hash_ref_multi(chain_id, code_hash)
     }
 
-    fn storage_multi(
-        &mut self,
-        address: ChainAddress,
-        index: U256,
-    ) -> Result<U256, Self::Error> {
+    fn storage_multi(&mut self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
         self.0.storage_ref_multi(address, index)
     }
 

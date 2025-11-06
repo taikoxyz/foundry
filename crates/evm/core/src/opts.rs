@@ -202,32 +202,46 @@ impl EvmOpts {
 
     /// Returns the `revm::Env` configured with only local settings
     pub fn local_evm_env(&self) -> crate::Env {
-        println!("CORE!!!");
-        println!("chain_ids: {chain_ids:?}", chain_ids = self.chain_ids);
-
         let mut cfg = configure_env(
             self.env.chain_id.unwrap_or(foundry_common::DEV_CHAIN_ID),
             self.memory_limit,
             self.disable_block_gas_limit,
         );
         let canonical_chain_id = cfg.chain_id;
-        let mut block_chain_ids = self.chain_ids.clone().unwrap_or_default();
-        if !block_chain_ids.contains(&canonical_chain_id) {
-            block_chain_ids.push(canonical_chain_id);
+        let multi_chain_requested = std::env::var_os("FOUNDRY_ENABLE_XCHAIN").is_some();
+        let mut block_chain_ids = if multi_chain_requested {
+            let mut ids = self.chain_ids.clone().unwrap_or_default();
+            if !ids.contains(&canonical_chain_id) {
+                ids.push(canonical_chain_id);
+            }
+            ids
+        } else {
+            vec![canonical_chain_id]
+        };
+
+        let enable_xchain =
+            multi_chain_requested && block_chain_ids.iter().any(|&id| id != canonical_chain_id);
+        cfg.xchain = enable_xchain;
+        cfg.allow_mocking = enable_xchain;
+        if enable_xchain {
+            cfg.extension_oracle = Some(address!("1ADB9959EB142bE128E6dfEcc8D571f07cd66DeE"));
+            cfg.gwyneth = Some(address!("9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7"));
+            cfg.parent_chain_id = Some(
+                self.env
+                    .parent_chain_id
+                    .or_else(|| {
+                        block_chain_ids.iter().copied().find(|&id| id != canonical_chain_id)
+                    })
+                    .unwrap_or(canonical_chain_id),
+            );
+        } else {
+            cfg.extension_oracle = None;
+            cfg.gwyneth = None;
+            cfg.parent_chain_id = None;
+            block_chain_ids = vec![canonical_chain_id];
         }
 
-        cfg.xchain = true;
-        cfg.allow_mocking = true;
-        cfg.extension_oracle = Some(address!("1ADB9959EB142bE128E6dfEcc8D571f07cd66DeE"));
-        cfg.gwyneth = Some(address!("9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7"));
-        cfg.parent_chain_id = Some(
-            self.env
-                .parent_chain_id
-                .or_else(|| block_chain_ids.iter().copied().find(|&id| id != canonical_chain_id))
-                .unwrap_or(canonical_chain_id),
-        );
-
-        let tx_chain_ids = Some(block_chain_ids.clone());
+        let tx_chain_ids = if enable_xchain { Some(block_chain_ids.clone()) } else { None };
         let coinbase = self.env.block_coinbase;
         let mut blocks = HashMap::default();
         for &chain_id in &block_chain_ids {

@@ -48,9 +48,7 @@ use rand_08::thread_rng;
 use revm::{
     context::{BlockEnv, CfgEnv, TxEnv},
     context_interface::block::BlobExcessGasAndPrice,
-    primitives::{
-        eip4844::BLOB_BASE_FEE_UPDATE_FRACTION_PRAGUE, ChainAddress, hardfork::SpecId,
-    },
+    primitives::{ChainAddress, eip4844::BLOB_BASE_FEE_UPDATE_FRACTION_PRAGUE, hardfork::SpecId},
 };
 use serde_json::{Value, json};
 use std::{
@@ -517,8 +515,7 @@ impl NodeConfig {
     pub fn get_blob_excess_gas_and_price(&self) -> BlobExcessGasAndPrice {
         if let Some(blob_excess_gas_and_price) = &self.blob_excess_gas_and_price {
             *blob_excess_gas_and_price
-        } else if let Some(excess_blob_gas) =
-            self.genesis.as_ref().and_then(|g| g.excess_blob_gas)
+        } else if let Some(excess_blob_gas) = self.genesis.as_ref().and_then(|g| g.excess_blob_gas)
         {
             BlobExcessGasAndPrice::new(excess_blob_gas, BLOB_BASE_FEE_UPDATE_FRACTION_PRAGUE)
         } else {
