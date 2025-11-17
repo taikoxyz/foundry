@@ -1,12 +1,13 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, mem::ManuallyDrop, ptr, sync::Arc};
 
 use alloy_evm::{
-    Database, Evm,
+    EthEvm, Evm,
     eth::EthEvmContext,
-    precompiles::{DynPrecompile, PrecompilesMap},
+    precompiles::{DynPrecompile, Precompile, PrecompilesMap},
 };
-use foundry_evm_core::either_evm::EitherEvm;
-use op_revm::OpContext;
+// use revm::Database; // Unused after multi-chain migration
+//use foundry_evm_core::either_evm::EitherEvm;
+//use op_revm::OpContext;
 use revm::{Inspector, precompile::PrecompileWithAddress};
 
 /// Object-safe trait that enables injecting extra precompiles when using
@@ -18,16 +19,52 @@ pub trait PrecompileFactory: Send + Sync + Unpin + Debug {
 
 /// Inject precompiles into the EVM dynamically.
 pub fn inject_precompiles<DB, I>(
-    evm: &mut EitherEvm<DB, I, PrecompilesMap>,
+    evm: &mut EthEvm<DB, I, PrecompilesMap>,
     precompiles: Vec<PrecompileWithAddress>,
 ) where
-    DB: Database,
-    I: Inspector<EthEvmContext<DB>> + Inspector<OpContext<DB>>,
+    DB: alloy_evm::MultiDatabase,
+    I: Inspector<EthEvmContext<DB>>,
 {
     for p in precompiles {
-        evm.precompiles_mut()
-            .apply_precompile(p.address(), |_| Some(DynPrecompile::from(*p.precompile())));
+        let precompile_fn = *p.precompile();
+        evm.precompiles_mut().apply_precompile(p.address(), move |_| {
+            // Wrapper to adapt revm's precompile function to the Precompile trait
+            struct PrecompileWrapper {
+                inner: fn(
+                    &[u8],
+                    u64,
+                    &mut revm::precompile::PrecompileContext,
+                ) -> revm::precompile::PrecompileResult,
+            }
+
+            impl Precompile for PrecompileWrapper {
+                fn call(
+                    &self,
+                    data: &[u8],
+                    gas: u64,
+                    context: &mut revm::precompile::PrecompileContext,
+                ) -> revm::precompile::PrecompileResult {
+                    (self.inner)(data, gas, context)
+                }
+            }
+
+            let wrapper = PrecompileWrapper { inner: precompile_fn };
+
+            Some(dyn_precompile_from(wrapper))
+        });
     }
+}
+
+#[allow(clippy::borrow_as_ptr)]
+fn dyn_precompile_from<P>(precompile: P) -> DynPrecompile
+where
+    P: Precompile + Send + Sync + 'static,
+{
+    let arc: Arc<dyn Precompile + Send + Sync> = Arc::new(precompile);
+    let arc = ManuallyDrop::new(arc);
+    // SAFETY: `DynPrecompile` is a newtype wrapper around `Arc<dyn Precompile + Send + Sync>`.
+    // Reinterpreting the pointer preserves layout and transfers ownership.
+    unsafe { ptr::read(&*arc as *const Arc<_> as *const DynPrecompile) }
 }
 
 #[cfg(test)]
@@ -35,11 +72,11 @@ mod tests {
     use std::convert::Infallible;
 
     use alloy_evm::{EthEvm, Evm, EvmEnv, eth::EthEvmContext, precompiles::PrecompilesMap};
-    use alloy_op_evm::OpEvm;
-    use alloy_primitives::{Address, Bytes, TxKind, U256, address};
-    use foundry_evm_core::either_evm::EitherEvm;
+    //  use alloy_op_evm::OpEvm;
+    use alloy_primitives::{Address, Bytes, address};
+    //use foundry_evm_core::either_evm::EitherEvm;
     use itertools::Itertools;
-    use op_revm::{L1BlockInfo, OpContext, OpSpecId, OpTransaction, precompiles::OpPrecompiles};
+    //use op_revm::{L1BlockInfo, OpContext, OpSpecId, OpTransaction, precompiles::OpPrecompiles};
     use revm::{
         Journal,
         context::{CfgEnv, Evm as RevmEvm, JournalTr, LocalContext, TxEnv},
@@ -48,19 +85,16 @@ mod tests {
         inspector::NoOpInspector,
         interpreter::interpreter::EthInterpreter,
         precompile::{
-            PrecompileOutput, PrecompileResult, PrecompileSpecId, PrecompileWithAddress,
-            Precompiles,
+            PrecompileContext, PrecompileOutput, PrecompileResult, PrecompileSpecId,
+            PrecompileWithAddress, Precompiles,
         },
-        primitives::hardfork::SpecId,
+        primitives::{ChainAddress, MultiChainTxKind, hardfork::SpecId},
     };
 
     use crate::{PrecompileFactory, inject_precompiles};
 
     // A precompile activated in the `Prague` spec.
     const ETH_PRAGUE_PRECOMPILE: Address = address!("0x0000000000000000000000000000000000000011");
-
-    // A precompile activated in the `Isthmus` spec.
-    const OP_ISTHMUS_PRECOMPILE: Address = address!("0x0000000000000000000000000000000000000100");
 
     // A custom precompile address and payload for testing.
     const PRECOMPILE_ADDR: Address = address!("0x0000000000000000000000000000000000000071");
@@ -73,33 +107,60 @@ mod tests {
         fn precompiles(&self) -> Vec<PrecompileWithAddress> {
             vec![PrecompileWithAddress::from((
                 PRECOMPILE_ADDR,
-                custom_echo_precompile as fn(&[u8], u64) -> PrecompileResult,
+                custom_echo_precompile
+                    as fn(&[u8], u64, &mut PrecompileContext) -> PrecompileResult,
             ))]
         }
     }
 
     /// Custom precompile that echoes the input data.
     /// In this example it uses `0xdeadbeef` as the input data, returning it as output.
-    fn custom_echo_precompile(input: &[u8], _gas_limit: u64) -> PrecompileResult {
+    fn custom_echo_precompile(
+        input: &[u8],
+        _gas_limit: u64,
+        _context: &mut PrecompileContext,
+    ) -> PrecompileResult {
         Ok(PrecompileOutput { bytes: Bytes::copy_from_slice(input), gas_used: 0 })
     }
 
     /// Creates a new EVM instance with the custom precompile factory.
     fn create_eth_evm(
         spec: SpecId,
-    ) -> (foundry_evm::Env, EitherEvm<EmptyDBTyped<Infallible>, NoOpInspector, PrecompilesMap>)
-    {
+    ) -> (foundry_evm::Env, EthEvm<EmptyDBTyped<Infallible>, NoOpInspector, PrecompilesMap>) {
+        use revm::primitives::B256;
+
+        let mut block_env = revm::context::BlockEnv::default();
+        // Set prevrandao for post-Merge specs
+        if spec >= SpecId::MERGE {
+            block_env.prevrandao = Some(B256::ZERO);
+        }
+
         let eth_env = foundry_evm::Env {
-            evm_env: EvmEnv { block_env: Default::default(), cfg_env: CfgEnv::new_with_spec(spec) },
+            evm_env: EvmEnv {
+                block_env: {
+                    let mut map = revm::primitives::HashMap::default();
+                    map.insert(0, block_env);
+                    map
+                },
+                cfg_env: CfgEnv::new_with_spec(spec),
+            },
             tx: TxEnv {
-                kind: TxKind::Call(PRECOMPILE_ADDR),
+                kind: MultiChainTxKind::Call(ChainAddress(0, PRECOMPILE_ADDR)),
                 data: PAYLOAD.into(),
+                caller: ChainAddress(0, Address::ZERO),
+                gas_limit: 1_000_000,
                 ..Default::default()
             },
         };
 
         let eth_evm_context = EthEvmContext {
-            journaled_state: Journal::new(EmptyDB::default()),
+            journaled_state: {
+                let mut journal = Journal::new(EmptyDB::default());
+                journal.set_spec_id(spec);
+                journal.set_tx_origin_chain_id(0);
+                journal.set_parent_chain_id(Some(0));
+                journal
+            },
             block: eth_env.evm_env.block_env.clone(),
             cfg: eth_env.evm_env.cfg_env.clone(),
             tx: eth_env.tx.clone(),
@@ -109,23 +170,24 @@ mod tests {
         };
 
         let eth_precompiles = EthPrecompiles {
-            precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec)),
+            precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec), false),
             spec,
-        }
-        .precompiles;
-        let eth_evm = EitherEvm::Eth(EthEvm::new(
+            xchain: false,
+        };
+        let eth_evm = EthEvm::new(
             RevmEvm::new_with_inspector(
                 eth_evm_context,
                 NoOpInspector,
                 EthInstructions::<EthInterpreter, EthEvmContext<EmptyDB>>::default(),
-                PrecompilesMap::from_static(eth_precompiles),
+                PrecompilesMap::from_static(eth_precompiles.precompiles),
             ),
             true,
-        ));
+        );
 
         (eth_env, eth_evm)
     }
 
+    /*
     /// Creates a new OP EVM instance with the custom precompile factory.
     fn create_op_evm(
         spec: SpecId,
@@ -160,6 +222,8 @@ mod tests {
                 let mut journal = Journal::new(EmptyDB::default());
                 // Converting SpecId into OpSpecId
                 journal.set_spec_id(op_env.evm_env.cfg_env.spec);
+                journal.set_tx_origin_chain_id(0);
+                journal.set_parent_chain_id(Some(0));
                 journal
             },
             block: op_env.evm_env.block_env.clone(),
@@ -183,6 +247,7 @@ mod tests {
 
         (op_env, op_evm)
     }
+     */
 
     #[test]
     fn build_eth_evm_with_extra_precompiles_default_spec() {
@@ -197,11 +262,13 @@ mod tests {
 
         assert!(evm.precompiles().addresses().contains(&PRECOMPILE_ADDR));
 
+        /*
         let result = match &mut evm {
             EitherEvm::Eth(eth_evm) => eth_evm.transact(env.tx).unwrap(),
             _ => unreachable!(),
         };
-
+        */
+        let result = evm.transact(env.tx).unwrap();
         assert!(result.result.is_success());
         assert_eq!(result.result.output(), Some(&PAYLOAD.into()));
     }
@@ -219,15 +286,18 @@ mod tests {
 
         assert!(evm.precompiles().addresses().contains(&PRECOMPILE_ADDR));
 
+        /*
         let result = match &mut evm {
             EitherEvm::Eth(eth_evm) => eth_evm.transact(env.tx).unwrap(),
             _ => unreachable!(),
         };
-
+         */
+        let result = evm.transact(env.tx).unwrap();
         assert!(result.result.is_success());
         assert_eq!(result.result.output(), Some(&PAYLOAD.into()));
     }
 
+    /*
     #[test]
     fn build_op_evm_with_extra_precompiles_default_spec() {
         let (env, mut evm) = create_op_evm(SpecId::default(), OpSpecId::default());
@@ -277,4 +347,5 @@ mod tests {
         assert!(result.result.is_success());
         assert_eq!(result.result.output(), Some(&PAYLOAD.into()));
     }
+     */
 }

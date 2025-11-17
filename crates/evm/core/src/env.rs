@@ -1,8 +1,9 @@
 pub use alloy_evm::EvmEnv;
 use revm::{
-    Context, Database, Journal, JournalEntry,
+    Context, Journal, JournalEntry,
     context::{BlockEnv, CfgEnv, JournalInner, JournalTr, TxEnv},
-    primitives::hardfork::SpecId,
+    database_interface::MultiChainDatabase,
+    primitives::{HashMap, hardfork::SpecId},
 };
 
 /// Helper container type for [`EvmEnv`] and [`TxEnv`].
@@ -22,7 +23,9 @@ impl Env {
     }
 
     pub fn from(cfg: CfgEnv, block: BlockEnv, tx: TxEnv) -> Self {
-        Self { evm_env: EvmEnv { cfg_env: cfg, block_env: block }, tx }
+        let mut blocks = HashMap::default();
+        blocks.insert(cfg.chain_id, block);
+        Self { evm_env: EvmEnv { cfg_env: cfg, block_env: blocks }, tx }
     }
 
     pub fn new_with_spec_id(cfg: CfgEnv, block: BlockEnv, tx: TxEnv, spec_id: SpecId) -> Self {
@@ -35,7 +38,7 @@ impl Env {
 
 /// Helper struct with mutable references to the block and cfg environments.
 pub struct EnvMut<'a> {
-    pub block: &'a mut BlockEnv,
+    pub block: &'a mut HashMap<u64, BlockEnv>,
     pub cfg: &'a mut CfgEnv,
     pub tx: &'a mut TxEnv,
 }
@@ -70,7 +73,7 @@ impl AsEnvMut for Env {
     }
 }
 
-impl<DB: Database, J: JournalTr<Database = DB>, C> AsEnvMut
+impl<DB: MultiChainDatabase, J: JournalTr<Database = DB>, C> AsEnvMut
     for Context<BlockEnv, TxEnv, CfgEnv, DB, J, C>
 {
     fn as_env_mut(&mut self) -> EnvMut<'_> {
@@ -79,14 +82,15 @@ impl<DB: Database, J: JournalTr<Database = DB>, C> AsEnvMut
 }
 
 pub trait ContextExt {
-    type DB: Database;
+    type DB: crate::backend::MultiChainDatabaseExt;
 
     fn as_db_env_and_journal(
         &mut self,
     ) -> (&mut Self::DB, &mut JournalInner<JournalEntry>, EnvMut<'_>);
 }
 
-impl<DB: Database, C> ContextExt
+// this is right YSG
+impl<DB: crate::backend::MultiChainDatabaseExt, C> ContextExt
     for Context<BlockEnv, TxEnv, CfgEnv, DB, Journal<DB, JournalEntry>, C>
 {
     type DB = DB;

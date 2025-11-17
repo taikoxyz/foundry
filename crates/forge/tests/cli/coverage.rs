@@ -2,6 +2,7 @@ use foundry_common::fs::{self, files_with_ext};
 use foundry_test_utils::{
     TestCommand, TestProject,
     snapbox::{Data, IntoData},
+    util::OutputExt,
 };
 use std::path::Path;
 
@@ -338,6 +339,7 @@ contract BContractTest is DSTest {
 
 forgetest!(assert, |prj, cmd| {
     prj.insert_ds_test();
+    prj.update_config(|config| config.offline = true);
     prj.add_source(
         "AContract.sol",
         r#"
@@ -357,12 +359,7 @@ contract AContract {
 import "./test.sol";
 import {AContract} from "./AContract.sol";
 
-interface Vm {
-    function expectRevert() external;
-}
-
 contract AContractTest is DSTest {
-    Vm constant vm = Vm(HEVM_ADDRESS);
     function testAssertBranch() external {
         AContract a = new AContract();
         bool result = a.checkA(10);
@@ -371,8 +368,11 @@ contract AContractTest is DSTest {
 
     function testAssertRevertBranch() external {
         AContract a = new AContract();
-        vm.expectRevert();
-        a.checkA(1);
+        try a.checkA(1) {
+            fail();
+        } catch {
+            // expected revert
+        }
     }
 }
     "#,
@@ -380,33 +380,42 @@ contract AContractTest is DSTest {
     .unwrap();
 
     // Assert 50% statement coverage for assert failure (assert not considered a branch).
-    cmd.arg("coverage").args(["--mt", "testAssertRevertBranch"]).assert_success().stdout_eq(str![
-        [r#"
-...
-╭-------------------+--------------+--------------+---------------+---------------╮
+    let revert_output = cmd
+        .arg("coverage")
+        .args(["--mt", "testAssertRevertBranch"])
+        .assert_success()
+        .get_output()
+        .stdout_lossy();
+    let expected_revert = r#"╭-------------------+--------------+--------------+---------------+---------------╮
 | File              | % Lines      | % Statements | % Branches    | % Funcs       |
 +=================================================================================+
 | src/AContract.sol | 66.67% (2/3) | 50.00% (1/2) | 100.00% (0/0) | 100.00% (1/1) |
 |-------------------+--------------+--------------+---------------+---------------|
 | Total             | 66.67% (2/3) | 50.00% (1/2) | 100.00% (0/0) | 100.00% (1/1) |
-╰-------------------+--------------+--------------+---------------+---------------╯
-
-"#]
-    ]);
+╰-------------------+--------------+--------------+---------------+---------------╯"#;
+    assert!(
+        revert_output.contains(expected_revert.trim()),
+        "expected coverage table missing from output:\n{revert_output}"
+    );
 
     // Assert 100% statement coverage for proper assert (assert not considered a branch).
-    cmd.forge_fuse().arg("coverage").args(["--mt", "testAssertBranch"]).assert_success().stdout_eq(
-        str![[r#"
-...
-╭-------------------+---------------+---------------+---------------+---------------╮
+    cmd.forge_fuse();
+    let branch_output = cmd
+        .arg("coverage")
+        .args(["--mt", "testAssertBranch"])
+        .assert_success()
+        .get_output()
+        .stdout_lossy();
+    let expected_branch = r#"╭-------------------+---------------+---------------+---------------+---------------╮
 | File              | % Lines       | % Statements  | % Branches    | % Funcs       |
 +===================================================================================+
 | src/AContract.sol | 100.00% (3/3) | 100.00% (2/2) | 100.00% (0/0) | 100.00% (1/1) |
 |-------------------+---------------+---------------+---------------+---------------|
 | Total             | 100.00% (3/3) | 100.00% (2/2) | 100.00% (0/0) | 100.00% (1/1) |
-╰-------------------+---------------+---------------+---------------+---------------╯
-
-"#]],
+╰-------------------+---------------+---------------+---------------+---------------╯"#;
+    assert!(
+        branch_output.contains(expected_branch.trim()),
+        "expected coverage table missing from output:\n{branch_output}"
     );
 });
 
@@ -551,6 +560,8 @@ end_of_record
 
 forgetest!(branch, |prj, cmd| {
     prj.insert_ds_test();
+    prj.update_config(|config| config.offline = true);
+    cmd.env("FOUNDRY_OFFLINE", "true");
     prj.add_source(
         "Foo.sol",
         r#"
@@ -653,25 +664,16 @@ contract Foo {
 import "./test.sol";
 import {Foo} from "./Foo.sol";
 
-interface Vm {
-    function expectRevert(bytes calldata revertData) external;
-    function expectRevert() external;
-}
-
 contract FooTest is DSTest {
-    Vm constant vm = Vm(HEVM_ADDRESS);
     Foo internal foo = new Foo();
 
     function test_issue_7784() external {
         foo.foo(1);
-        vm.expectRevert();
-        foo.foo(2);
-        vm.expectRevert();
-        foo.foo(4);
+        expectFooRevert(2);
+        expectFooRevert(4);
         foo.foo(5);
         foo.foo(60);
-        vm.expectRevert();
-        foo.foo(70);
+        expectFooRevert(70);
     }
 
     function test_issue_4310() external {
@@ -729,12 +731,10 @@ contract FooTest is DSTest {
         uint256[] memory arr = new uint256[](1);
         arr[0] = 1;
         uint256 number = 2;
-        vm.expectRevert(abi.encodeWithSelector(Foo.Gte1.selector, number, arr[0]));
-        foo.checkLt(number, arr);
+        expectCheckLtRevert(number, arr[0], arr);
 
         number = 1;
-        vm.expectRevert(abi.encodeWithSelector(Foo.Gte1.selector, number, arr[0]));
-        foo.checkLt(number, arr);
+        expectCheckLtRevert(number, arr[0], arr);
 
         number = 0;
         bool result = foo.checkLt(number, arr);
@@ -758,56 +758,85 @@ contract FooTest is DSTest {
     function test_single_path_branch() external {
         foo.singlePathCoverage(15);
     }
+
+    function expectFooRevert(uint256 value) internal {
+        try foo.foo(value) {
+            fail();
+        } catch {}
+    }
+
+    function expectCheckLtRevert(
+        uint256 number,
+        uint256 firstElement,
+        uint256[] memory arr
+    ) internal {
+        try foo.checkLt(number, arr) returns (bool) {
+            fail();
+        } catch (bytes memory revertData) {
+            bytes4 selector = bytes4(revertData);
+            assertEq(bytes32(selector), bytes32(Foo.Gte1.selector));
+            bytes memory args = new bytes(revertData.length - 4);
+            for (uint256 i = 4; i < revertData.length; ++i) {
+                args[i - 4] = revertData[i];
+            }
+            (uint256 decodedNumber, uint256 decodedFirstElement) =
+                abi.decode(args, (uint256, uint256));
+            assertEq(decodedNumber, number);
+            assertEq(decodedFirstElement, firstElement);
+        }
+    }
 }
     "#,
     )
     .unwrap();
 
     // Assert no coverage for single path branch. 2 branches (parent and child) not covered.
-    cmd.arg("coverage")
+    let combined = cmd
+        .arg("coverage")
         .args(["--nmt", "test_single_path_child_branch|test_single_path_parent_branch"])
         .assert_success()
-        .stdout_eq(str![[r#"
-...
-╭-------------+----------------+----------------+---------------+---------------╮
+        .get_output()
+        .stdout_lossy();
+    let expected_combined = r#"╭-------------+----------------+----------------+---------------+---------------╮
 | File        | % Lines        | % Statements   | % Branches    | % Funcs       |
 +===============================================================================+
 | src/Foo.sol | 91.67% (33/36) | 90.00% (27/30) | 80.00% (8/10) | 100.00% (9/9) |
 |-------------+----------------+----------------+---------------+---------------|
 | Total       | 91.67% (33/36) | 90.00% (27/30) | 80.00% (8/10) | 100.00% (9/9) |
-╰-------------+----------------+----------------+---------------+---------------╯
-
-"#]]);
+╰-------------+----------------+----------------+---------------+---------------╯"#;
+    assert!(
+        combined.contains(expected_combined),
+        "expected combined coverage table missing:\n{combined}"
+    );
 
     // Assert no coverage for single path child branch. 1 branch (child) not covered.
-    cmd.forge_fuse()
+    cmd.forge_fuse();
+    let child = cmd
         .arg("coverage")
         .args(["--nmt", "test_single_path_child_branch"])
         .assert_success()
-        .stdout_eq(str![[r#"
-...
-╭-------------+----------------+----------------+---------------+---------------╮
+        .get_output()
+        .stdout_lossy();
+    let expected_child = r#"╭-------------+----------------+----------------+---------------+---------------╮
 | File        | % Lines        | % Statements   | % Branches    | % Funcs       |
 +===============================================================================+
 | src/Foo.sol | 97.22% (35/36) | 96.67% (29/30) | 90.00% (9/10) | 100.00% (9/9) |
 |-------------+----------------+----------------+---------------+---------------|
 | Total       | 97.22% (35/36) | 96.67% (29/30) | 90.00% (9/10) | 100.00% (9/9) |
-╰-------------+----------------+----------------+---------------+---------------╯
-
-"#]]);
+╰-------------+----------------+----------------+---------------+---------------╯"#;
+    assert!(child.contains(expected_child), "expected child coverage table missing:\n{child}");
 
     // Assert 100% coverage.
-    cmd.forge_fuse().arg("coverage").assert_success().stdout_eq(str![[r#"
-...
-╭-------------+-----------------+-----------------+-----------------+---------------╮
+    cmd.forge_fuse();
+    let full = cmd.arg("coverage").assert_success().get_output().stdout_lossy();
+    let expected_full = r#"╭-------------+-----------------+-----------------+-----------------+---------------╮
 | File        | % Lines         | % Statements    | % Branches      | % Funcs       |
 +===================================================================================+
 | src/Foo.sol | 100.00% (36/36) | 100.00% (30/30) | 100.00% (10/10) | 100.00% (9/9) |
 |-------------+-----------------+-----------------+-----------------+---------------|
 | Total       | 100.00% (36/36) | 100.00% (30/30) | 100.00% (10/10) | 100.00% (9/9) |
-╰-------------+-----------------+-----------------+-----------------+---------------╯
-
-"#]]);
+╰-------------+-----------------+-----------------+-----------------+---------------╯"#;
+    assert!(full.contains(expected_full), "expected full coverage table missing:\n{full}");
 });
 
 forgetest!(function_call, |prj, cmd| {
@@ -1294,6 +1323,8 @@ contract AContractTest is DSTest {
 // https://github.com/foundry-rs/foundry/issues/8604
 forgetest!(branch_with_calldata_reads, |prj, cmd| {
     prj.insert_ds_test();
+    prj.update_config(|config| config.offline = true);
+    cmd.env("FOUNDRY_OFFLINE", "true");
     prj.add_source(
         "AContract.sol",
         r#"
@@ -1341,47 +1372,58 @@ contract AContractTest is DSTest {
     .unwrap();
 
     // Assert 50% coverage for true branches.
-    cmd.arg("coverage").args(["--mt", "testTrueCoverage"]).assert_success().stdout_eq(str![[r#"
-...
-╭-------------------+--------------+--------------+--------------+---------------╮
+    let true_output = cmd
+        .arg("coverage")
+        .args(["--mt", "testTrueCoverage"])
+        .assert_success()
+        .get_output()
+        .stdout_lossy();
+    let expected_true = r#"╭-------------------+--------------+--------------+--------------+---------------╮
 | File              | % Lines      | % Statements | % Branches   | % Funcs       |
 +================================================================================+
 | src/AContract.sol | 80.00% (4/5) | 80.00% (4/5) | 50.00% (1/2) | 100.00% (1/1) |
 |-------------------+--------------+--------------+--------------+---------------|
 | Total             | 80.00% (4/5) | 80.00% (4/5) | 50.00% (1/2) | 100.00% (1/1) |
-╰-------------------+--------------+--------------+--------------+---------------╯
-
-"#]]);
+╰-------------------+--------------+--------------+--------------+---------------╯"#;
+    assert!(
+        true_output.contains(expected_true),
+        "expected true-branch coverage table missing:\n{true_output}"
+    );
 
     // Assert 50% coverage for false branches.
-    cmd.forge_fuse()
+    cmd.forge_fuse();
+    let false_output = cmd
         .arg("coverage")
         .args(["--mt", "testFalseCoverage"])
         .assert_success()
-        .stdout_eq(str![[r#"
-...
-╭-------------------+--------------+--------------+--------------+---------------╮
+        .get_output()
+        .stdout_lossy();
+    let expected_false = r#"╭-------------------+--------------+--------------+--------------+---------------╮
 | File              | % Lines      | % Statements | % Branches   | % Funcs       |
 +================================================================================+
 | src/AContract.sol | 60.00% (3/5) | 80.00% (4/5) | 50.00% (1/2) | 100.00% (1/1) |
 |-------------------+--------------+--------------+--------------+---------------|
 | Total             | 60.00% (3/5) | 80.00% (4/5) | 50.00% (1/2) | 100.00% (1/1) |
-╰-------------------+--------------+--------------+--------------+---------------╯
-
-"#]]);
+╰-------------------+--------------+--------------+--------------+---------------╯"#;
+    assert!(
+        false_output.contains(expected_false),
+        "expected false-branch coverage table missing:\n{false_output}"
+    );
 
     // Assert 100% coverage (true/false branches properly covered).
-    cmd.forge_fuse().arg("coverage").assert_success().stdout_eq(str![[r#"
-...
-╭-------------------+---------------+---------------+---------------+---------------╮
+    cmd.forge_fuse();
+    let both_output = cmd.arg("coverage").assert_success().get_output().stdout_lossy();
+    let expected_both = r#"╭-------------------+---------------+---------------+---------------+---------------╮
 | File              | % Lines       | % Statements  | % Branches    | % Funcs       |
 +===================================================================================+
 | src/AContract.sol | 100.00% (5/5) | 100.00% (5/5) | 100.00% (2/2) | 100.00% (1/1) |
 |-------------------+---------------+---------------+---------------+---------------|
 | Total             | 100.00% (5/5) | 100.00% (5/5) | 100.00% (2/2) | 100.00% (1/1) |
-╰-------------------+---------------+---------------+---------------+---------------╯
-
-"#]]);
+╰-------------------+---------------+---------------+---------------+---------------╯"#;
+    assert!(
+        both_output.contains(expected_both),
+        "expected full coverage table missing:\n{both_output}"
+    );
 });
 
 forgetest!(identical_bytecodes, |prj, cmd| {

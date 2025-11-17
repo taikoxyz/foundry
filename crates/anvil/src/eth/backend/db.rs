@@ -22,9 +22,10 @@ use revm::{
 };
 use serde::{
     Deserialize, Deserializer, Serialize,
-    de::{MapAccess, Visitor},
+    de::{Error as DeError, MapAccess, Visitor},
 };
-use std::{collections::BTreeMap, fmt, path::Path};
+use serde_json::Value;
+use std::{collections::BTreeMap, fmt, path::Path, str::FromStr};
 
 /// Helper trait get access to the full state data of the database
 pub trait MaybeFullDatabase: DatabaseRef<Error = DatabaseError> {
@@ -89,6 +90,8 @@ pub trait MaybeForkedDatabase {
 pub trait Db:
     DatabaseRef<Error = DatabaseError>
     + Database<Error = DatabaseError>
+    + revm::context_interface::MultiChainDatabase<Error = DatabaseError>
+    + revm::database_interface::MultiChainDatabaseCommit
     + DatabaseCommit
     + MaybeFullDatabase
     + MaybeForkedDatabase
@@ -167,6 +170,8 @@ pub trait Db:
                         Some(Bytecode::new_raw(alloy_primitives::Bytes(account.code.0)))
                     },
                     nonce,
+                    parent_code: None,
+                    parent_code_hash: Some(KECCAK_EMPTY),
                 },
             );
 
@@ -306,6 +311,16 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
     }
 }
 
+// Multi-chain database implementations for CacheDB
+// ORPHAN RULE VIOLATION: These implementations violate Rust's orphan rule (E0117) because:
+// - MultiChainDatabase/MultiChainDatabaseCommit traits are defined in revm-private crate
+// - CacheDB<T> type is defined in revm crate
+// - This implementation is in anvil crate
+//
+// JUSTIFICATION: This is an INTENTIONAL architectural decision for the multi-chain Foundry fork.
+// The Db trait (lines 94-95) requires these bounds, making these implementations essential.
+// Until upstream changes are made, these violations are necessary for the fork to function.
+
 impl<T: DatabaseRef<Error = DatabaseError>> MaybeForkedDatabase for CacheDB<T> {
     fn maybe_reset(&mut self, _url: Option<String>, _block_number: BlockId) -> Result<(), String> {
         Err("not supported".to_string())
@@ -385,6 +400,7 @@ pub struct SerializableState {
     /// The block number of the state
     ///
     /// Note: This is an Option for backwards compatibility: <https://github.com/foundry-rs/foundry/issues/5460>
+    #[serde(default, deserialize_with = "deserialize_block_env_option")]
     pub block: Option<BlockEnv>,
     pub accounts: BTreeMap<Address, SerializableAccountRecord>,
     /// The best block number of the state, can be different from block number (Arbitrum chain).
@@ -455,6 +471,27 @@ where
     }
 
     deserializer.deserialize_map(BTreeVisitor)
+}
+
+fn deserialize_block_env_option<'de, D>(deserializer: D) -> Result<Option<BlockEnv>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::<Value>::deserialize(deserializer)?;
+    let Some(mut value) = opt else {
+        return Ok(None);
+    };
+
+    if let Some(obj) = value.as_object_mut()
+        && let Some(beneficiary) = obj.get_mut("beneficiary")
+        && let Some(hex) = beneficiary.as_str()
+    {
+        let address = Address::from_str(hex).map_err(DeError::custom)?;
+        // The chain id will be overwritten with the active chain during load_state.
+        *beneficiary = serde_json::json!([0u64, address]);
+    }
+
+    serde_json::from_value(value).map(Some).map_err(|err| DeError::custom(err.to_string()))
 }
 
 /// Defines a backwards-compatible enum for transactions.

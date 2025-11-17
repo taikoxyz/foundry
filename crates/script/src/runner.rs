@@ -10,7 +10,10 @@ use foundry_evm::{
     constants::CALLER,
     executors::{DeployResult, EvmError, ExecutionErr, Executor, RawCallResult},
     opts::EvmOpts,
-    revm::interpreter::{InstructionResult, return_ok},
+    revm::{
+        interpreter::{InstructionResult, return_ok},
+        primitives::ChainAddress,
+    },
     traces::{TraceKind, Traces},
 };
 use std::collections::VecDeque;
@@ -166,7 +169,8 @@ impl ScriptRunner {
 
         // Optionally call the `setUp` function
         let (success, gas_used, labeled_addresses, transactions) = if !setup {
-            self.executor.backend_mut().set_test_contract(address);
+            let chain_id = self.executor.env().evm_env.cfg_env.chain_id;
+            self.executor.backend_mut().set_test_contract(ChainAddress(chain_id, address));
             (true, 0, Default::default(), Some(library_transactions))
         } else {
             match self.executor.setup(Some(self.evm_opts.sender), address, None) {

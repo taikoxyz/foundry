@@ -23,6 +23,7 @@ pub fn run() -> Result<()> {
 pub fn setup() -> Result<()> {
     utils::install_crypto_provider();
     handler::install();
+    println!("load_dotenv");
     utils::load_dotenv();
     utils::subscriber();
     utils::enable_paint();

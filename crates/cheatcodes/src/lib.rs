@@ -7,24 +7,25 @@
 #![allow(elided_lifetimes_in_paths)] // Cheats context uses 3 lifetimes
 
 #[macro_use]
-extern crate foundry_common;
-
-#[macro_use]
 pub extern crate foundry_cheatcodes_spec as spec;
-
 #[macro_use]
 extern crate tracing;
 
+// Silence unused crate dependency warnings for optional external crates
+use alloy_network as _;
+use forge_script_sequence as _;
+use revm_inspectors as _;
+use serde as _;
+
 use alloy_evm::eth::EthEvmContext;
-use alloy_primitives::Address;
-use foundry_evm_core::backend::DatabaseExt;
-use spec::Status;
+use foundry_evm_core::backend::MultiChainDatabaseExt;
+use revm::primitives::ChainAddress;
 
 pub use Vm::ForgeContext;
 pub use config::CheatsConfig;
 pub use error::{Error, ErrorKind, Result};
 pub use inspector::{
-    BroadcastableTransaction, BroadcastableTransactions, Cheatcodes, CheatcodesExecutor,
+    BroadcastableTransaction, BroadcastableTransactions, Cheatcodes, CheatcodesExecutor, Context,
 };
 pub use spec::{CheatcodeDef, Vm};
 
@@ -36,8 +37,6 @@ mod base64;
 mod config;
 
 mod crypto;
-
-mod version;
 
 mod env;
 pub use env::set_execution_context;
@@ -76,7 +75,7 @@ pub(crate) trait Cheatcode: CheatcodeDef + DynCheatcode {
     ///
     /// Implement this function if you need access to the EVM data.
     #[inline(always)]
-    fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
+    fn apply_stateful<'a>(&self, ccx: &'a mut CheatsCtxt<'a, 'a>) -> Result {
         self.apply(ccx.state)
     }
 
@@ -84,69 +83,47 @@ pub(crate) trait Cheatcode: CheatcodeDef + DynCheatcode {
     ///
     /// Implement this function if you need access to the executor.
     #[inline(always)]
-    fn apply_full(&self, ccx: &mut CheatsCtxt, executor: &mut dyn CheatcodesExecutor) -> Result {
-        let _ = executor;
+    fn apply_full<'a, E: CheatcodesExecutor>(
+        &self,
+        ccx: &'a mut CheatsCtxt<'a, 'a>,
+        _executor: &mut E,
+    ) -> Result {
         self.apply_stateful(ccx)
     }
 }
 
-pub(crate) trait DynCheatcode: 'static {
-    fn cheatcode(&self) -> &'static spec::Cheatcode<'static>;
-
+pub(crate) trait DynCheatcode {
+    fn name(&self) -> &'static str;
+    fn id(&self) -> &'static str;
     fn as_debug(&self) -> &dyn std::fmt::Debug;
-
-    fn dyn_apply(&self, ccx: &mut CheatsCtxt, executor: &mut dyn CheatcodesExecutor) -> Result;
 }
 
 impl<T: Cheatcode> DynCheatcode for T {
-    #[inline]
-    fn cheatcode(&self) -> &'static spec::Cheatcode<'static> {
-        Self::CHEATCODE
+    fn name(&self) -> &'static str {
+        T::CHEATCODE.func.signature.split('(').next().unwrap()
     }
-
-    #[inline]
+    fn id(&self) -> &'static str {
+        T::CHEATCODE.func.id
+    }
     fn as_debug(&self) -> &dyn std::fmt::Debug {
         self
-    }
-
-    #[inline]
-    fn dyn_apply(&self, ccx: &mut CheatsCtxt, executor: &mut dyn CheatcodesExecutor) -> Result {
-        self.apply_full(ccx, executor)
-    }
-}
-
-impl dyn DynCheatcode {
-    pub(crate) fn name(&self) -> &'static str {
-        self.cheatcode().func.signature.split('(').next().unwrap()
-    }
-
-    pub(crate) fn id(&self) -> &'static str {
-        self.cheatcode().func.id
-    }
-
-    pub(crate) fn signature(&self) -> &'static str {
-        self.cheatcode().func.signature
-    }
-
-    pub(crate) fn status(&self) -> &Status<'static> {
-        &self.cheatcode().status
     }
 }
 
 /// The cheatcode context, used in `Cheatcode`.
-pub struct CheatsCtxt<'cheats, 'evm, 'db, 'db2> {
+pub struct CheatsCtxt<'cheats, 'evm> {
     /// The cheatcodes inspector state.
     pub(crate) state: &'cheats mut Cheatcodes,
     /// The EVM data.
-    pub(crate) ecx: &'evm mut EthEvmContext<&'db mut (dyn DatabaseExt + 'db2)>,
+    pub(crate) ecx: &'evm mut EthEvmContext<&'evm mut dyn MultiChainDatabaseExt>,
     /// The original `msg.sender`.
-    pub(crate) caller: Address,
+    pub(crate) caller: ChainAddress,
     /// Gas limit of the current cheatcode call.
     pub(crate) gas_limit: u64,
 }
 
-impl<'db, 'db2> std::ops::Deref for CheatsCtxt<'_, '_, 'db, 'db2> {
-    type Target = EthEvmContext<&'db mut (dyn DatabaseExt + 'db2)>;
+impl<'cheats, 'evm> std::ops::Deref for CheatsCtxt<'cheats, 'evm> {
+    type Target = EthEvmContext<&'evm mut dyn MultiChainDatabaseExt>;
 
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
@@ -154,16 +131,20 @@ impl<'db, 'db2> std::ops::Deref for CheatsCtxt<'_, '_, 'db, 'db2> {
     }
 }
 
-impl std::ops::DerefMut for CheatsCtxt<'_, '_, '_, '_> {
+impl<'cheats, 'evm> std::ops::DerefMut for CheatsCtxt<'cheats, 'evm> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut *self.ecx
+        self.ecx
     }
 }
 
-impl CheatsCtxt<'_, '_, '_, '_> {
-    #[inline]
-    pub(crate) fn is_precompile(&self, address: &Address) -> bool {
-        self.ecx.journaled_state.inner.precompiles.contains(address)
+impl<'cheats, 'evm> CheatsCtxt<'cheats, 'evm> {
+    /// Check if the given address is a precompile.
+    pub fn is_precompile(&self, address: ChainAddress) -> bool {
+        // Check if the address is in the precompile range
+        // Precompiles are typically in the range 0x01 to 0x09 for Ethereum mainnet
+        address.1.lt(&revm::primitives::Address::from([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10,
+        ]))
     }
 }

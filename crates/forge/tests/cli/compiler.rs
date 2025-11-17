@@ -1,6 +1,20 @@
 //! Tests for the `forge compiler` command.
 
+use foundry_compilers::Vyper;
 use foundry_test_utils::snapbox::IntoData;
+use std::{path::PathBuf, sync::LazyLock};
+
+static HAS_VYPER_BINARY: LazyLock<bool> = LazyLock::new(|| {
+    if Vyper::new("vyper").is_ok() {
+        return true;
+    }
+
+    std::env::var_os("VYPER_BINARY").and_then(|path| Vyper::new(PathBuf::from(path)).ok()).is_some()
+});
+
+fn has_vyper() -> bool {
+    *HAS_VYPER_BINARY
+}
 
 const CONTRACT_A: &str = r#"
 // SPDX-license-identifier: MIT
@@ -149,6 +163,13 @@ forgetest!(can_list_resolved_multiple_compiler_versions, |prj, cmd| {
     prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE).unwrap();
     prj.add_raw_source("Counter.vy", VYPER_CONTRACT).unwrap();
 
+    if !has_vyper() {
+        eprintln!(
+            "skipping can_list_resolved_multiple_compiler_versions: vyper binary not available"
+        );
+        return;
+    }
+
     cmd.args(["compiler", "resolve"]).assert_success().stdout_eq(str![[r#"
 Solidity:
 - 0.8.4
@@ -170,6 +191,13 @@ forgetest!(can_list_resolved_multiple_compiler_versions_skipped, |prj, cmd| {
     prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE).unwrap();
     prj.add_raw_source("Counter.vy", VYPER_CONTRACT).unwrap();
 
+    if !has_vyper() {
+        eprintln!(
+            "skipping can_list_resolved_multiple_compiler_versions_skipped: vyper binary not available"
+        );
+        return;
+    }
+
     cmd.args(["compiler", "resolve", "--skip", ".sol", "-v"]).assert_success().stdout_eq(str![[
         r#"
 Vyper:
@@ -190,6 +218,13 @@ forgetest!(can_list_resolved_multiple_compiler_versions_skipped_json, |prj, cmd|
     prj.add_source("ContractD", CONTRACT_D).unwrap();
     prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE).unwrap();
     prj.add_raw_source("Counter.vy", VYPER_CONTRACT).unwrap();
+
+    if !has_vyper() {
+        eprintln!(
+            "skipping can_list_resolved_multiple_compiler_versions_skipped_json: vyper binary not available"
+        );
+        return;
+    }
 
     cmd.args(["compiler", "resolve", "--skip", "Contract(A|B|C)", "--json", "-v"])
         .assert_success()
@@ -227,6 +262,13 @@ forgetest!(can_list_resolved_multiple_compiler_versions_verbose, |prj, cmd| {
     prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE).unwrap();
     prj.add_raw_source("Counter.vy", VYPER_CONTRACT).unwrap();
 
+    if !has_vyper() {
+        eprintln!(
+            "skipping can_list_resolved_multiple_compiler_versions_verbose: vyper binary not available"
+        );
+        return;
+    }
+
     cmd.args(["compiler", "resolve", "-vv"]).assert_success().stdout_eq(str![[r#"
 Solidity:
 
@@ -257,6 +299,13 @@ forgetest!(can_list_resolved_multiple_compiler_versions_verbose_json, |prj, cmd|
     prj.add_source("ContractD", CONTRACT_D).unwrap();
     prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE).unwrap();
     prj.add_raw_source("Counter.vy", VYPER_CONTRACT).unwrap();
+
+    if !has_vyper() {
+        eprintln!(
+            "skipping can_list_resolved_multiple_compiler_versions_verbose_json: vyper binary not available"
+        );
+        return;
+    }
 
     cmd.args(["compiler", "resolve", "--json", "-vv"]).assert_success().stdout_eq(
         str![[r#"

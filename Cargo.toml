@@ -205,7 +205,7 @@ foundry-linking = { path = "crates/linking" }
 # solc & compilation utilities
 foundry-block-explorers = { version = "0.19.1", default-features = false }
 foundry-compilers = { version = "0.17.3", default-features = false }
-foundry-fork-db = "0.15"
+foundry-fork-db = { git = "https://github.com/taikoxyz/foundry-fork-db.git", branch = "v75-gwyneth-claude" }
 solang-parser = { version = "=0.3.9", package = "foundry-solang-parser" }
 solar-ast = { version = "=0.1.4", default-features = false }
 solar-parse = { version = "=0.1.4", default-features = false }
@@ -214,7 +214,7 @@ solar-sema = { version = "=0.1.4", default-features = false }
 solar-data-structures = { version = "=0.1.4", default-features = false }
 
 ## alloy
-alloy-consensus = { version = "1.0.11", default-features = false }
+alloy-consensus = { version = "1.0.11", default-features = false, features = ["serde"] }
 alloy-contract = { version = "1.0.11", default-features = false }
 alloy-eips = { version = "1.0.11", default-features = false }
 alloy-ens = { version = "1.0.11", default-features = false }
@@ -240,17 +240,17 @@ alloy-hardforks = { version = "0.2.6", default-features = false }
 alloy-op-hardforks = { version = "0.2.6", default-features = false }
 
 ## alloy-core
-alloy-dyn-abi = "1.2.1"
-alloy-json-abi = "1.2.1"
-alloy-primitives = { version = "1.2.1", features = [
+alloy-dyn-abi = "1.4.1"
+alloy-json-abi = "1.4.1"
+alloy-primitives = { version = "1.4.1", features = [
     "getrandom",
     "rand",
     "map-fxhash",
     "map-foldhash",
 ] }
-alloy-sol-macro-expander = "1.2.1"
-alloy-sol-macro-input = "1.2.1"
-alloy-sol-types = "1.2.1"
+alloy-sol-macro-expander = "1.4.1"
+alloy-sol-macro-input = "1.4.1"
+alloy-sol-types = "1.4.1"
 
 alloy-chains = "0.2"
 alloy-rlp = "0.3"
@@ -262,13 +262,16 @@ op-alloy-rpc-types = "0.17.2"
 op-alloy-flz = "0.13.1"
 
 ## revm
-revm = { version = "24.0.1", default-features = false }
-revm-inspectors = { version = "0.23.0", features = ["serde"] }
-op-revm = { version = "5.0.1", default-features = false }
+#revm = { version = "24.0.1", default-features = false }
+revm = { git = "https://github.com/taikoxyz/revm-private.git", branch = "song/v75-gwyneth-claude", default-features = false, features = ["std"] }
+revm-inspectors = { git = "https://github.com/taikoxyz/revm-inspectors.git", branch = "v0.23.0-gwyneth-claude" }
+#revm-inspectors = { version = "0.23.0", features = ["serde"] }
+#op-revm = { version = "5.0.1", default-features = false }
 
 ## alloy-evm
-alloy-evm = "0.10.0"
-alloy-op-evm = "0.10.0"
+#alloy-evm = "0.10.0"
+alloy-evm = { git = "https://github.com/taikoxyz/alloy-evm.git", branch = "v0.10-gwyneth-claude" }
+#alloy-op-evm = "0.10.0"
 
 ## cli
 anstream = "0.6"
@@ -331,7 +334,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 rustls = "0.23"
 semver = "1"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "=1.0.219", features = ["derive"] }
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 similar-asserts = "1.7"
 soldeer-commands = "=0.5.4"
@@ -362,7 +365,6 @@ idna_adapter = "=1.1.0"
 # Avoid duplicating `zip 2` and `zip 3`. Remove once all `zip` dependencies are updated to `zip 3`.
 zip-extract = "=0.2.1"
 
-[patch.crates-io]
 ## alloy-core
 # alloy-dyn-abi = { path = "../../alloy-rs/core/crates/dyn-abi" }
 # alloy-json-abi = { path = "../../alloy-rs/core/crates/json-abi" }
@@ -402,6 +404,7 @@ zip-extract = "=0.2.1"
 ## alloy-evm
 # alloy-evm = { git = "https://github.com/alloy-rs/evm.git", rev = "dce752f" }
 # alloy-op-evm = { git = "https://github.com/alloy-rs/evm.git", rev = "dce752f" }
+
 
 ## revm
 # revm = { git = "https://github.com/bluealloy/revm.git", rev = "b5808253" }

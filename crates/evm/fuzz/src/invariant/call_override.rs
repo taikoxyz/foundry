@@ -1,11 +1,11 @@
 use super::{BasicTxDetails, CallDetails};
-use alloy_primitives::Address;
 use parking_lot::{Mutex, RwLock};
 use proptest::{
     option::weighted,
     strategy::{SBoxedStrategy, Strategy, ValueTree},
     test_runner::TestRunner,
 };
+use revm::primitives::ChainAddress;
 use std::sync::Arc;
 
 /// Given a TestRunner and a strategy, it generates calls. Used inside the Fuzzer inspector to
@@ -13,13 +13,13 @@ use std::sync::Arc;
 #[derive(Clone, Debug)]
 pub struct RandomCallGenerator {
     /// Address of the test contract.
-    pub test_address: Address,
+    pub test_address: ChainAddress,
     /// Runner that will generate the call from the strategy.
     pub runner: Arc<Mutex<TestRunner>>,
     /// Strategy to be used to generate calls from `target_reference`.
     pub strategy: SBoxedStrategy<Option<CallDetails>>,
     /// Reference to which contract we want a fuzzed calldata from.
-    pub target_reference: Arc<RwLock<Address>>,
+    pub target_reference: Arc<RwLock<ChainAddress>>,
     /// Flag to know if a call has been overridden. Don't allow nesting for now.
     pub used: bool,
     /// If set to `true`, consumes the next call from `last_sequence`, otherwise queries it from
@@ -31,10 +31,10 @@ pub struct RandomCallGenerator {
 
 impl RandomCallGenerator {
     pub fn new(
-        test_address: Address,
+        test_address: ChainAddress,
         runner: TestRunner,
         strategy: impl Strategy<Value = CallDetails> + Send + Sync + 'static,
-        target_reference: Arc<RwLock<Address>>,
+        target_reference: Arc<RwLock<ChainAddress>>,
     ) -> Self {
         Self {
             test_address,
@@ -60,8 +60,8 @@ impl RandomCallGenerator {
     /// Gets the next call. Random if replay is not set. Otherwise, it pops from `last_sequence`.
     pub fn next(
         &mut self,
-        original_caller: Address,
-        original_target: Address,
+        original_caller: ChainAddress,
+        original_target: ChainAddress,
     ) -> Option<BasicTxDetails> {
         if self.replay {
             self.last_sequence.write().pop().expect(

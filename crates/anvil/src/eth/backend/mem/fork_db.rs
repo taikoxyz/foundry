@@ -88,6 +88,12 @@ impl Db for ForkedDatabase {
     }
 }
 
+// Multi-chain database implementations for ForkedDatabase
+// These are orphan rule violations but necessary for the multi-chain fork architecture.
+
+// Multi-chain database implementations for ForkedDatabase
+// These are orphan rule violations but necessary for the multi-chain fork architecture.
+
 impl MaybeFullDatabase for ForkedDatabase {
     fn as_dyn(&self) -> &dyn DatabaseRef<Error = DatabaseError> {
         self

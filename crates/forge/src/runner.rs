@@ -35,6 +35,7 @@ use proptest::test_runner::{
     FailurePersistence, FileFailurePersistence, RngAlgorithm, TestError, TestRng, TestRunner,
 };
 use rayon::prelude::*;
+use revm::primitives::ChainAddress;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
@@ -44,7 +45,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use tracing::Span;
+use tracing::{Span, debug};
 
 /// When running tests, we deploy all external libraries present in the project. To avoid additional
 /// libraries affecting nonces of senders used in tests, we are using separate address to
@@ -118,6 +119,8 @@ impl<'a> ContractRunner<'a> {
 
     fn _setup(&mut self, call_setup: bool) -> Result<TestSetup> {
         trace!(call_setup, "setting up");
+
+        println!("setting up ContractRunner");
 
         self.apply_contract_inline_config()?;
 
@@ -713,7 +716,7 @@ impl<'a> FunctionRunner<'a> {
             &self.cr.mcr.known_contracts,
         );
         let invariant_contract = InvariantContract {
-            address: self.address,
+            address: ChainAddress(self.executor.env().evm_env.cfg_env.chain_id, self.address),
             invariant_function: func,
             call_after_invariant,
             abi: &self.cr.contract.abi,
@@ -748,7 +751,7 @@ impl<'a> FunctionRunner<'a> {
                 self.clone_executor(),
                 &txes,
                 (0..min(txes.len(), invariant_config.depth as usize)).collect(),
-                invariant_contract.address,
+                invariant_contract.address.1,
                 invariant_contract.invariant_function.selector().to_vec().into(),
                 invariant_config.fail_on_revert,
                 invariant_contract.call_after_invariant,

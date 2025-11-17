@@ -172,8 +172,8 @@ impl TxCorpusManager {
                 for tx in &tx_seq {
                     let mut call_result = executor
                         .call_raw(
-                            tx.sender,
-                            tx.call_details.target,
+                            tx.sender.1,
+                            tx.call_details.target.1,
                             tx.call_details.calldata.clone(),
                             U256::ZERO,
                         )

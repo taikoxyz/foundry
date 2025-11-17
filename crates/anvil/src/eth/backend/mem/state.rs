@@ -10,6 +10,7 @@ use revm::{
     bytecode::Bytecode,
     context::BlockEnv,
     database::{CacheDB, DatabaseRef, DbAccount},
+    primitives::ChainAddress,
     state::AccountInfo,
 };
 
@@ -160,7 +161,9 @@ pub fn apply_block_overrides<DB>(
         env.gas_limit = gas_limit;
     }
     if let Some(coinbase) = coinbase {
-        env.beneficiary = coinbase;
+        // Preserve existing chain_id or use default (1 for mainnet)
+        let chain_id = env.beneficiary.0.max(1);
+        env.beneficiary = ChainAddress::new(chain_id, coinbase);
     }
     if let Some(random) = random {
         env.prevrandao = Some(random);

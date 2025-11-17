@@ -4,8 +4,8 @@ use super::BackendError;
 use crate::{
     AsEnvMut, Env, EnvMut, InspectorExt,
     backend::{
-        Backend, DatabaseExt, JournaledState, LocalForkId, RevertStateSnapshotAction,
-        diagnostic::RevertDiagnostic,
+        Backend, DatabaseExt, JournaledState, LocalForkId, MultiChainDatabaseExt,
+        RevertStateSnapshotAction, diagnostic::RevertDiagnostic,
     },
     fork::{CreateFork, ForkId},
 };
@@ -19,8 +19,8 @@ use revm::{
     Database, DatabaseCommit,
     bytecode::Bytecode,
     context_interface::result::ResultAndState,
-    database::DatabaseRef,
-    primitives::{HashMap as Map, hardfork::SpecId},
+    database::{DatabaseRef, MultiChainDatabase},
+    primitives::{ChainAddress, HashMap as Map, hardfork::SpecId},
     state::{Account, AccountInfo},
 };
 use std::{borrow::Cow, collections::BTreeMap};
@@ -65,18 +65,26 @@ impl<'a> CowBackend<'a> {
     /// update the given `env` with the new values.
     #[instrument(name = "inspect", level = "debug", skip_all)]
     pub fn inspect<I: InspectorExt>(
-        &mut self,
+        mut self,
         env: &mut Env,
         inspector: &mut I,
     ) -> eyre::Result<ResultAndState> {
+        println!("inspect");
         // this is a new call to inspect with a new env, so even if we've cloned the backend
         // already, we reset the initialized state
         self.is_initialized = false;
         self.spec_id = env.evm_env.cfg_env.spec;
 
-        let mut evm = crate::evm::new_evm_with_inspector(self, env.to_owned(), inspector);
+        // Now CowBackend directly implements MultiChainDatabaseExt
+        let mut evm = crate::evm::new_evm_with_inspector(
+            &mut self as &mut dyn MultiChainDatabaseExt,
+            env.to_owned(),
+            inspector,
+        );
 
         let res = evm.transact(env.tx.clone()).wrap_err("EVM error")?;
+
+        // println!("res: {:?}", res);
 
         *env = evm.as_env_mut().to_owned();
 
@@ -234,7 +242,7 @@ impl DatabaseExt for CowBackend<'_> {
 
     fn diagnose_revert(
         &self,
-        callee: Address,
+        callee: ChainAddress,
         journaled_state: &JournaledState,
     ) -> Option<RevertDiagnostic> {
         self.backend.diagnose_revert(callee, journaled_state)
@@ -242,7 +250,7 @@ impl DatabaseExt for CowBackend<'_> {
 
     fn load_allocs(
         &mut self,
-        allocs: &BTreeMap<Address, GenesisAccount>,
+        allocs: &BTreeMap<ChainAddress, GenesisAccount>,
         journaled_state: &mut JournaledState,
     ) -> Result<(), BackendError> {
         self.backend_mut(&Env::default().as_env_mut()).load_allocs(allocs, journaled_state)
@@ -251,7 +259,7 @@ impl DatabaseExt for CowBackend<'_> {
     fn clone_account(
         &mut self,
         source: &GenesisAccount,
-        target: &Address,
+        target: &ChainAddress,
         journaled_state: &mut JournaledState,
     ) -> Result<(), BackendError> {
         self.backend_mut(&Env::default().as_env_mut()).clone_account(
@@ -261,27 +269,27 @@ impl DatabaseExt for CowBackend<'_> {
         )
     }
 
-    fn is_persistent(&self, acc: &Address) -> bool {
+    fn is_persistent(&self, acc: &ChainAddress) -> bool {
         self.backend.is_persistent(acc)
     }
 
-    fn remove_persistent_account(&mut self, account: &Address) -> bool {
+    fn remove_persistent_account(&mut self, account: &ChainAddress) -> bool {
         self.backend.to_mut().remove_persistent_account(account)
     }
 
-    fn add_persistent_account(&mut self, account: Address) -> bool {
+    fn add_persistent_account(&mut self, account: ChainAddress) -> bool {
         self.backend.to_mut().add_persistent_account(account)
     }
 
-    fn allow_cheatcode_access(&mut self, account: Address) -> bool {
+    fn allow_cheatcode_access(&mut self, account: ChainAddress) -> bool {
         self.backend.to_mut().allow_cheatcode_access(account)
     }
 
-    fn revoke_cheatcode_access(&mut self, account: &Address) -> bool {
+    fn revoke_cheatcode_access(&mut self, account: &ChainAddress) -> bool {
         self.backend.to_mut().revoke_cheatcode_access(account)
     }
 
-    fn has_cheatcode_access(&self, account: &Address) -> bool {
+    fn has_cheatcode_access(&self, account: &ChainAddress) -> bool {
         self.backend.has_cheatcode_access(account)
     }
 
@@ -289,6 +297,41 @@ impl DatabaseExt for CowBackend<'_> {
         self.backend.to_mut().set_blockhash(block_number, block_hash);
     }
 }
+
+// Implement MultiChainDatabase for CowBackend to enable MultiChainDatabaseExt
+impl MultiChainDatabase for CowBackend<'_> {
+    type Error = DatabaseError;
+
+    fn basic_multi(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        // Extract the Address from ChainAddress and use the regular Database method
+        Database::basic(self, address.1)
+    }
+
+    fn code_by_hash_multi(
+        &mut self,
+        _chain_id: u64,
+        code_hash: B256,
+    ) -> Result<Bytecode, Self::Error> {
+        Database::code_by_hash(self, code_hash)
+    }
+
+    fn storage_multi(
+        &mut self,
+        address: ChainAddress,
+        index: revm::primitives::StorageKey,
+    ) -> Result<revm::primitives::StorageValue, Self::Error> {
+        // Extract the Address from ChainAddress and use the regular Database method
+        Database::storage(self, address.1, index)
+    }
+
+    fn block_hash_multi(&mut self, _chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        Database::block_hash(self, number)
+    }
+}
+
+// Now CowBackend implements both MultiChainDatabase and DatabaseExt, so it can implement
+// MultiChainDatabaseExt
+impl MultiChainDatabaseExt for CowBackend<'_> {}
 
 impl DatabaseRef for CowBackend<'_> {
     type Error = DatabaseError;

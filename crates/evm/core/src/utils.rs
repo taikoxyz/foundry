@@ -6,7 +6,10 @@ use alloy_primitives::{Address, B256, Selector, TxKind, U256};
 use alloy_provider::{Network, network::BlockResponse};
 use alloy_rpc_types::{Transaction, TransactionRequest};
 use foundry_config::NamedChain;
-pub use revm::state::EvmState as StateChangeset;
+pub use revm::{
+    primitives::{ChainAddress, MultiChainTxKind},
+    state::EvmState as StateChangeset,
+};
 
 /// Depending on the configured chain id and block number this should apply any specific changes
 ///
@@ -19,15 +22,21 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
     block: &N::BlockResponse,
 ) {
     use NamedChain::*;
+    let chain_id = env.cfg.chain_id;
 
-    if let Ok(chain) = NamedChain::try_from(env.cfg.chain_id) {
+    env.block.entry(chain_id).or_default();
+
+    if let Ok(chain) = NamedChain::try_from(chain_id) {
         let block_number = block.header().number();
 
         match chain {
             Mainnet => {
                 // after merge difficulty is supplanted with prevrandao EIP-4399
-                if block_number >= 15_537_351u64 {
-                    env.block.difficulty = env.block.prevrandao.unwrap_or_default().into();
+                if block_number >= 15_537_351u64
+                    && let Some(block_env) = env.block.get_mut(&chain_id)
+                {
+                    let prevrandao = block_env.prevrandao.unwrap_or_default();
+                    block_env.difficulty = prevrandao.into();
                 }
 
                 return;
@@ -39,13 +48,15 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
                 // (`mixHash`) is always zero, even though bsc adopts the newer EVM
                 // specification. This will confuse revm and causes emulation
                 // failure.
-                env.block.prevrandao = Some(env.block.difficulty.into());
+                if let Some(block_env) = env.block.get_mut(&chain_id) {
+                    block_env.prevrandao = Some(block_env.difficulty.into());
+                }
                 return;
             }
             Moonbeam | Moonbase | Moonriver | MoonbeamDev | Rsk | RskTestnet => {
-                if env.block.prevrandao.is_none() {
+                if let Some(block_env) = env.block.get_mut(&chain_id) {
                     // <https://github.com/foundry-rs/foundry/issues/4232>
-                    env.block.prevrandao = Some(B256::random());
+                    block_env.prevrandao.get_or_insert_with(B256::random);
                 }
             }
             c if c.is_arbitrum() => {
@@ -57,8 +68,9 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
                     .and_then(|l1_block_number| {
                         serde_json::from_value::<U256>(l1_block_number).ok()
                     })
+                    && let Some(block_env) = env.block.get_mut(&chain_id)
                 {
-                    env.block.number = l1_block_number.to();
+                    block_env.number = l1_block_number.to();
                 }
             }
             _ => {}
@@ -66,8 +78,11 @@ pub fn apply_chain_and_block_specific_env_changes<N: Network>(
     }
 
     // if difficulty is `0` we assume it's past merge
-    if block.header().difficulty().is_zero() {
-        env.block.difficulty = env.block.prevrandao.unwrap_or_default().into();
+    if block.header().difficulty().is_zero()
+        && let Some(block_env) = env.block.get_mut(&chain_id)
+    {
+        let prevrandao = block_env.prevrandao.unwrap_or_default();
+        block_env.difficulty = prevrandao.into();
     }
 }
 
@@ -123,16 +138,38 @@ pub fn configure_tx_req_env(
     } = *tx;
 
     // If no `to` field then set create kind: https://eips.ethereum.org/EIPS/eip-2470#deployment-transaction
-    env.tx.kind = to.unwrap_or(TxKind::Create);
+    env.tx.kind = match to {
+        Some(tx_kind) => match tx_kind {
+            TxKind::Call(addr) => MultiChainTxKind::Call(ChainAddress(env.cfg.chain_id, addr)),
+            TxKind::Create => MultiChainTxKind::Create,
+        },
+        None => MultiChainTxKind::Create,
+    };
+
     // If the transaction is impersonated, we need to set the caller to the from
     // address Ref: https://github.com/foundry-rs/foundry/issues/9541
-    env.tx.caller =
-        impersonated_from.unwrap_or(from.ok_or_else(|| eyre::eyre!("missing `from` field"))?);
+    env.tx.caller = ChainAddress(
+        env.cfg.chain_id,
+        impersonated_from.unwrap_or(from.ok_or_else(|| eyre::eyre!("missing `from` field"))?),
+    );
     env.tx.gas_limit = gas.ok_or_else(|| eyre::eyre!("missing `gas` field"))?;
     env.tx.nonce = nonce.unwrap_or_default();
     env.tx.value = value.unwrap_or_default();
     env.tx.data = input.input().cloned().unwrap_or_default();
     env.tx.chain_id = chain_id;
+
+    // Ensure the transaction allows the active chain. Multi-chain flows pre-populate this vector,
+    // but single-chain callers rely on the backend defaulting to the canonical chain id.
+    match &mut env.tx.chain_ids {
+        Some(ids) => {
+            if !ids.contains(&env.cfg.chain_id) {
+                ids.push(env.cfg.chain_id);
+            }
+        }
+        None => {
+            env.tx.chain_ids = Some(vec![env.cfg.chain_id]);
+        }
+    }
 
     // Type 1, EIP-2930
     env.tx.access_list = access_list.clone().unwrap_or_default();

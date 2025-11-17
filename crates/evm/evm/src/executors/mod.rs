@@ -40,12 +40,13 @@ use revm::{
     },
     database::{DatabaseCommit, DatabaseRef},
     interpreter::{InstructionResult, return_ok},
-    primitives::hardfork::SpecId,
+    primitives::{ChainAddress, MultiChainTxKind, hardfork::SpecId},
 };
 use std::{
     borrow::Cow,
     time::{Duration, Instant},
 };
+use tracing::debug;
 
 mod builder;
 pub use builder::ExecutorBuilder;
@@ -133,7 +134,12 @@ impl Executor {
     fn clone_with_backend(&self, backend: Backend) -> Self {
         let env = Env::new_with_spec_id(
             self.env.evm_env.cfg_env.clone(),
-            self.env.evm_env.block_env.clone(),
+            self.env
+                .evm_env
+                .block_env
+                .get(&self.env.evm_env.cfg_env.chain_id)
+                .cloned()
+                .unwrap_or_default(),
             self.env.tx.clone(),
             self.spec_id(),
         );
@@ -343,7 +349,7 @@ impl Executor {
         rd: Option<&RevertDecoder>,
     ) -> Result<DeployResult, EvmError> {
         assert!(
-            matches!(env.tx.kind, TxKind::Create),
+            matches!(env.tx.kind, MultiChainTxKind::Create),
             "Expected create transaction, got {:?}",
             env.tx.kind
         );
@@ -357,7 +363,8 @@ impl Executor {
 
         // also mark this library as persistent, this will ensure that the state of the library is
         // persistent across fork swaps in forking mode
-        self.backend_mut().add_persistent_account(address);
+        let chain_id = self.env.evm_env.cfg_env.chain_id;
+        self.backend_mut().add_persistent_account(ChainAddress(chain_id, address));
 
         debug!(%address, "deployed contract");
 
@@ -380,8 +387,12 @@ impl Executor {
         trace!(?from, ?to, "setting up contract");
 
         let from = from.unwrap_or(CALLER);
-        self.backend_mut().set_test_contract(to).set_caller(from);
+        let chain_id = self.env().evm_env.cfg_env.chain_id;
+        self.backend_mut()
+            .set_test_contract(ChainAddress(chain_id, to))
+            .set_caller(ChainAddress(chain_id, from));
         let calldata = Bytes::from_static(&ITest::setUpCall::SELECTOR);
+        // println!("setup::calldata: {:?}", calldata);
         let mut res = self.transact_raw(from, to, calldata, U256::ZERO)?;
         res = res.into_result(rd)?;
 
@@ -409,6 +420,7 @@ impl Executor {
         value: U256,
         rd: Option<&RevertDecoder>,
     ) -> Result<CallResult, EvmError> {
+        println!("call");
         let calldata = Bytes::from(func.abi_encode_input(args)?);
         let result = self.call_raw(from, to, calldata, value)?;
         result.into_decoded_result(func, rd)
@@ -452,6 +464,7 @@ impl Executor {
         calldata: Bytes,
         value: U256,
     ) -> eyre::Result<RawCallResult> {
+        println!("call_raw");
         let env = self.build_test_env(from, TxKind::Call(to), calldata, value);
         self.call_with_env(env)
     }
@@ -480,6 +493,7 @@ impl Executor {
         calldata: Bytes,
         value: U256,
     ) -> eyre::Result<RawCallResult> {
+        println!("transact_raw");
         let env = self.build_test_env(from, TxKind::Call(to), calldata, value);
         self.transact_with_env(env)
     }
@@ -489,18 +503,22 @@ impl Executor {
     /// The state after the call is **not** persisted.
     #[instrument(name = "call", level = "debug", skip_all)]
     pub fn call_with_env(&self, mut env: Env) -> eyre::Result<RawCallResult> {
+        println!("call_with_env");
         let mut inspector = self.inspector().clone();
+        #[allow(unused_mut)]
         let mut backend = CowBackend::new_borrowed(self.backend());
+        let has_state_snapshot_failure = backend.has_state_snapshot_failure();
         let result = backend.inspect(&mut env, &mut inspector)?;
-        convert_executed_result(env, inspector, result, backend.has_state_snapshot_failure())
+        convert_executed_result(env, inspector, result, has_state_snapshot_failure)
     }
 
     /// Execute the transaction configured in `env.tx`.
     #[instrument(name = "transact", level = "debug", skip_all)]
     pub fn transact_with_env(&mut self, mut env: Env) -> eyre::Result<RawCallResult> {
+        println!("transact_with_env");
         let mut inspector = self.inspector().clone();
         let backend = self.backend_mut();
-        let result = backend.inspect(&mut env, &mut inspector)?;
+        let result = backend.clone().inspect(&mut env, &mut inspector)?;
         let mut result =
             convert_executed_result(env, inspector, result, backend.has_state_snapshot_failure())?;
         self.commit(&mut result);
@@ -514,7 +532,16 @@ impl Executor {
     #[instrument(name = "commit", level = "debug", skip_all)]
     fn commit(&mut self, result: &mut RawCallResult) {
         // Persist changes to db.
-        self.backend_mut().commit(result.state_changeset.clone());
+        // Convert ChainAddress keys to Address keys for commit
+        let active_chain_id = result.env.evm_env.cfg_env.chain_id;
+        let address_changeset: HashMap<Address, _> = result
+            .state_changeset
+            .iter()
+            .filter_map(|(chain_addr, account)| {
+                (chain_addr.0 == active_chain_id).then_some((chain_addr.1, account.clone()))
+            })
+            .collect();
+        self.backend_mut().commit(address_changeset);
 
         // Persist cheatcode state.
         self.inspector_mut().cheatcodes = result.cheatcodes.take();
@@ -619,7 +646,8 @@ impl Executor {
         }
 
         // Check the global failure slot.
-        if let Some(acc) = state_changeset.get(&CHEATCODE_ADDRESS)
+        if let Some(acc) = state_changeset
+            .get(&ChainAddress(self.env().evm_env.cfg_env.chain_id, CHEATCODE_ADDRESS))
             && let Some(failed_slot) = acc.storage.get(&GLOBAL_FAIL_SLOT)
             && !failed_slot.present_value().is_zero()
         {
@@ -651,7 +679,13 @@ impl Executor {
             // `false -> true` for the contract's `failed` variable and the `globalFailure` flag
             // in the state of the cheatcode address,
             // which are both read when we call `"failed()(bool)"` in the next step.
-            backend.commit(state_changeset.into_owned());
+            // Convert ChainAddress keys to Address keys for commit
+            let address_changeset: HashMap<Address, _> = state_changeset
+                .into_owned()
+                .into_iter()
+                .map(|(chain_addr, account)| (chain_addr.1, account))
+                .collect();
+            backend.commit(address_changeset);
 
             // Check if a DSTest assertion failed
             let executor = self.clone_with_backend(backend);
@@ -674,6 +708,21 @@ impl Executor {
     /// If using a backend with cheatcodes, `tx.gas_price` and `block.number` will be overwritten by
     /// the cheatcode state in between calls.
     fn build_test_env(&self, caller: Address, kind: TxKind, data: Bytes, value: U256) -> Env {
+        let chain_id = self.env().evm_env.cfg_env.chain_id;
+        let mut base_tx = self.env().tx.clone();
+        match &mut base_tx.chain_ids {
+            Some(ids) => {
+                if !ids.contains(&chain_id) {
+                    ids.push(chain_id);
+                }
+            }
+            None => base_tx.chain_ids = Some(vec![chain_id]),
+        }
+        debug_assert!(base_tx.chain_ids.as_ref().map_or(false, |ids| ids.contains(&chain_id)));
+        if base_tx.chain_ids.as_ref().map(|ids| ids.is_empty()).unwrap_or(true) {
+            panic!("empty allowed_chain_ids for chain_id {}", chain_id);
+        }
+
         Env {
             evm_env: EvmEnv {
                 cfg_env: {
@@ -684,23 +733,31 @@ impl Executor {
                 // We always set the gas price to 0 so we can execute the transaction regardless of
                 // network conditions - the actual gas price is kept in `self.block` and is applied
                 // by the cheatcode handler if it is enabled
-                block_env: BlockEnv {
-                    basefee: 0,
-                    gas_limit: self.gas_limit,
-                    ..self.env().evm_env.block_env.clone()
+                block_env: {
+                    let base_block =
+                        self.env().evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
+                    let mut block_env_map = HashMap::default();
+                    block_env_map.insert(
+                        chain_id,
+                        BlockEnv { basefee: 0_u64, gas_limit: self.gas_limit, ..base_block },
+                    );
+                    block_env_map
                 },
             },
             tx: TxEnv {
-                caller,
-                kind,
+                caller: ChainAddress(chain_id, caller),
+                kind: match kind {
+                    TxKind::Call(addr) => MultiChainTxKind::Call(ChainAddress(chain_id, addr)),
+                    TxKind::Create => MultiChainTxKind::Create,
+                },
                 data,
                 value,
                 // As above, we set the gas price to 0.
                 gas_price: 0,
                 gas_priority_fee: None,
                 gas_limit: self.gas_limit,
-                chain_id: Some(self.env().evm_env.cfg_env.chain_id),
-                ..self.env().tx.clone()
+                chain_id: Some(chain_id),
+                ..base_tx
             },
         }
     }
@@ -1006,11 +1063,11 @@ fn convert_executed_result(
         ExecutionResult::Success { reason, gas_used, gas_refunded, output, logs, .. } => {
             (reason.into(), gas_refunded, gas_used, Some(output), logs)
         }
-        ExecutionResult::Revert { gas_used, output } => {
+        ExecutionResult::Revert { gas_used, output, .. } => {
             // Need to fetch the unused gas
             (InstructionResult::Revert, 0_u64, gas_used, Some(Output::Call(output)), vec![])
         }
-        ExecutionResult::Halt { reason, gas_used } => {
+        ExecutionResult::Halt { reason, gas_used, .. } => {
             (reason.into(), 0_u64, gas_used, None, vec![])
         }
     };

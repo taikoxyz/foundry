@@ -22,3 +22,5 @@ alloy-sol-types = { workspace = true, features = ["json"] }
 
 derive_more.workspace = true
 itertools.workspace = true
+
+revm = { workspace = true, features = ["std"] }

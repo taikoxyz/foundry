@@ -18,7 +18,7 @@ use crate::{
 use alloy_consensus::BlockHeader;
 use alloy_genesis::Genesis;
 use alloy_network::{AnyNetwork, TransactionResponse};
-use alloy_op_hardforks::OpHardfork;
+//use alloy_op_hardforks::OpHardfork;
 use alloy_primitives::{BlockNumber, TxHash, U256, hex, map::HashMap, utils::Unit};
 use alloy_provider::Provider;
 use alloy_rpc_types::{Block, BlockNumberOrTag};
@@ -42,13 +42,13 @@ use foundry_evm::{
 };
 use foundry_evm_core::AsEnvMut;
 use itertools::Itertools;
-use op_revm::OpTransaction;
+//use op_revm::OpTransaction;
 use parking_lot::RwLock;
 use rand_08::thread_rng;
 use revm::{
     context::{BlockEnv, CfgEnv, TxEnv},
     context_interface::block::BlobExcessGasAndPrice,
-    primitives::hardfork::SpecId,
+    primitives::{ChainAddress, hardfork::SpecId},
 };
 use serde_json::{Value, json};
 use std::{
@@ -532,9 +532,11 @@ impl NodeConfig {
         if let Some(hardfork) = self.hardfork {
             return hardfork;
         }
+        /*
         if self.enable_optimism {
             return OpHardfork::default().into();
         }
+         */
         EthereumHardfork::default().into()
     }
 
@@ -1050,11 +1052,7 @@ impl NodeConfig {
                 basefee: self.get_base_fee(),
                 ..Default::default()
             },
-            OpTransaction {
-                base: TxEnv { chain_id: Some(self.get_chain_id()), ..Default::default() },
-                ..Default::default()
-            },
-            self.enable_optimism,
+            TxEnv { chain_id: Some(self.get_chain_id()), ..Default::default() },
         );
 
         let fees = FeeManager::new(
@@ -1079,14 +1077,18 @@ impl NodeConfig {
             if self.chain_id.is_none() {
                 env.evm_env.cfg_env.chain_id = genesis.config.chain_id;
             }
-            env.evm_env.block_env.timestamp = genesis.timestamp;
+            // Get or create block environment for the current chain
+            let chain_id = env.evm_env.cfg_env.chain_id;
+            let block_env = env.evm_env.block_env.entry(chain_id).or_default();
+
+            block_env.timestamp = genesis.timestamp;
             if let Some(base_fee) = genesis.base_fee_per_gas {
-                env.evm_env.block_env.basefee = base_fee.try_into()?;
+                block_env.basefee = base_fee.try_into()?;
             }
             if let Some(number) = genesis.number {
-                env.evm_env.block_env.number = number;
+                block_env.number = number;
             }
-            env.evm_env.block_env.beneficiary = genesis.coinbase;
+            block_env.beneficiary = revm::primitives::ChainAddress::new(chain_id, genesis.coinbase);
         }
 
         let genesis = GenesisConfig {
@@ -1236,7 +1238,12 @@ latest block number: {latest_block}"
         let gas_limit = self.fork_gas_limit(&block);
         self.gas_limit = Some(gas_limit);
 
-        env.evm_env.block_env = BlockEnv {
+        // Get current block environment or default for the chain
+        let chain_id = env.evm_env.cfg_env.chain_id;
+        let previous_chain_id = chain_id;
+        let current_block_env = env.evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
+
+        let new_block_env = BlockEnv {
             number: fork_block_number,
             timestamp: block.header.timestamp,
             difficulty: block.header.difficulty,
@@ -1244,16 +1251,21 @@ latest block number: {latest_block}"
             prevrandao: Some(block.header.mix_hash.unwrap_or_default()),
             gas_limit,
             // Keep previous `coinbase` and `basefee` value
-            beneficiary: env.evm_env.block_env.beneficiary,
-            basefee: env.evm_env.block_env.basefee,
+            beneficiary: current_block_env.beneficiary,
+            basefee: current_block_env.basefee,
             ..Default::default()
         };
+
+        // Insert the new block environment for this chain
+        env.evm_env.block_env.insert(chain_id, new_block_env);
 
         // if not set explicitly we use the base fee of the latest block
         if self.base_fee.is_none() {
             if let Some(base_fee) = block.header.base_fee_per_gas {
                 self.base_fee = Some(base_fee);
-                env.evm_env.block_env.basefee = base_fee;
+                if let Some(block_env) = env.evm_env.block_env.get_mut(&chain_id) {
+                    block_env.basefee = base_fee;
+                }
                 // this is the base fee of the current block, but we need the base fee of
                 // the next block
                 let next_block_base_fee = fees.get_next_block_base_fee_per_gas(
@@ -1268,8 +1280,10 @@ latest block number: {latest_block}"
             if let (Some(blob_excess_gas), Some(blob_gas_used)) =
                 (block.header.excess_blob_gas, block.header.blob_gas_used)
             {
-                env.evm_env.block_env.blob_excess_gas_and_price =
-                    Some(BlobExcessGasAndPrice::new(blob_excess_gas, false));
+                if let Some(block_env) = env.evm_env.block_env.get_mut(&chain_id) {
+                    block_env.blob_excess_gas_and_price =
+                        Some(BlobExcessGasAndPrice::new(blob_excess_gas, false));
+                }
                 let next_block_blob_excess_gas =
                     fees.get_next_block_blob_excess_gas(blob_excess_gas, blob_gas_used);
                 fees.set_blob_excess_gas_and_price(BlobExcessGasAndPrice::new(
@@ -1301,14 +1315,22 @@ latest block number: {latest_block}"
             // need to update the dev signers and env with the chain id
             self.set_chain_id(Some(chain_id));
             env.evm_env.cfg_env.chain_id = chain_id;
-            env.tx.base.chain_id = chain_id.into();
+            env.tx.chain_id = chain_id.into();
+
+            if chain_id != previous_chain_id
+                && let Some(mut block_env) = env.evm_env.block_env.remove(&previous_chain_id)
+            {
+                block_env.beneficiary = ChainAddress::new(chain_id, block_env.beneficiary.1);
+                env.evm_env.block_env.insert(chain_id, block_env);
+            }
             chain_id
         };
         let override_chain_id = self.chain_id;
         // apply changes such as difficulty -> prevrandao and chain specifics for current chain id
         apply_chain_and_block_specific_env_changes::<AnyNetwork>(env.as_env_mut(), &block);
 
-        let meta = BlockchainDbMeta::new(env.evm_env.block_env.clone(), eth_rpc_url.clone());
+        let block_env = env.evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
+        let meta = BlockchainDbMeta::new(block_env, eth_rpc_url.clone());
         let block_chain_db = if self.fork_chain_id.is_some() {
             BlockchainDb::new_skip_check(meta, self.block_cache_path(fork_block_number))
         } else {
@@ -1340,7 +1362,11 @@ latest block number: {latest_block}"
             compute_units_per_second: self.compute_units_per_second,
             total_difficulty: block.header.total_difficulty.unwrap_or_default(),
             blob_gas_used: block.header.blob_gas_used.map(|g| g as u128),
-            blob_excess_gas_and_price: env.evm_env.block_env.blob_excess_gas_and_price,
+            blob_excess_gas_and_price: env
+                .evm_env
+                .block_env
+                .get(&chain_id)
+                .and_then(|b| b.blob_excess_gas_and_price),
             force_transactions,
         };
 

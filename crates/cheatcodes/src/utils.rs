@@ -10,7 +10,7 @@ use foundry_config::fs_permissions::FsAccessKind;
 use foundry_evm_core::constants::DEFAULT_CREATE2_DEPLOYER;
 use proptest::prelude::Strategy;
 use rand::{Rng, RngCore, seq::SliceRandom};
-use revm::context::JournalTr;
+use revm::{context::JournalTr, primitives::ChainAddress};
 use std::path::PathBuf;
 
 /// Contains locations of traces ignored via cheatcodes.
@@ -95,9 +95,9 @@ impl Cheatcode for randomUint_2Call {
 }
 
 impl Cheatcode for randomAddressCall {
-    fn apply(&self, state: &mut Cheatcodes) -> Result {
+    fn apply(&self, _state: &mut Cheatcodes) -> Result {
         Ok(DynSolValue::type_strategy(&DynSolType::Address)
-            .new_tree(state.test_runner())
+            .new_tree(&mut proptest::test_runner::TestRunner::default())
             .unwrap()
             .current()
             .abi_encode())
@@ -152,10 +152,10 @@ impl Cheatcode for randomBytes8Call {
 }
 
 impl Cheatcode for pauseTracingCall {
-    fn apply_full(
+    fn apply_full<E: CheatcodesExecutor>(
         &self,
-        ccx: &mut crate::CheatsCtxt,
-        executor: &mut dyn CheatcodesExecutor,
+        ccx: &mut crate::CheatsCtxt<'_, '_>,
+        executor: &mut E,
     ) -> Result {
         let Some(tracer) = executor.tracing_inspector().and_then(|t| t.as_ref()) else {
             // No tracer -> nothing to pause
@@ -175,10 +175,10 @@ impl Cheatcode for pauseTracingCall {
 }
 
 impl Cheatcode for resumeTracingCall {
-    fn apply_full(
+    fn apply_full<E: CheatcodesExecutor>(
         &self,
-        ccx: &mut crate::CheatsCtxt,
-        executor: &mut dyn CheatcodesExecutor,
+        ccx: &mut crate::CheatsCtxt<'_, '_>,
+        executor: &mut E,
     ) -> Result {
         let Some(tracer) = executor.tracing_inspector().and_then(|t| t.as_ref()) else {
             // No tracer -> nothing to unpause
@@ -210,29 +210,34 @@ impl Cheatcode for interceptInitcodeCall {
 }
 
 impl Cheatcode for setArbitraryStorage_0Call {
-    fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
+    fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
         let Self { target } = self;
-        ccx.state.arbitrary_storage().mark_arbitrary(target, false);
+        let target = &ChainAddress(ccx.ecx.cfg.chain_id, *target);
+        ccx.state.arbitrary_storage.mark_arbitrary(target);
 
         Ok(Default::default())
     }
 }
 
 impl Cheatcode for setArbitraryStorage_1Call {
-    fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
-        let Self { target, overwrite } = self;
-        ccx.state.arbitrary_storage().mark_arbitrary(target, *overwrite);
+    fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
+        let Self { target, overwrite: _ } = self;
+        let target = &ChainAddress(ccx.ecx.cfg.chain_id, *target);
+        ccx.state.arbitrary_storage.mark_arbitrary(target);
 
         Ok(Default::default())
     }
 }
 
 impl Cheatcode for copyStorageCall {
-    fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
+    fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
         let Self { from, to } = self;
 
+        let from = &ChainAddress(ccx.ecx.cfg.chain_id, *from);
+        let to = &ChainAddress(ccx.ecx.cfg.chain_id, *to);
+
         ensure!(
-            !ccx.state.has_arbitrary_storage(to),
+            !ccx.state.arbitrary_storage.is_arbitrary(to),
             "target address cannot have arbitrary storage"
         );
 
@@ -240,9 +245,7 @@ impl Cheatcode for copyStorageCall {
             let from_storage = from_account.storage.clone();
             if let Ok(mut to_account) = ccx.ecx.journaled_state.load_account(*to) {
                 to_account.storage = from_storage;
-                if let Some(arbitrary_storage) = &mut ccx.state.arbitrary_storage {
-                    arbitrary_storage.mark_copy(from, to);
-                }
+                ccx.state.arbitrary_storage.mark_copy(from, to);
             }
         }
 
@@ -274,7 +277,7 @@ impl Cheatcode for shuffleCall {
 }
 
 impl Cheatcode for setSeedCall {
-    fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
+    fn apply_stateful(&self, ccx: &mut CheatsCtxt<'_, '_>) -> Result {
         let Self { seed } = self;
         ccx.state.set_seed(*seed);
         Ok(Default::default())
@@ -288,7 +291,7 @@ fn random_uint(state: &mut Cheatcodes, bits: Option<U256>, bounds: Option<(U256,
         // Generate random with specified bits.
         ensure!(bits <= U256::from(256), "number of bits cannot exceed 256");
         return Ok(DynSolValue::type_strategy(&DynSolType::Uint(bits.to::<usize>()))
-            .new_tree(state.test_runner())
+            .new_tree(&mut proptest::test_runner::TestRunner::default())
             .unwrap()
             .current()
             .abi_encode());
@@ -309,18 +312,18 @@ fn random_uint(state: &mut Cheatcodes, bits: Option<U256>, bounds: Option<(U256,
 
     // Generate random `uint256` value.
     Ok(DynSolValue::type_strategy(&DynSolType::Uint(256))
-        .new_tree(state.test_runner())
+        .new_tree(&mut proptest::test_runner::TestRunner::default())
         .unwrap()
         .current()
         .abi_encode())
 }
 
 /// Helper to generate a random `int` value (with given bits if specified) from type strategy.
-fn random_int(state: &mut Cheatcodes, bits: Option<U256>) -> Result {
+fn random_int(_state: &mut Cheatcodes, bits: Option<U256>) -> Result {
     let no_bits = bits.unwrap_or(U256::from(256));
     ensure!(no_bits <= U256::from(256), "number of bits cannot exceed 256");
     Ok(DynSolValue::type_strategy(&DynSolType::Int(no_bits.to::<usize>()))
-        .new_tree(state.test_runner())
+        .new_tree(&mut proptest::test_runner::TestRunner::default())
         .unwrap()
         .current()
         .abi_encode())

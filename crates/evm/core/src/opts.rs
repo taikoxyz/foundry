@@ -4,15 +4,66 @@ use crate::{
     constants::DEFAULT_CREATE2_DEPLOYER,
     fork::{CreateFork, configure_env},
 };
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{Address, B256, U256, address};
 use alloy_provider::{Provider, network::AnyRpcBlock};
 use eyre::WrapErr;
 use foundry_common::{ALCHEMY_FREE_TIER_CUPS, provider::ProviderBuilder};
 use foundry_config::{Chain, Config, GasLimit};
-use revm::context::{BlockEnv, TxEnv};
-use serde::{Deserialize, Serialize};
+use revm::{
+    context::{BlockEnv, TxEnv},
+    primitives::{ChainAddress, HashMap},
+};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt::Write;
 use url::Url;
+
+/// Helper module for deserializing ChainAddress from string addresses
+mod chain_address_serde {
+    use super::*;
+    use serde::de::{self, Visitor};
+    use std::fmt;
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<ChainAddress, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct ChainAddressVisitor;
+
+        impl<'de> Visitor<'de> for ChainAddressVisitor {
+            type Value = ChainAddress;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("an address string or a tuple (chain_id, address)")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                // Parse address string and use chain_id 1 as default (Ethereum mainnet)
+                let address = value
+                    .parse::<Address>()
+                    .map_err(|e| E::custom(format!("valid address: {e}")))?;
+                Ok(ChainAddress(1, address))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::SeqAccess<'de>,
+            {
+                let chain_id = seq
+                    .next_element::<u64>()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let address = seq
+                    .next_element::<Address>()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                Ok(ChainAddress(chain_id, address))
+            }
+        }
+
+        deserializer.deserialize_any(ChainAddressVisitor)
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EvmOpts {
@@ -77,6 +128,9 @@ pub struct EvmOpts {
 
     /// The CREATE2 deployer's address.
     pub create2_deployer: Address,
+
+    /// the supported chain ids
+    pub chain_ids: Option<Vec<u64>>,
 }
 
 impl Default for EvmOpts {
@@ -101,6 +155,7 @@ impl Default for EvmOpts {
             disable_block_gas_limit: false,
             odyssey: false,
             create2_deployer: DEFAULT_CREATE2_DEPLOYER,
+            chain_ids: None,
         }
     }
 }
@@ -147,30 +202,51 @@ impl EvmOpts {
 
     /// Returns the `revm::Env` configured with only local settings
     pub fn local_evm_env(&self) -> crate::Env {
-        let cfg = configure_env(
+        println!("CORE!!!");
+        println!("chain_ids: {:?}", self.chain_ids);
+
+        let mut cfg = configure_env(
             self.env.chain_id.unwrap_or(foundry_common::DEV_CHAIN_ID),
             self.memory_limit,
             self.disable_block_gas_limit,
         );
+        cfg.xchain = true;
+        cfg.allow_mocking = true;
+        cfg.parent_chain_id = Some(self.env.parent_chain_id.unwrap_or(cfg.chain_id));
+        cfg.extension_oracle = Some(address!("1ADB9959EB142bE128E6dfEcc8D571f07cd66DeE"));
 
-        crate::Env {
-            evm_env: EvmEnv {
-                cfg_env: cfg,
-                block_env: BlockEnv {
+        let canonical_chain_id = cfg.chain_id;
+        let mut block_chain_ids = self.chain_ids.clone().unwrap_or_default();
+        if !block_chain_ids.contains(&canonical_chain_id) {
+            block_chain_ids.push(canonical_chain_id);
+        }
+
+        let tx_chain_ids = Some(block_chain_ids.clone());
+        let coinbase = self.env.block_coinbase;
+        let mut blocks = HashMap::default();
+        for &chain_id in &block_chain_ids {
+            blocks.insert(
+                chain_id,
+                BlockEnv {
                     number: self.env.block_number,
-                    beneficiary: self.env.block_coinbase,
+                    beneficiary: ChainAddress(chain_id, coinbase.address()),
                     timestamp: self.env.block_timestamp,
+                    gas_limit: self.gas_limit(),
+                    basefee: self.env.block_base_fee_per_gas,
                     difficulty: U256::from(self.env.block_difficulty),
                     prevrandao: Some(self.env.block_prevrandao),
-                    basefee: self.env.block_base_fee_per_gas,
-                    gas_limit: self.gas_limit(),
                     ..Default::default()
                 },
-            },
+            );
+        }
+
+        crate::Env {
+            evm_env: EvmEnv { cfg_env: cfg, block_env: blocks },
             tx: TxEnv {
                 gas_price: self.env.gas_price.unwrap_or_default().into(),
                 gas_limit: self.gas_limit(),
-                caller: self.sender,
+                caller: ChainAddress(canonical_chain_id, self.sender),
+                chain_ids: tx_chain_ids,
                 ..Default::default()
             },
         }
@@ -253,7 +329,7 @@ impl EvmOpts {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Env {
     /// The block gas limit.
     pub gas_limit: GasLimit,
@@ -272,10 +348,12 @@ pub struct Env {
     pub block_base_fee_per_gas: u64,
 
     /// the tx.origin value during EVM execution
-    pub tx_origin: Address,
+    #[serde(deserialize_with = "chain_address_serde::deserialize")]
+    pub tx_origin: ChainAddress,
 
     /// the block.coinbase value during EVM execution
-    pub block_coinbase: Address,
+    #[serde(deserialize_with = "chain_address_serde::deserialize")]
+    pub block_coinbase: ChainAddress,
 
     /// the block.timestamp value during EVM execution
     pub block_timestamp: u64,
@@ -296,4 +374,27 @@ pub struct Env {
     /// EIP-170: Contract code size limit in bytes. Useful to increase this because of tests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code_size_limit: Option<usize>,
+
+    // The parent chain id
+    pub parent_chain_id: Option<u64>,
+}
+
+impl Default for Env {
+    fn default() -> Self {
+        Self {
+            gas_limit: GasLimit::default(),
+            chain_id: None,
+            gas_price: None,
+            block_base_fee_per_gas: 0,
+            tx_origin: ChainAddress(1, Address::ZERO),
+            block_coinbase: ChainAddress(1, Address::ZERO),
+            block_timestamp: 0,
+            block_number: 0,
+            block_difficulty: 0,
+            block_prevrandao: B256::ZERO,
+            block_gas_limit: None,
+            code_size_limit: None,
+            parent_chain_id: None,
+        }
+    }
 }

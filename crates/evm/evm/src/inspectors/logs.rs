@@ -58,7 +58,7 @@ where
     }
 
     fn call(&mut self, context: &mut CTX, inputs: &mut CallInputs) -> Option<CallOutcome> {
-        if inputs.target_address == HARDHAT_CONSOLE_ADDRESS {
+        if inputs.target_address.1 == HARDHAT_CONSOLE_ADDRESS {
             return self.do_hardhat_log(context, inputs);
         }
         None

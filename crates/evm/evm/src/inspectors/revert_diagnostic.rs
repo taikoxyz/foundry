@@ -8,11 +8,13 @@ use revm::{
     Database, Inspector,
     bytecode::opcode,
     context::{ContextTr, JournalTr},
+    database::MultiChainDatabase,
     inspector::JournalExt,
     interpreter::{
         CallInputs, CallOutcome, CallScheme, InstructionResult, Interpreter, InterpreterAction,
         InterpreterResult, interpreter::EthInterpreter, interpreter_types::Jumps,
     },
+    primitives::ChainAddress,
 };
 use std::fmt;
 
@@ -73,7 +75,11 @@ impl RevertDiagnostic {
     /// Returns the effective target address whose code would be executed.
     /// For delegate calls, this is the `bytecode_address`. Otherwise, it's the `target_address`.
     fn code_target_address(&self, inputs: &mut CallInputs) -> Address {
-        if is_delegatecall(inputs.scheme) { inputs.bytecode_address } else { inputs.target_address }
+        if is_delegatecall(inputs.scheme) {
+            inputs.bytecode_address.1
+        } else {
+            inputs.target_address.1
+        }
     }
 
     /// Derives the revert reason based on the cached data. Should only be called after a revert.
@@ -103,7 +109,7 @@ impl RevertDiagnostic {
             interp.control.next_action = InterpreterAction::Return {
                 result: InterpreterResult {
                     output: reason.to_string().abi_encode().into(),
-                    gas: interp.control.gas,
+                    gas: interp.control.gas.clone(),
                     result: InstructionResult::Revert,
                 },
             };
@@ -160,7 +166,9 @@ impl RevertDiagnostic {
         // EXTCODESIZE (address)
         if let Ok(word) = interp.stack.peek(0) {
             let addr = Address::from_word(word.into());
-            if IGNORE.contains(&addr) || ctx.journal_ref().precompile_addresses().contains(&addr) {
+            if IGNORE.contains(&addr)
+                || ctx.journal_ref().precompile_addresses().contains(&ChainAddress(1, addr))
+            {
                 return;
             }
 
@@ -186,7 +194,7 @@ impl RevertDiagnostic {
 
 impl<CTX, D> Inspector<CTX, EthInterpreter> for RevertDiagnostic
 where
-    D: Database<Error = DatabaseError>,
+    D: Database<Error = DatabaseError> + MultiChainDatabase,
     CTX: ContextTr<Db = D>,
     CTX::Journal: JournalExt,
 {
@@ -195,11 +203,13 @@ where
     fn call(&mut self, ctx: &mut CTX, inputs: &mut CallInputs) -> Option<CallOutcome> {
         let target = self.code_target_address(inputs);
 
-        if IGNORE.contains(&target) || ctx.journal_ref().precompile_addresses().contains(&target) {
+        if IGNORE.contains(&target)
+            || ctx.journal_ref().precompile_addresses().contains(&ChainAddress(1, target))
+        {
             return None;
         }
 
-        if let Ok(state) = ctx.journal().code(target)
+        if let Ok(state) = ctx.journal().code(ChainAddress(1, target))
             && state.is_empty()
             && !inputs.input.is_empty()
         {

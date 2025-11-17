@@ -1,14 +1,10 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::{
-    Env, InspectorExt, backend::DatabaseExt, constants::DEFAULT_CREATE2_DEPLOYER_CODEHASH,
+    Env, InspectorExt, backend::MultiChainDatabaseExt, constants::DEFAULT_CREATE2_DEPLOYER_CODEHASH,
 };
 use alloy_consensus::constants::KECCAK_EMPTY;
-use alloy_evm::{
-    Evm, EvmEnv,
-    eth::EthEvmContext,
-    precompiles::{DynPrecompile, PrecompilesMap},
-};
+use alloy_evm::{Evm, EvmEnv, eth::EthEvmContext, precompiles::PrecompilesMap};
 use alloy_primitives::{Address, Bytes, U256};
 use foundry_fork_db::DatabaseError;
 use revm::{
@@ -27,12 +23,12 @@ use revm::{
         FrameInput, Gas, InstructionResult, InterpreterResult, interpreter::EthInterpreter,
         return_ok,
     },
-    precompile::{PrecompileSpecId, Precompiles, secp256r1::P256VERIFY},
-    primitives::hardfork::SpecId,
+    precompile::{PrecompileSpecId, Precompiles},
+    primitives::{ChainAddress, HashMap, hardfork::SpecId},
 };
 
 pub fn new_evm_with_inspector<'i, 'db, I: InspectorExt + ?Sized>(
-    db: &'db mut dyn DatabaseExt,
+    db: &'db mut dyn MultiChainDatabaseExt,
     env: Env,
     inspector: &'i mut I,
 ) -> FoundryEvm<'db, &'i mut I> {
@@ -66,7 +62,7 @@ pub fn new_evm_with_inspector<'i, 'db, I: InspectorExt + ?Sized>(
 }
 
 pub fn new_evm_with_existing_context<'a>(
-    ctx: EthEvmContext<&'a mut dyn DatabaseExt>,
+    ctx: EthEvmContext<&'a mut dyn MultiChainDatabaseExt>,
     inspector: &'a mut dyn InspectorExt,
 ) -> FoundryEvm<'a, &'a mut dyn InspectorExt> {
     let spec = ctx.cfg.spec;
@@ -88,9 +84,12 @@ pub fn new_evm_with_existing_context<'a>(
 /// Conditionally inject additional precompiles into the EVM context.
 fn inject_precompiles(evm: &mut FoundryEvm<'_, impl InspectorExt>) {
     if evm.inspector().is_odyssey() {
+        // XXX FIXME YSG
+        /*
         evm.precompiles_mut().apply_precompile(P256VERIFY.address(), |_| {
             Some(DynPrecompile::from(P256VERIFY.precompile()))
         });
+        */
     }
 }
 
@@ -98,8 +97,9 @@ fn inject_precompiles(evm: &mut FoundryEvm<'_, impl InspectorExt>) {
 fn get_precompiles(spec: SpecId) -> PrecompilesMap {
     PrecompilesMap::from_static(
         EthPrecompiles {
-            precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec)),
+            precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec), false),
             spec,
+            xchain: false,
         }
         .precompiles,
     )
@@ -114,8 +114,8 @@ fn get_create2_factory_call_inputs(
     let calldata = [&salt.to_be_bytes::<32>()[..], &inputs.init_code[..]].concat();
     CallInputs {
         caller: inputs.caller,
-        bytecode_address: deployer,
-        target_address: deployer,
+        bytecode_address: ChainAddress(inputs.caller.0, deployer),
+        target_address: ChainAddress(inputs.caller.0, deployer),
         scheme: CallScheme::Call,
         value: CallValue::Transfer(inputs.value),
         input: CallInput::Bytes(calldata.into()),
@@ -123,15 +123,16 @@ fn get_create2_factory_call_inputs(
         is_static: false,
         return_memory_offset: 0..0,
         is_eof: false,
+        is_direct: false,
     }
 }
 
 pub struct FoundryEvm<'db, I: InspectorExt> {
     #[allow(clippy::type_complexity)]
     pub inner: RevmEvm<
-        EthEvmContext<&'db mut dyn DatabaseExt>,
+        EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
         I,
-        EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn DatabaseExt>>,
+        EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn MultiChainDatabaseExt>>,
         PrecompilesMap,
     >,
 }
@@ -157,7 +158,7 @@ impl<I: InspectorExt> FoundryEvm<'_, I> {
 impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
     type Precompiles = PrecompilesMap;
     type Inspector = I;
-    type DB = &'db mut dyn DatabaseExt;
+    type DB = &'db mut dyn MultiChainDatabaseExt;
     type Error = EVMError<DatabaseError>;
     type HaltReason = HaltReason;
     type Spec = SpecId;
@@ -167,8 +168,20 @@ impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
         self.inner.ctx.cfg.chain_id
     }
 
+    fn blocks(&self) -> &HashMap<u64, BlockEnv> {
+        &self.inner.ctx.block
+    }
+
     fn block(&self) -> &BlockEnv {
-        &self.inner.block
+        let chain_id = self.chain_id();
+        self.inner
+            .block
+            .get(&chain_id)
+            .or_else(|| {
+                // Fallback to chain 0
+                self.inner.block.get(&0)
+            })
+            .expect("No block environment found for chain or fallback chain 0")
     }
 
     fn db_mut(&mut self) -> &mut Self::DB {
@@ -206,8 +219,8 @@ impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
 
     fn transact_system_call(
         &mut self,
-        _caller: Address,
-        _contract: Address,
+        _caller: ChainAddress,
+        _contract: ChainAddress,
         _data: Bytes,
     ) -> Result<ResultAndState<Self::HaltReason>, Self::Error> {
         unimplemented!()
@@ -224,7 +237,7 @@ impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
 }
 
 impl<'db, I: InspectorExt> Deref for FoundryEvm<'db, I> {
-    type Target = Context<BlockEnv, TxEnv, CfgEnv, &'db mut dyn DatabaseExt>;
+    type Target = Context<BlockEnv, TxEnv, CfgEnv, &'db mut dyn MultiChainDatabaseExt>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner.ctx
@@ -241,17 +254,17 @@ pub struct FoundryHandler<'db, I: InspectorExt> {
     #[allow(clippy::type_complexity)]
     inner: MainnetHandler<
         RevmEvm<
-            EthEvmContext<&'db mut dyn DatabaseExt>,
+            EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
             I,
-            EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn DatabaseExt>>,
+            EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn MultiChainDatabaseExt>>,
             PrecompilesMap,
         >,
         EVMError<DatabaseError>,
         EthFrame<
             RevmEvm<
-                EthEvmContext<&'db mut dyn DatabaseExt>,
+                EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
                 I,
-                EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn DatabaseExt>>,
+                EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn MultiChainDatabaseExt>>,
                 PrecompilesMap,
             >,
             EVMError<DatabaseError>,
@@ -269,17 +282,17 @@ impl<I: InspectorExt> Default for FoundryHandler<'_, I> {
 
 impl<'db, I: InspectorExt> Handler for FoundryHandler<'db, I> {
     type Evm = RevmEvm<
-        EthEvmContext<&'db mut dyn DatabaseExt>,
+        EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
         I,
-        EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn DatabaseExt>>,
+        EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn MultiChainDatabaseExt>>,
         PrecompilesMap,
     >;
     type Error = EVMError<DatabaseError>;
     type Frame = EthFrame<
         RevmEvm<
-            EthEvmContext<&'db mut dyn DatabaseExt>,
+            EthEvmContext<&'db mut dyn MultiChainDatabaseExt>,
             I,
-            EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn DatabaseExt>>,
+            EthInstructions<EthInterpreter, EthEvmContext<&'db mut dyn MultiChainDatabaseExt>>,
             PrecompilesMap,
         >,
         EVMError<DatabaseError>,
@@ -296,7 +309,7 @@ impl<'db, I: InspectorExt> Handler for FoundryHandler<'db, I> {
         let result = if self
             .create2_overrides
             .last()
-            .is_some_and(|(depth, _)| *depth == evm.journal().depth)
+            .is_some_and(|(depth, _)| *depth == evm.journal().inner.depth)
         {
             let (_, call_inputs) = self.create2_overrides.pop().unwrap();
             let FrameResult::Call(mut result) = result else {
@@ -358,7 +371,11 @@ impl<I: InspectorExt> InspectorHandler for FoundryHandler<'_, I> {
         self.create2_overrides.push((evm.journal().depth(), call_inputs.clone()));
 
         // Sanity check that CREATE2 deployer exists.
-        let code_hash = evm.journal().load_account(create2_deployer)?.info.code_hash;
+        let code_hash = evm
+            .journal()
+            .load_account(ChainAddress(call_inputs.caller.0, create2_deployer))?
+            .info
+            .code_hash;
         if code_hash == KECCAK_EMPTY {
             return Ok(ItemOrResult::Result(FrameResult::Call(CallOutcome {
                 result: InterpreterResult {

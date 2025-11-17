@@ -6,7 +6,7 @@ use foundry_evm_core::{
     constants::CHEATCODE_ADDRESS,
 };
 use itertools::Itertools;
-use revm::context::JournalTr;
+use revm::{context::JournalTr, primitives::ChainAddress};
 use std::fmt::{Debug, Display};
 
 const EQ_REL_DELTA_RESOLUTION: U256 = U256::from_limbs([18, 0, 0, 0]);
@@ -170,10 +170,10 @@ impl EqRelAssertionError<I256> {
 
 type ComparisonResult<'a, T> = Result<Vec<u8>, ComparisonAssertionError<'a, T>>;
 
-fn handle_assertion_result<ERR>(
+fn handle_assertion_result<ERR, E: CheatcodesExecutor>(
     result: core::result::Result<Vec<u8>, ERR>,
-    ccx: &mut CheatsCtxt,
-    executor: &mut dyn CheatcodesExecutor,
+    ccx: &mut CheatsCtxt<'_, '_>,
+    executor: &mut E,
     error_formatter: impl Fn(&ERR) -> String,
     error_msg: Option<&str>,
     format_error: bool,
@@ -190,9 +190,9 @@ fn handle_assertion_result<ERR>(
             if ccx.state.config.assertions_revert {
                 Err(msg.into())
             } else {
-                executor.console_log(ccx, &msg);
+                executor.console_log(ccx, msg);
                 ccx.ecx.journaled_state.sstore(
-                    CHEATCODE_ADDRESS,
+                    ChainAddress(ccx.ecx.cfg.chain_id, CHEATCODE_ADDRESS),
                     GLOBAL_FAIL_SLOT,
                     U256::from(1),
                 )?;
@@ -229,10 +229,10 @@ macro_rules! impl_assertions {
     };
     (@impl $no_error:ident, $with_error:ident, ($($arg:ident),*), $body:expr, $error_formatter:expr, $format_error:literal) => {
         impl crate::Cheatcode for $no_error {
-            fn apply_full(
+            fn apply_full<E: CheatcodesExecutor>(
                 &self,
-                ccx: &mut CheatsCtxt,
-                executor: &mut dyn CheatcodesExecutor,
+                ccx: &mut CheatsCtxt<'_, '_>,
+                executor: &mut E,
             ) -> Result {
                 let Self { $($arg),* } = self;
                 handle_assertion_result($body, ccx, executor, $error_formatter, None, $format_error)
@@ -240,10 +240,10 @@ macro_rules! impl_assertions {
         }
 
         impl crate::Cheatcode for $with_error {
-            fn apply_full(
+            fn apply_full<E: CheatcodesExecutor>(
                 &self,
-                ccx: &mut CheatsCtxt,
-                executor: &mut dyn CheatcodesExecutor,
+                ccx: &mut CheatsCtxt<'_, '_>,
+                executor: &mut E,
             ) -> Result {
                 let Self { $($arg),*, error} = self;
                 handle_assertion_result($body, ccx, executor, $error_formatter, Some(error), $format_error)

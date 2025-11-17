@@ -283,14 +283,16 @@ impl BlockchainStorage {
         let is_prague = spec_id >= SpecId::PRAGUE;
 
         // create a dummy genesis block
+        let chain_id = env.evm_env.cfg_env.chain_id;
+        let block_env = env.evm_env.block_env.get(&chain_id);
         let partial_header = PartialHeader {
             timestamp,
             base_fee,
-            gas_limit: env.evm_env.block_env.gas_limit,
-            beneficiary: env.evm_env.block_env.beneficiary,
-            difficulty: env.evm_env.block_env.difficulty,
-            blob_gas_used: env.evm_env.block_env.blob_excess_gas_and_price.as_ref().map(|_| 0),
-            excess_blob_gas: env.evm_env.block_env.blob_excess_gas(),
+            gas_limit: block_env.map_or(u64::MAX, |b| b.gas_limit),
+            beneficiary: block_env.map_or(Default::default(), |b| b.beneficiary.1),
+            difficulty: block_env.map_or(Default::default(), |b| b.difficulty),
+            blob_gas_used: block_env.and_then(|b| b.blob_excess_gas_and_price.as_ref()).map(|_| 0),
+            excess_blob_gas: block_env.and_then(|b| b.blob_excess_gas()),
             number: genesis_number,
             parent_beacon_block_root: is_cancun.then_some(Default::default()),
             withdrawals_root: is_shanghai.then_some(EMPTY_WITHDRAWALS),

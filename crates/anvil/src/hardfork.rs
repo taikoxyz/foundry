@@ -1,14 +1,14 @@
 use alloy_hardforks::EthereumHardfork;
-use alloy_op_hardforks::OpHardfork::{self};
+//use alloy_op_hardforks::OpHardfork::{self};
 use alloy_rpc_types::BlockNumberOrTag;
 
-use op_revm::OpSpecId;
+//use op_revm::OpSpecId;
 use revm::primitives::hardfork::SpecId;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ChainHardfork {
     Ethereum(EthereumHardfork),
-    Optimism(OpHardfork),
+    // Optimism(OpHardfork),
 }
 
 impl From<EthereumHardfork> for ChainHardfork {
@@ -17,17 +17,19 @@ impl From<EthereumHardfork> for ChainHardfork {
     }
 }
 
+/*
 impl From<OpHardfork> for ChainHardfork {
     fn from(value: OpHardfork) -> Self {
         Self::Optimism(value)
     }
-}
+} */
 
 impl From<ChainHardfork> for SpecId {
     fn from(fork: ChainHardfork) -> Self {
         match fork {
             ChainHardfork::Ethereum(hardfork) => spec_id_from_ethereum_hardfork(hardfork),
-            ChainHardfork::Optimism(hardfork) => spec_id_from_optimism_hardfork(hardfork).into(),
+            //  ChainHardfork::Optimism(hardfork) =>
+            // spec_id_from_optimism_hardfork(hardfork).into(),
         }
     }
 }
@@ -57,6 +59,7 @@ pub fn spec_id_from_ethereum_hardfork(hardfork: EthereumHardfork) -> SpecId {
     }
 }
 
+/*
 /// Map an OptimismHardfork enum into its corresponding OpSpecId.
 pub fn spec_id_from_optimism_hardfork(hardfork: OpHardfork) -> OpSpecId {
     match hardfork {
@@ -71,6 +74,7 @@ pub fn spec_id_from_optimism_hardfork(hardfork: OpHardfork) -> OpSpecId {
         OpHardfork::Interop => OpSpecId::INTEROP,
     }
 }
+*/
 
 /// Convert a `BlockNumberOrTag` into an `EthereumHardfork`.
 pub fn ethereum_hardfork_from_block_tag(block: impl Into<BlockNumberOrTag>) -> EthereumHardfork {
@@ -100,6 +104,7 @@ mod tests {
         assert_eq!(spec_id_from_ethereum_hardfork(EthereumHardfork::Prague), SpecId::PRAGUE);
     }
 
+    /*
     #[test]
     fn test_optimism_spec_id_mapping() {
         assert_eq!(spec_id_from_optimism_hardfork(OpHardfork::Bedrock), OpSpecId::BEDROCK);
@@ -109,7 +114,7 @@ mod tests {
         assert_eq!(spec_id_from_optimism_hardfork(OpHardfork::Holocene), OpSpecId::HOLOCENE);
         assert_eq!(spec_id_from_optimism_hardfork(OpHardfork::Interop), OpSpecId::INTEROP);
     }
-
+     */
     #[test]
     fn test_hardfork_from_block_tag_numbers() {
         assert_eq!(

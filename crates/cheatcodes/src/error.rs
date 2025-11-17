@@ -68,7 +68,7 @@ macro_rules! ensure {
 macro_rules! ensure_not_precompile {
     ($address:expr, $ctxt:expr) => {
         if $ctxt.is_precompile($address) {
-            return Err($crate::error::precompile_error($address));
+            return Err($crate::error::precompile_error(&$address.1));
         }
     };
 }
