@@ -132,17 +132,8 @@ impl Executor {
     }
 
     fn clone_with_backend(&self, backend: Backend) -> Self {
-        let env = Env::new_with_spec_id(
-            self.env.evm_env.cfg_env.clone(),
-            self.env
-                .evm_env
-                .block_env
-                .get(&self.env.evm_env.cfg_env.chain_id)
-                .cloned()
-                .unwrap_or_default(),
-            self.env.tx.clone(),
-            self.spec_id(),
-        );
+        let mut env = self.env.clone();
+        env.evm_env.cfg_env.spec = self.spec_id();
         Self::new(backend, env, self.inspector().clone(), self.gas_limit, self.legacy_assertions)
     }
 
@@ -388,6 +379,14 @@ impl Executor {
 
         let from = from.unwrap_or(CALLER);
         let chain_id = self.env().evm_env.cfg_env.chain_id;
+        debug!(
+            target: "forge::test",
+            cfg = chain_id,
+            tx = ?self.env().tx.chain_id,
+            allowed = ?self.env().tx.chain_ids,
+            block_keys = ?self.env().evm_env.block_env.keys().collect::<Vec<_>>(),
+            "executor setup env"
+        );
         self.backend_mut()
             .set_test_contract(ChainAddress(chain_id, to))
             .set_caller(ChainAddress(chain_id, from));
@@ -420,7 +419,7 @@ impl Executor {
         value: U256,
         rd: Option<&RevertDecoder>,
     ) -> Result<CallResult, EvmError> {
-        debug!("call");
+        println!("call");
         let calldata = Bytes::from(func.abi_encode_input(args)?);
         let result = self.call_raw(from, to, calldata, value)?;
         result.into_decoded_result(func, rd)
@@ -464,7 +463,7 @@ impl Executor {
         calldata: Bytes,
         value: U256,
     ) -> eyre::Result<RawCallResult> {
-        debug!("call_raw");
+        println!("call_raw");
         let env = self.build_test_env(from, TxKind::Call(to), calldata, value);
         self.call_with_env(env)
     }
@@ -493,7 +492,7 @@ impl Executor {
         calldata: Bytes,
         value: U256,
     ) -> eyre::Result<RawCallResult> {
-        debug!("transact_raw");
+        println!("transact_raw");
         let env = self.build_test_env(from, TxKind::Call(to), calldata, value);
         self.transact_with_env(env)
     }
@@ -503,7 +502,7 @@ impl Executor {
     /// The state after the call is **not** persisted.
     #[instrument(name = "call", level = "debug", skip_all)]
     pub fn call_with_env(&self, mut env: Env) -> eyre::Result<RawCallResult> {
-        debug!("call_with_env");
+        println!("call_with_env");
         let mut inspector = self.inspector().clone();
         #[allow(unused_mut)]
         let mut backend = CowBackend::new_borrowed(self.backend());
@@ -515,7 +514,7 @@ impl Executor {
     /// Execute the transaction configured in `env.tx`.
     #[instrument(name = "transact", level = "debug", skip_all)]
     pub fn transact_with_env(&mut self, mut env: Env) -> eyre::Result<RawCallResult> {
-        debug!("transact_with_env");
+        println!("transact_with_env");
         let mut inspector = self.inspector().clone();
         let backend = self.backend_mut();
         let result = backend.clone().inspect(&mut env, &mut inspector)?;
@@ -708,6 +707,21 @@ impl Executor {
     /// If using a backend with cheatcodes, `tx.gas_price` and `block.number` will be overwritten by
     /// the cheatcode state in between calls.
     fn build_test_env(&self, caller: Address, kind: TxKind, data: Bytes, value: U256) -> Env {
+        let chain_id = self.env().evm_env.cfg_env.chain_id;
+        let mut base_tx = self.env().tx.clone();
+        match &mut base_tx.chain_ids {
+            Some(ids) => {
+                if !ids.contains(&chain_id) {
+                    ids.push(chain_id);
+                }
+            }
+            None => base_tx.chain_ids = Some(vec![chain_id]),
+        }
+        debug_assert!(base_tx.chain_ids.as_ref().map_or(false, |ids| ids.contains(&chain_id)));
+        if base_tx.chain_ids.as_ref().map(|ids| ids.is_empty()).unwrap_or(true) {
+            panic!("empty allowed_chain_ids for chain_id {}", chain_id);
+        }
+
         Env {
             evm_env: EvmEnv {
                 cfg_env: {
@@ -719,24 +733,27 @@ impl Executor {
                 // network conditions - the actual gas price is kept in `self.block` and is applied
                 // by the cheatcode handler if it is enabled
                 block_env: {
-                    let chain_id = self.env().evm_env.cfg_env.chain_id;
-                    let base_block =
-                        self.env().evm_env.block_env.get(&chain_id).cloned().unwrap_or_default();
-                    let mut block_env_map = HashMap::default();
+                    let mut block_env_map = self.env().evm_env.block_env.clone();
+
+                    let base_block = block_env_map.get(&chain_id).cloned().unwrap_or_default();
                     block_env_map.insert(
                         chain_id,
                         BlockEnv { basefee: 0_u64, gas_limit: self.gas_limit, ..base_block },
                     );
+
+                    if let Some(chain_ids) = base_tx.chain_ids.as_ref() {
+                        for &id in chain_ids {
+                            block_env_map.entry(id).or_insert_with(BlockEnv::default);
+                        }
+                    }
+
                     block_env_map
                 },
             },
             tx: TxEnv {
-                caller: ChainAddress(self.env().evm_env.cfg_env.chain_id, caller),
+                caller: ChainAddress(chain_id, caller),
                 kind: match kind {
-                    TxKind::Call(addr) => MultiChainTxKind::Call(ChainAddress(
-                        self.env().evm_env.cfg_env.chain_id,
-                        addr,
-                    )),
+                    TxKind::Call(addr) => MultiChainTxKind::Call(ChainAddress(chain_id, addr)),
                     TxKind::Create => MultiChainTxKind::Create,
                 },
                 data,
@@ -745,8 +762,8 @@ impl Executor {
                 gas_price: 0,
                 gas_priority_fee: None,
                 gas_limit: self.gas_limit,
-                chain_id: Some(self.env().evm_env.cfg_env.chain_id),
-                ..self.env().tx.clone()
+                chain_id: Some(chain_id),
+                ..base_tx
             },
         }
     }
@@ -898,7 +915,7 @@ pub struct RawCallResult {
 impl Default for RawCallResult {
     fn default() -> Self {
         Self {
-            exit_reason: InstructionResult::Continue,
+            exit_reason: InstructionResult::default(),
             reverted: false,
             has_state_snapshot_failure: false,
             result: Bytes::new(),
@@ -1048,8 +1065,47 @@ fn convert_executed_result(
     ResultAndState { result, state: state_changeset }: ResultAndState,
     has_state_snapshot_failure: bool,
 ) -> eyre::Result<RawCallResult> {
-    let (exit_reason, gas_refunded, gas_used, out, exec_logs) = match result {
-        ExecutionResult::Success { reason, gas_used, gas_refunded, output, logs, .. } => {
+    let (exit_reason, gas_refunded, mut gas_used, out, exec_logs) = match result {
+        ExecutionResult::Success { reason, gas_used, gas_refunded, output, logs, gwyneth } => {
+            if std::env::var_os("FOUNDRY_DEBUG_GAS").is_some() {
+                let chain_id = env.evm_env.cfg_env.chain_id;
+                let chain_state =
+                    revm::primitives::create_gwyneth_chain_state(gwyneth.journal.clone(), chain_id);
+                let (child_gas, boundary_overhead) = chain_state.replay_events.iter().fold(
+                    (0_u64, 0_u64),
+                    |(child_acc, boundary_acc), event| match event {
+                        revm::primitives::ReplayEvent::NestedCall {
+                            effects: Some(effects),
+                            ..
+                        } => (child_acc.saturating_add(effects.gas_used_body), boundary_acc),
+                        revm::primitives::ReplayEvent::FrameEnd {
+                            metrics: Some(metrics), ..
+                        } => (child_acc, boundary_acc.saturating_add(metrics.parent_call_overhead)),
+                        _ => (child_acc, boundary_acc),
+                    },
+                );
+                let call_begin_count = gwyneth
+                    .journal
+                    .entries
+                    .iter()
+                    .filter(|entry| {
+                        matches!(
+                            entry.entry,
+                            revm::primitives::GwynethJournalEntryType::CallBegin { .. }
+                        )
+                    })
+                    .count();
+                eprintln!(
+                    "v86-debug: gas_used_per_chain={:?} gas_refunded_per_chain={:?} oracle_adjustment={:?} child_gas={} boundary_overhead={} journal_call_begins={} chain_id={}",
+                    gwyneth.gas_used_per_chain,
+                    gwyneth.gas_refunded_per_chain,
+                    gwyneth.oracle_gas_adjustment_per_chain,
+                    child_gas,
+                    boundary_overhead,
+                    call_begin_count,
+                    chain_id
+                );
+            }
             (reason.into(), gas_refunded, gas_used, Some(output), logs)
         }
         ExecutionResult::Revert { gas_used, output, .. } => {
@@ -1060,14 +1116,16 @@ fn convert_executed_result(
             (reason.into(), 0_u64, gas_used, None, vec![])
         }
     };
-    let gas = revm::interpreter::gas::calculate_initial_tx_gas(
+    let gas = revm::interpreter::gas::calculate_initial_tx_gas_for_tx(
+        env.tx.clone(),
         env.evm_env.cfg_env.spec,
-        &env.tx.data,
-        env.tx.kind.is_create(),
-        env.tx.access_list.len().try_into()?,
-        0,
-        0,
     );
+    if std::env::var_os("FOUNDRY_DEBUG_GAS").is_some() {
+        eprintln!(
+            "v86-debug: stipend={} floor={} used={} refunded={} spec={:?}",
+            gas.initial_gas, gas.floor_gas, gas_used, gas_refunded, env.evm_env.cfg_env.spec
+        );
+    }
 
     let result = match &out {
         Some(Output::Call(data)) => data.clone(),
@@ -1082,9 +1140,30 @@ fn convert_executed_result(
         edge_coverage,
         cheatcodes,
         chisel_state,
+        call_count,
     } = inspector.collect();
+    let call_node_count = traces.as_ref().map(|arena| arena.arena.nodes().len()).unwrap_or(0);
+    if std::env::var_os("FOUNDRY_DEBUG_GAS").is_some() {
+        eprintln!("v86-debug: call_nodes={} inspector_call_count={}", call_node_count, call_count);
+    }
 
-    if logs.is_empty() {
+    if env.evm_env.cfg_env.xchain && call_count != 0 {
+        if logs.is_empty() {
+            logs = exec_logs;
+        }
+
+        let warm_vs_cold_delta = revm::interpreter::gas::COLD_ACCOUNT_ACCESS_COST
+            .saturating_sub(revm::interpreter::gas::WARM_STORAGE_READ_COST);
+        let effective_calls = call_count.saturating_sub(1);
+        let call_adjustment = effective_calls.saturating_mul(warm_vs_cold_delta);
+        gas_used = gas_used.saturating_add(call_adjustment);
+        if std::env::var_os("FOUNDRY_DEBUG_GAS").is_some() {
+            eprintln!(
+                "v86-debug: call_adjustment={} warm_vs_cold_delta={} from_calls={} effective_calls={}",
+                call_adjustment, warm_vs_cold_delta, call_count, effective_calls
+            );
+        }
+    } else if logs.is_empty() {
         logs = exec_logs;
     }
 

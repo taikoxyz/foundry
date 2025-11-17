@@ -91,7 +91,7 @@ impl LineCoverageCollector {
 #[inline]
 fn get_or_insert_contract_hash(interpreter: &mut Interpreter) -> B256 {
     if interpreter.bytecode.hash().is_none_or(|h| h.is_zero()) {
-        interpreter.bytecode.regenerate_hash();
+        return interpreter.bytecode.get_or_calculate_hash();
     }
     interpreter.bytecode.hash().unwrap_or_else(|| eof_panic())
 }

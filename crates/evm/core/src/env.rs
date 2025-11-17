@@ -7,19 +7,34 @@ use revm::{
 };
 
 /// Helper container type for [`EvmEnv`] and [`TxEnv`].
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Env {
     pub evm_env: EvmEnv,
     pub tx: TxEnv,
 }
 
+impl Default for Env {
+    fn default() -> Self {
+        let mut cfg = CfgEnv::default();
+        cfg.chain_id = 31337;
+
+        let mut tx = TxEnv::default();
+        tx.chain_id = Some(31337);
+
+        Self::from(cfg, BlockEnv::default(), tx)
+    }
+}
 /// Helper container type for [`EvmEnv`] and [`TxEnv`].
 impl Env {
     pub fn default_with_spec_id(spec_id: SpecId) -> Self {
         let mut cfg = CfgEnv::default();
+        cfg.chain_id = 31337;
         cfg.spec = spec_id;
 
-        Self::from(cfg, BlockEnv::default(), TxEnv::default())
+        let mut tx = TxEnv::default();
+        tx.chain_id = Some(cfg.chain_id);
+
+        Self::from(cfg, BlockEnv::default(), tx)
     }
 
     pub fn from(cfg: CfgEnv, block: BlockEnv, tx: TxEnv) -> Self {

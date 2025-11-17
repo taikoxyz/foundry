@@ -1,7 +1,7 @@
 use alloy_consensus::Transaction;
 use alloy_network::{AnyNetwork, TransactionResponse};
 use alloy_primitives::{
-    Address, Bytes,
+    Address, Bytes, U256,
     map::{HashMap, HashSet},
 };
 use alloy_provider::{Provider, RootProvider};
@@ -154,12 +154,13 @@ impl RunArgs {
         let mut evm_version = self.evm_version;
 
         env.evm_env.cfg_env.disable_block_gas_limit = self.disable_block_gas_limit;
-        env.evm_env.block_env.get_mut(&env.evm_env.chainid()).unwrap().number = tx_block_number;
+        env.evm_env.block_env.get_mut(&env.evm_env.chainid()).unwrap().number =
+            U256::from(tx_block_number);
 
         if let Some(block) = &block {
             let chain_id = env.evm_env.cfg_env.chain_id;
             let block_env = env.evm_env.block_env.get_mut(&env.evm_env.cfg_env.chain_id).unwrap();
-            block_env.timestamp = block.header.timestamp;
+            block_env.timestamp = U256::from(block.header.timestamp);
             block_env.beneficiary = ChainAddress(chain_id, block.header.beneficiary);
             block_env.difficulty = block.header.difficulty;
             block_env.prevrandao = Some(block.header.mix_hash.unwrap_or_default());

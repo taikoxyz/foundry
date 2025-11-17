@@ -355,7 +355,8 @@ impl From<InvalidTransaction> for InvalidTransactionError {
             | InvalidTransaction::Eip2930NotSupported
             | InvalidTransaction::Eip4844NotSupported
             | InvalidTransaction::Eip7702NotSupported
-            | InvalidTransaction::EofCreateShouldHaveToAddress
+            | InvalidTransaction::MissingChainId
+            | InvalidTransaction::TxGasLimitGreaterThanCap { .. }
             | InvalidTransaction::EmptyAuthorizationList
             | InvalidTransaction::Eip7873NotSupported
             | InvalidTransaction::Eip7873MissingTarget => Self::Revm(err),

@@ -120,7 +120,7 @@ impl<'a> ContractRunner<'a> {
     fn _setup(&mut self, call_setup: bool) -> Result<TestSetup> {
         trace!(call_setup, "setting up");
 
-        debug!("setting up ContractRunner");
+        println!("setting up ContractRunner");
 
         self.apply_contract_inline_config()?;
 

@@ -1,6 +1,6 @@
 //! general eth api tests
 
-use crate::abi::Greeter;
+use crate::{abi::Greeter, utils::test_data_path};
 use alloy_network::{ReceiptResponse, TransactionBuilder};
 use alloy_primitives::{Bytes, U256, Uint, address, utils::Unit};
 use alloy_provider::Provider;
@@ -24,7 +24,10 @@ async fn can_load_state() {
     let state = api.serialized_state(false).await.unwrap();
     foundry_common::fs::write_json_file(&state_file, &state).unwrap();
 
-    let (api, _handle) = spawn(NodeConfig::test().with_init_state_path(state_file)).await;
+    assert!(state_file.exists(), "state file missing: {}", state_file.display());
+    let parsed = anvil::cmd::StateFile::parse_path(&state_file).expect("parse state file");
+    assert!(parsed.state.is_some(), "failed to parse state at {}", state_file.display());
+    let (api, _handle) = spawn(NodeConfig::test().with_init_state_path(&state_file)).await;
 
     let num2 = api.block_number().unwrap();
 
@@ -44,9 +47,12 @@ async fn can_load_state() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn can_load_existing_state_legacy() {
-    let state_file = "test-data/state-dump-legacy.json";
+    let state_file = test_data_path("state-dump-legacy.json");
 
-    let (api, _handle) = spawn(NodeConfig::test().with_init_state_path(state_file)).await;
+    assert!(state_file.exists(), "state file missing: {}", state_file.display());
+    let parsed = anvil::cmd::StateFile::parse_path(&state_file).expect("parse legacy state file");
+    assert!(parsed.state.is_some(), "failed to parse state at {}", state_file.display());
+    let (api, _handle) = spawn(NodeConfig::test().with_init_state_path(&state_file)).await;
 
     let block_number = api.block_number().unwrap();
     assert_eq!(block_number, Uint::from(2));
@@ -54,9 +60,13 @@ async fn can_load_existing_state_legacy() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn can_load_existing_state_legacy_stress() {
-    let state_file = "test-data/state-dump-legacy-stress.json";
+    let state_file = test_data_path("state-dump-legacy-stress.json");
 
-    let (api, _handle) = spawn(NodeConfig::test().with_init_state_path(state_file)).await;
+    assert!(state_file.exists(), "state file missing: {}", state_file.display());
+    let parsed =
+        anvil::cmd::StateFile::parse_path(&state_file).expect("parse legacy stress state file");
+    assert!(parsed.state.is_some(), "failed to parse state at {}", state_file.display());
+    let (api, _handle) = spawn(NodeConfig::test().with_init_state_path(&state_file)).await;
 
     let block_number = api.block_number().unwrap();
     assert_eq!(block_number, Uint::from(5));
@@ -64,9 +74,12 @@ async fn can_load_existing_state_legacy_stress() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn can_load_existing_state() {
-    let state_file = "test-data/state-dump.json";
+    let state_file = test_data_path("state-dump.json");
 
-    let (api, _handle) = spawn(NodeConfig::test().with_init_state_path(state_file)).await;
+    assert!(state_file.exists(), "state file missing: {}", state_file.display());
+    let parsed = anvil::cmd::StateFile::parse_path(&state_file).expect("parse state file");
+    assert!(parsed.state.is_some(), "failed to parse state at {}", state_file.display());
+    let (api, _handle) = spawn(NodeConfig::test().with_init_state_path(&state_file)).await;
 
     let block_number = api.block_number().unwrap();
     assert_eq!(block_number, Uint::from(2));
@@ -139,7 +152,7 @@ async fn can_preserve_historical_states_between_dump_and_load() {
     let ser_state = api.serialized_state(true).await.unwrap();
     foundry_common::fs::write_json_file(&state_file, &ser_state).unwrap();
 
-    let (api, handle) = spawn(NodeConfig::test().with_init_state_path(state_file)).await;
+    let (api, handle) = spawn(NodeConfig::test().with_init_state_path(&state_file)).await;
 
     let block_number = api.block_number().unwrap();
     assert_eq!(block_number, Uint::from(3));

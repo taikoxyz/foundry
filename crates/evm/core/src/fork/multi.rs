@@ -6,7 +6,7 @@
 use super::CreateFork;
 use crate::Env;
 use alloy_consensus::BlockHeader;
-use alloy_primitives::map::HashMap;
+use alloy_primitives::{U256, map::HashMap};
 use alloy_provider::network::BlockResponse;
 use foundry_common::provider::{ProviderBuilder, RetryProvider};
 use foundry_config::Config;
@@ -310,14 +310,14 @@ impl MultiForkHandler {
                 .block_env
                 .get_mut(&fork.opts.env.evm_env.chainid())
                 .unwrap()
-                .number = block_number;
+                .number = U256::from(block_number);
             fork.opts
                 .env
                 .evm_env
                 .block_env
                 .get_mut(&fork.opts.env.evm_env.chainid())
                 .unwrap()
-                .timestamp = block_timestamp;
+                .timestamp = U256::from(block_timestamp);
         }
     }
 

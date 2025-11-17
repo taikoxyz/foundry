@@ -7,7 +7,7 @@ use eyre::WrapErr;
 use foundry_common::NON_ARCHIVE_NODE_WARNING;
 use revm::{
     context::{BlockEnv, CfgEnv, TxEnv},
-    primitives::{ChainAddress, HashMap},
+    primitives::{ChainAddress, HashMap, U256},
 };
 
 /// Initializes a REVM block environment based on a forked
@@ -57,8 +57,8 @@ pub async fn environment<N: Network, P: Provider<N>>(
 
     let chain_id = cfg.chain_id;
     let block_env = BlockEnv {
-        number: block.header().number(),
-        timestamp: block.header().timestamp(),
+        number: U256::from(block.header().number()),
+        timestamp: U256::from(block.header().timestamp()),
         beneficiary: ChainAddress(chain_id, block.header().beneficiary()),
         difficulty: block.header().difficulty(),
         prevrandao: block.header().mix_hash(),
@@ -81,6 +81,7 @@ pub async fn environment<N: Network, P: Provider<N>>(
             ..Default::default()
         },
     };
+    env.tx.chain_ids = Some(vec![chain_id]);
 
     apply_chain_and_block_specific_env_changes::<N>(env.as_env_mut(), &block);
 

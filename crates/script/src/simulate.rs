@@ -11,7 +11,7 @@ use crate::{
 };
 use alloy_chains::NamedChain;
 use alloy_network::TransactionBuilder;
-use alloy_primitives::{Address, Bytes, TxKind, map::HashMap, utils::format_units};
+use alloy_primitives::{Address, Bytes, TxKind, U256, map::HashMap, utils::format_units};
 use dialoguer::Confirm;
 use eyre::{Context, Result};
 use forge_script_sequence::{ScriptSequence, TransactionWithMetadata};
@@ -143,7 +143,7 @@ impl PreSimulationState {
                     if let Some(block_env) =
                         runner.executor.env_mut().evm_env.block_env.get_mut(&chain_id)
                     {
-                        block_env.number += 1;
+                        block_env.number += U256::ONE;
                     }
                 }
 

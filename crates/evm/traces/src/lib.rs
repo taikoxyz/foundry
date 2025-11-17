@@ -110,7 +110,7 @@ impl SparsedTraceArena {
                         Some(TraceMemberOrder::Step(step_idx)) => {
                             // If this is an internal call beginning, track it in `internal_calls`
                             if let Some(DecodedTraceStep::InternalCall(_, end_step_idx)) =
-                                &nodes[node_idx].trace.steps[step_idx].decoded
+                                nodes[node_idx].trace.steps[step_idx].decoded.as_deref()
                             {
                                 internal_calls.push((item_idx, remove, *end_step_idx));
                                 // we decide if we should remove it later

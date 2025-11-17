@@ -1,6 +1,6 @@
 use crate::{bytecode::VerifyBytecodeArgs, types::VerificationType};
 use alloy_dyn_abi::DynSolValue;
-use alloy_primitives::{Address, Bytes, TxKind};
+use alloy_primitives::{Address, Bytes, TxKind, U256};
 use alloy_provider::{Provider, network::AnyRpcBlock};
 use alloy_rpc_types::BlockId;
 use clap::ValueEnum;
@@ -334,9 +334,9 @@ pub async fn get_tracing_executor(
 pub fn configure_env_block(env: &mut EnvMut<'_>, block: &AnyRpcBlock) {
     let chain_id = env.cfg.chain_id;
     if let Some(block_env) = env.block.get_mut(&chain_id) {
-        block_env.timestamp = block.header.timestamp;
+        block_env.timestamp = U256::from(block.header.timestamp);
         block_env.beneficiary = ChainAddress(chain_id, block.header.beneficiary);
-        block_env.difficulty = block.header.difficulty;
+        block_env.difficulty = block.header.difficulty.into();
         block_env.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
         block_env.basefee = block.header.base_fee_per_gas.unwrap_or_default();
         block_env.gas_limit = block.header.gas_limit;

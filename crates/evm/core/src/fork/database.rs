@@ -13,7 +13,7 @@ use revm::{
     bytecode::Bytecode,
     context_interface::MultiChainDatabase,
     database::{CacheDB, DatabaseRef},
-    database_interface::MultiChainDatabaseCommit,
+    database_interface::{MultiChainDatabaseCommit, MultiChainDatabaseRef},
     primitives::ChainAddress,
     state::{Account, AccountInfo},
 };
@@ -231,6 +231,30 @@ impl MultiChainDatabaseCommit for ForkedDatabase {
         let single_chain_changes =
             changes.into_iter().map(|(addr, account)| (addr.1, account)).collect();
         self.commit(single_chain_changes)
+    }
+}
+
+impl MultiChainDatabaseRef for ForkedDatabase {
+    type Error = DatabaseError;
+
+    fn basic_ref_multi(&self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        self.basic_ref(address.1)
+    }
+
+    fn code_by_hash_ref_multi(
+        &self,
+        _chain_id: u64,
+        code_hash: B256,
+    ) -> Result<Bytecode, Self::Error> {
+        self.code_by_hash_ref(code_hash)
+    }
+
+    fn storage_ref_multi(&self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
+        self.storage_ref(address.1, index)
+    }
+
+    fn block_hash_ref_multi(&self, _chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        self.block_hash_ref(number)
     }
 }
 

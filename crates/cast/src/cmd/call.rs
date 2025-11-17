@@ -271,7 +271,7 @@ impl CallArgs {
                 if let Some(time) = block_overrides.time
                     && let Some(block_env) = env.evm_env.block_env.get_mut(&chain_id)
                 {
-                    block_env.timestamp = time;
+                    block_env.timestamp = U256::from(time);
                 }
             }
 

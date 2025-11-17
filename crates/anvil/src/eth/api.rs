@@ -1,8 +1,5 @@
 use super::{
-    backend::{
-        db::MaybeFullDatabase,
-        mem::{BlockRequest, State, state},
-    },
+    backend::mem::{BlockRequest, State, state},
     sign::build_typed_transaction,
 };
 use crate::{
@@ -10,7 +7,7 @@ use crate::{
     eth::{
         backend::{
             self,
-            db::SerializableState,
+            db::{AnvilCacheDB, Db, SerializableState},
             mem::{MIN_CREATE_GAS, MIN_TRANSACTION_GAS},
             notifications::NewBlockNotifications,
             validate::TransactionValidator,
@@ -83,7 +80,7 @@ use anvil_core::{
 };
 use anvil_rpc::{error::RpcError, response::ResponseResult};
 use foundry_common::provider::ProviderBuilder;
-use foundry_evm::{backend::DatabaseError, decode::RevertDecoder};
+use foundry_evm::decode::RevertDecoder;
 use futures::{
     StreamExt,
     channel::{mpsc::Receiver, oneshot},
@@ -93,7 +90,6 @@ use revm::{
     bytecode::Bytecode,
     context::BlockEnv,
     context_interface::{block::BlobExcessGasAndPrice, result::Output},
-    database::{CacheDB, DatabaseRef},
     interpreter::{InstructionResult, return_ok, return_revert},
     primitives::eip7702::PER_EMPTY_ACCOUNT_COST,
 };
@@ -194,6 +190,12 @@ impl EthApi {
             }
             EthRequest::EthChainId(_) => self.eth_chain_id().to_rpc_result(),
             EthRequest::EthNetworkId(_) => self.network_id().to_rpc_result(),
+            EthRequest::EthSetActiveChainId(id) => {
+                self.eth_set_active_chain_id(id).await.to_rpc_result()
+            }
+            EthRequest::EthGetActiveChainId(()) => {
+                self.eth_get_active_chain_id().await.to_rpc_result()
+            }
             EthRequest::NetListening(_) => self.net_listening().to_rpc_result(),
             EthRequest::EthGasPrice(_) => self.eth_gas_price().to_rpc_result(),
             EthRequest::EthMaxPriorityFeePerGas(_) => {
@@ -626,6 +628,19 @@ impl EthApi {
         node_info!("eth_networkId");
         let chain_id = self.backend.chain_id().to::<u64>();
         Ok(Some(format!("{chain_id}")))
+    }
+
+    /// Handler for ETH RPC call: `eth_setActiveChainId`
+    pub async fn eth_set_active_chain_id(&self, chain_id: u64) -> Result<bool> {
+        node_info!("eth_setActiveChainId");
+        self.backend.set_active_chain_id(chain_id);
+        Ok(true)
+    }
+
+    /// Handler for ETH RPC call: `eth_getActiveChainId`
+    pub async fn eth_get_active_chain_id(&self) -> Result<U64> {
+        node_info!("eth_getActiveChainId");
+        Ok(U64::from(self.backend.active_chain_id()))
     }
 
     /// Returns true if client is actively listening for network connections.
@@ -1264,8 +1279,10 @@ impl EthApi {
 
         self.backend
             .with_database_at(Some(block_request), |state, block_env| {
+                let cache_db = AnvilCacheDB::new(state);
+                let db = cache_db.as_db();
                 let (exit, out, _, access_list) = self.backend.build_access_list_with_state(
-                    &state,
+                    db,
                     request.clone(),
                     FeeDetails::zero(),
                     block_env.clone(),
@@ -1276,7 +1293,7 @@ impl EthApi {
                 request.access_list = Some(access_list.clone());
 
                 let (exit, out, gas_used, _) = self.backend.call_with_state(
-                    &state,
+                    db,
                     request.clone(),
                     FeeDetails::zero(),
                     block_env,
@@ -2201,7 +2218,7 @@ impl EthApi {
                 env.evm_env
                     .block_env
                     .get(&chain_id)
-                    .map(|block_env| block_env.timestamp)
+                    .map(|block_env| block_env.timestamp.saturating_to::<u64>())
                     .unwrap_or_default()
             },
             current_block_hash: self.backend.best_hash(),
@@ -2935,7 +2952,7 @@ impl EthApi {
         self.on_blocking_task(|this| async move {
             this.backend
                 .with_database_at(Some(block_request), |state, mut block| {
-                    let mut cache_db = CacheDB::new(state);
+                    let mut cache_db = AnvilCacheDB::new(state);
                     if let Some(state_overrides) = overrides.state {
                         state::apply_state_overrides(
                             state_overrides.into_iter().collect(),
@@ -2945,7 +2962,7 @@ impl EthApi {
                     if let Some(block_overrides) = overrides.block {
                         state::apply_block_overrides(*block_overrides, &mut cache_db, &mut block);
                     }
-                    this.do_estimate_gas_with_state(request, cache_db.as_dyn(), block)
+                    this.do_estimate_gas_with_state(request, cache_db.as_db(), block)
                 })
                 .await?
         })
@@ -2958,7 +2975,7 @@ impl EthApi {
     fn do_estimate_gas_with_state(
         &self,
         mut request: WithOtherFields<TransactionRequest>,
-        state: &dyn DatabaseRef<Error = DatabaseError>,
+        state: &dyn Db,
         block_env: BlockEnv,
     ) -> Result<u128> {
         // If the request is a simple native token transfer we can optimize
@@ -2974,7 +2991,7 @@ impl EthApi {
 
         if maybe_transfer
             && let Some(to) = to
-            && let Ok(target_code) = self.backend.get_code_with_state(&state, *to)
+            && let Ok(target_code) = self.backend.get_code_with_state(state, *to)
             && target_code.as_ref().is_empty()
         {
             return Ok(MIN_TRANSACTION_GAS);
@@ -3015,7 +3032,7 @@ impl EthApi {
 
         // execute the call without writing to db
         let ethres =
-            self.backend.call_with_state(&state, call_to_estimate, fees.clone(), block_env.clone());
+            self.backend.call_with_state(state, call_to_estimate, fees.clone(), block_env.clone());
 
         let gas_used = match ethres.try_into()? {
             GasEstimationCallResult::Success(gas) => Ok(gas),
@@ -3047,7 +3064,7 @@ impl EthApi {
         while (highest_gas_limit - lowest_gas_limit) > 1 {
             request.gas = Some(mid_gas_limit as u64);
             let ethres = self.backend.call_with_state(
-                &state,
+                state,
                 request.clone(),
                 fees.clone(),
                 block_env.clone(),
@@ -3480,7 +3497,7 @@ impl TryFrom<Result<(InstructionResult, Option<Output>, u128, State)>> for GasEs
             }
             Err(err) => Err(err),
             Ok((exit, output, gas, _)) => match exit {
-                return_ok!() | InstructionResult::CallOrCreate => Ok(Self::Success(gas)),
+                return_ok!() => Ok(Self::Success(gas)),
 
                 // Revert opcodes:
                 InstructionResult::Revert => Ok(Self::Revert(output.map(|o| o.into_data()))),
@@ -3499,29 +3516,7 @@ impl TryFrom<Result<(InstructionResult, Option<Output>, u128, State)>> for GasEs
                 | InstructionResult::ReentrancySentryOOG => Ok(Self::OutOfGas),
 
                 // Other errors:
-                InstructionResult::OpcodeNotFound
-                | InstructionResult::CallNotAllowedInsideStatic
-                | InstructionResult::StateChangeDuringStaticCall
-                | InstructionResult::InvalidFEOpcode
-                | InstructionResult::InvalidJump
-                | InstructionResult::NotActivated
-                | InstructionResult::StackUnderflow
-                | InstructionResult::StackOverflow
-                | InstructionResult::OutOfOffset
-                | InstructionResult::CreateCollision
-                | InstructionResult::OverflowPayment
-                | InstructionResult::PrecompileError
-                | InstructionResult::NonceOverflow
-                | InstructionResult::CreateContractSizeLimit
-                | InstructionResult::CreateContractStartingWithEF
-                | InstructionResult::CreateInitCodeSizeLimit
-                | InstructionResult::FatalExternalError
-                | InstructionResult::ReturnContractInNotInitEOF
-                | InstructionResult::EOFOpcodeDisabledInLegacy
-                | InstructionResult::SubRoutineStackOverflow
-                | InstructionResult::EofAuxDataOverflow
-                | InstructionResult::EofAuxDataTooSmall
-                | InstructionResult::InvalidEXTCALLTarget => Ok(Self::EvmError(exit)),
+                _ => Ok(Self::EvmError(exit)),
             },
         }
     }

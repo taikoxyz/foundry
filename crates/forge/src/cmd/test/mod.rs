@@ -49,7 +49,6 @@ use std::{
     sync::{Arc, mpsc::channel},
     time::{Duration, Instant},
 };
-use tracing::debug;
 use yansi::Paint;
 
 mod filter;
@@ -284,7 +283,7 @@ impl TestArgs {
     ///
     /// Returns the test results for all matching tests.
     pub async fn execute_tests(mut self) -> Result<TestOutcome> {
-        debug!("execute_tests");
+        println!("execute_tests");
 
         // Merge all configs.
         let (mut config, mut evm_opts) = self.load_config_and_evm_opts()?;
@@ -305,6 +304,7 @@ impl TestArgs {
         }
 
         // Set up the project.
+        config.force = true;
         let project = config.project()?;
 
         let filter = self.filter(&config)?;
@@ -331,12 +331,12 @@ impl TestArgs {
             evm_opts.verbosity = 3;
         }
 
-        debug!("opts chain id: {:?}", evm_opts.env.chain_id);
+        println!("opts chain id: {:?}", evm_opts.env.chain_id);
 
         let env = evm_opts.evm_env().await?;
 
         let chain_id = env.evm_env.cfg_env.chain_id;
-        debug!("executing tests on chain id {}", chain_id);
+        println!("executing tests on chain id {chain_id}");
 
         // Enable internal tracing for more informative flamegraph.
         if should_draw && !self.decode_internal {

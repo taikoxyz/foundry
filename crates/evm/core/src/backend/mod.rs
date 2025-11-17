@@ -31,9 +31,10 @@ use revm::{
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
+    fmt,
     time::Instant,
 };
-use tracing::{debug, trace};
+use tracing::trace;
 
 mod diagnostic;
 pub use diagnostic::RevertDiagnostic;
@@ -597,7 +598,7 @@ impl Backend {
     /// This will also grant cheatcode access to the test account
     pub fn set_test_contract(&mut self, acc: ChainAddress) -> &mut Self {
         trace!(?acc, "setting test account");
-        debug!("set_test_contract: {acc:?}");
+        println!("set_test_contract: {acc:?}");
         self.add_persistent_account(acc);
         self.allow_cheatcode_access(acc);
         self
@@ -606,7 +607,7 @@ impl Backend {
     /// Sets the caller address
     pub fn set_caller(&mut self, acc: ChainAddress) -> &mut Self {
         trace!(?acc, "setting caller account");
-        debug!("set_caller: {acc:?}");
+        println!("set_caller: {acc:?}");
         self.inner.caller = Some(acc);
         self.allow_cheatcode_access(acc);
         self
@@ -783,7 +784,7 @@ impl Backend {
         env: &mut Env,
         inspector: &mut I,
     ) -> eyre::Result<ResultAndState> {
-        trace!("backend::inspect");
+        println!("backend::inspect");
         //println!("env pre: {:?}", env);
 
         self.initialize(env);
@@ -903,9 +904,9 @@ impl Backend {
         let fork_id = self.ensure_fork_id(id)?.clone();
 
         let fork = self.inner.get_fork_by_id_mut(id)?;
-        let full_block = fork.db.db.get_full_block(
-            env.evm_env.block_env.get(&env.evm_env.cfg_env.chain_id).unwrap().number,
-        )?;
+        let block_number =
+            env.evm_env.block_env.get(&env.evm_env.cfg_env.chain_id).unwrap().number.to::<u64>();
+        let full_block = fork.db.db.get_full_block(block_number)?;
 
         for tx in full_block.inner.transactions.txns() {
             // System transactions such as on L2s don't contain any pricing info so we skip them
@@ -1075,10 +1076,11 @@ impl DatabaseExt for Backend {
         // Update block number and timestamp of active fork (if any) with current env values,
         // in order to preserve values changed by using `roll` and `warp` cheatcodes.
         if let Some(active_fork_id) = self.active_fork_id() {
+            let block = env.block.get(&env.cfg.chain_id).unwrap();
             self.forks.update_block(
                 self.ensure_fork_id(active_fork_id).cloned()?,
-                env.block.get(&env.cfg.chain_id).unwrap().number,
-                env.block.get(&env.cfg.chain_id).unwrap().timestamp,
+                block.number.to::<u64>(),
+                block.timestamp.to::<u64>(),
             )?;
         }
 
@@ -1487,6 +1489,7 @@ impl DatabaseExt for Backend {
                                 .map(|s| s.present_value)
                                 .unwrap_or_default(),
                             U256::from_be_bytes(value.0),
+                            0,
                         ),
                     )
                 })
@@ -1589,7 +1592,12 @@ impl DatabaseCommit for Backend {
 impl Database for Backend {
     type Error = DatabaseError;
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
-        debug!("Backend::basic: {address:?}");
+        let chain_address = self
+            .inner
+            .caller
+            .map(|caller| ChainAddress(caller.0, address))
+            .unwrap_or_else(|| ChainAddress(0, address));
+        println!("Backend::basic: {chain_address:?}");
         if let Some(db) = self.active_fork_db_mut() {
             Ok(db.basic(address)?)
         } else {
@@ -1598,12 +1606,14 @@ impl Database for Backend {
     }
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        debug!("Backend::code_by_hash: {code_hash:?}");
-        if let Some(db) = self.active_fork_db_mut() {
+        println!("Backend::code_by_hash: {code_hash:?}");
+        let res = if let Some(db) = self.active_fork_db_mut() {
             Ok(db.code_by_hash(code_hash)?)
         } else {
             Ok(self.mem_db.code_by_hash(code_hash)?)
-        }
+        };
+        println!("code: {res:?}");
+        res
     }
 
     fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
@@ -1641,6 +1651,12 @@ pub trait MultiChainDatabaseManager {
 /// Combined trait that extends MultiChainDatabase with DatabaseExt methods
 /// This allows the same interface to provide both multi-chain and fork functionality
 pub trait MultiChainDatabaseExt: MultiChainDatabase<Error = DatabaseError> + DatabaseExt {}
+
+impl fmt::Debug for dyn MultiChainDatabaseExt + '_ {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("MultiChainDatabaseExt")
+    }
+}
 
 /// Wrapper for SimpleMultiChainDB that works with DatabaseExt trait objects
 pub struct DatabaseExtWrapper {
@@ -2656,20 +2672,12 @@ impl BackendInner {
         Precompiles::new(PrecompileSpecId::from_spec_id(self.spec_id), false)
     }
 
-    /// Returns a new, empty, `JournaledState` with set precompiles
+    /// Returns a new, empty, `JournaledState` initialised for the current spec
     pub fn new_journaled_state(&self) -> JournaledState {
-        trace!("new_journaled_state");
-        let mut journal = {
-            let mut journal_inner = JournalInner::new();
-            journal_inner.set_spec_id(self.spec_id);
-            journal_inner
-        };
-        // XXX FIXME YSG
-        let chain_id = 0;
-        journal
-            .precompiles
-            .extend(self.precompiles().addresses().copied().map(|a| ChainAddress(chain_id, a)));
-        journal
+        println!("new_journaled_state");
+        let mut journal_inner = JournalInner::new();
+        journal_inner.set_spec_id(self.spec_id);
+        journal_inner
     }
 }
 
@@ -2785,17 +2793,18 @@ fn is_contract_in_state(journaled_state: &JournaledState, acc: ChainAddress) -> 
 /// Updates the env's block with the block's data
 fn update_env_block(env: &mut EnvMut<'_>, block: &AnyRpcBlock) {
     let block_env = env.block.get_mut(&env.cfg.chain_id).unwrap();
-    block_env.timestamp = block.header.timestamp;
+    block_env.timestamp = U256::from(block.header.timestamp);
     block_env.beneficiary =
         ChainAddress(env.tx.chain_ids.clone().unwrap()[0], block.header.beneficiary);
     block_env.difficulty = block.header.difficulty;
     block_env.prevrandao = Some(block.header.mix_hash.unwrap_or_default());
     block_env.basefee = block.header.base_fee_per_gas.unwrap_or_default();
     block_env.gas_limit = block.header.gas_limit;
-    block_env.number = block.header.number;
+    block_env.number = U256::from(block.header.number);
     if let Some(excess_blob_gas) = block.header.excess_blob_gas {
+        let update_fraction = env.cfg.blob_base_fee_update_fraction.unwrap_or_default();
         block_env.blob_excess_gas_and_price =
-            Some(BlobExcessGasAndPrice::new(excess_blob_gas, false));
+            Some(BlobExcessGasAndPrice::new(excess_blob_gas, update_fraction));
     }
 }
 

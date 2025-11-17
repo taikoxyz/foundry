@@ -4,52 +4,32 @@ use alloy_evm::{EthEvm, Evm, eth::EthEvmContext, precompiles::PrecompilesMap};
 // use revm::Database; // Unused after multi-chain migration
 //use foundry_evm_core::either_evm::EitherEvm;
 //use op_revm::OpContext;
-use revm::{Inspector, precompile::PrecompileWithAddress};
+use revm::{Inspector, precompile::Precompile};
 
 /// Object-safe trait that enables injecting extra precompiles when using
 /// `anvil` as a library.
 pub trait PrecompileFactory: Send + Sync + Unpin + Debug {
     /// Returns a set of precompiles to extend the EVM with.
-    fn precompiles(&self) -> Vec<PrecompileWithAddress>;
+    fn precompiles(&self) -> Vec<Precompile>;
 }
 
 /// Inject precompiles into the EVM dynamically.
 pub fn inject_precompiles<DB, I>(
     evm: &mut EthEvm<DB, I, PrecompilesMap>,
-    precompiles: Vec<PrecompileWithAddress>,
+    precompiles: Vec<Precompile>,
 ) where
     DB: alloy_evm::MultiDatabase,
     I: Inspector<EthEvmContext<DB>>,
 {
-    use alloy_evm::precompiles::{DynPrecompile, Precompile};
+    use alloy_evm::precompiles::DynPrecompile;
 
-    for p in precompiles {
-        let precompile_fn = *p.precompile();
-        evm.precompiles_mut().apply_precompile(p.address(), move |_| {
-            // Wrapper to adapt revm's precompile function to the Precompile trait
-            struct PrecompileWrapper {
-                inner: fn(
-                    &[u8],
-                    u64,
-                    &mut revm::precompile::PrecompileContext,
-                ) -> revm::precompile::PrecompileResult,
-            }
+    for precompile in precompiles {
+        let address = *precompile.address();
+        let precompile_id = precompile.id().clone();
+        let precompile_fn = *precompile.precompile();
 
-            impl Precompile for PrecompileWrapper {
-                fn call(
-                    &self,
-                    data: &[u8],
-                    gas: u64,
-                    context: &mut revm::precompile::PrecompileContext,
-                ) -> revm::precompile::PrecompileResult {
-                    (self.inner)(data, gas, context)
-                }
-            }
-
-            let wrapper = PrecompileWrapper { inner: precompile_fn };
-
-            // Create DynPrecompile using the public constructor
-            Some(DynPrecompile::new(wrapper))
+        evm.precompiles_mut().apply_precompile(&address, move |_| {
+            Some(DynPrecompile::from((precompile_id.clone(), precompile_fn)))
         });
     }
 }
@@ -72,8 +52,8 @@ mod tests {
         inspector::NoOpInspector,
         interpreter::interpreter::EthInterpreter,
         precompile::{
-            PrecompileContext, PrecompileOutput, PrecompileResult, PrecompileSpecId,
-            PrecompileWithAddress, Precompiles,
+            Precompile, PrecompileId, PrecompileOutput, PrecompileResult, PrecompileSpecId,
+            Precompiles,
         },
         primitives::{ChainAddress, MultiChainTxKind, hardfork::SpecId},
     };
@@ -91,23 +71,19 @@ mod tests {
     struct CustomPrecompileFactory;
 
     impl PrecompileFactory for CustomPrecompileFactory {
-        fn precompiles(&self) -> Vec<PrecompileWithAddress> {
-            vec![PrecompileWithAddress::from((
+        fn precompiles(&self) -> Vec<Precompile> {
+            vec![Precompile::new(
+                PrecompileId::custom("custom_echo"),
                 PRECOMPILE_ADDR,
-                custom_echo_precompile
-                    as fn(&[u8], u64, &mut PrecompileContext) -> PrecompileResult,
-            ))]
+                custom_echo_precompile,
+            )]
         }
     }
 
     /// Custom precompile that echoes the input data.
     /// In this example it uses `0xdeadbeef` as the input data, returning it as output.
-    fn custom_echo_precompile(
-        input: &[u8],
-        _gas_limit: u64,
-        _context: &mut PrecompileContext,
-    ) -> PrecompileResult {
-        Ok(PrecompileOutput { bytes: Bytes::copy_from_slice(input), gas_used: 0 })
+    fn custom_echo_precompile(input: &[u8], _gas_limit: u64) -> PrecompileResult {
+        Ok(PrecompileOutput::new(0, Bytes::copy_from_slice(input)))
     }
 
     /// Creates a new EVM instance with the custom precompile factory.
@@ -129,7 +105,7 @@ mod tests {
                     map.insert(0, block_env);
                     map
                 },
-                cfg_env: CfgEnv::new_with_spec(spec)
+                cfg_env: CfgEnv::new_with_spec(spec),
             },
             tx: TxEnv {
                 kind: MultiChainTxKind::Call(ChainAddress(0, PRECOMPILE_ADDR)),
@@ -144,7 +120,7 @@ mod tests {
             journaled_state: {
                 let mut journal = Journal::new(EmptyDB::default());
                 journal.set_spec_id(spec);
-                journal.set_tx_origin_chain_id(0);
+                journal.set_current_chain_id(0);
                 journal.set_parent_chain_id(Some(0));
                 journal
             },
@@ -209,7 +185,7 @@ mod tests {
                 let mut journal = Journal::new(EmptyDB::default());
                 // Converting SpecId into OpSpecId
                 journal.set_spec_id(op_env.evm_env.cfg_env.spec);
-                journal.set_tx_origin_chain_id(0);
+                journal.set_current_chain_id(0);
                 journal.set_parent_chain_id(Some(0));
                 journal
             },

@@ -14,7 +14,7 @@ use alloy_consensus::{
 use alloy_eips::{eip7685::EMPTY_REQUESTS_HASH, eip7840::BlobParams};
 use alloy_evm::{EthEvm, Evm, eth::EthEvmContext, precompiles::PrecompilesMap};
 //use alloy_op_evm::OpEvm;
-use alloy_primitives::{B256, Bloom, BloomInput, Log};
+use alloy_primitives::{Address, B256, Bloom, BloomInput, Log, U256};
 use anvil_core::eth::{
     block::{Block, BlockInfo, PartialHeader},
     transaction::{
@@ -26,15 +26,17 @@ use foundry_evm::{backend::DatabaseError, traces::CallTraceNode};
 //use op_revm::{L1BlockInfo, OpContext, precompiles::OpPrecompiles};
 use revm::{
     Database, DatabaseRef, Inspector, Journal,
+    bytecode::Bytecode,
     context::{Block as RevmBlock, BlockEnv, CfgEnv, Evm as RevmEvm, JournalTr, LocalContext},
     context_interface::result::{EVMError, ExecutionResult, Output},
-    database::WrapDatabaseRef,
     handler::{EthPrecompiles, instructions::EthInstructions},
+    inspector::inspectors::GwynethCompositeInspector,
     interpreter::InstructionResult,
     precompile::{PrecompileSpecId, Precompiles, secp256r1::P256VERIFY},
-    primitives::hardfork::SpecId,
+    primitives::{ChainAddress, hardfork::SpecId},
+    state::AccountInfo,
 };
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 /// Represents an executed transaction (transacted on the DB)
 #[derive(Debug)]
@@ -130,10 +132,10 @@ impl<DB: Db + ?Sized, V: TransactionValidator> TransactionExecutor<'_, DB, V> {
         let mut included = Vec::new();
         let gas_limit = self.block_env.gas_limit;
         let parent_hash = self.parent_hash;
-        let block_number = self.block_env.number;
+        let block_number = self.block_env.number.saturating_to::<u64>();
         let difficulty = self.block_env.difficulty;
         let beneficiary = self.block_env.beneficiary.1; // Extract Address from ChainAddress
-        let timestamp = self.block_env.timestamp;
+        let timestamp = self.block_env.timestamp.saturating_to::<u64>();
         let base_fee = if self.cfg_env.spec.is_enabled_in(SpecId::LONDON) {
             Some(self.block_env.basefee)
         } else {
@@ -430,7 +432,8 @@ pub fn new_evm_with_inspector<DB, I>(
 ) -> EthEvm<DB, I, PrecompilesMap>
 where
     DB: Database<Error = DatabaseError>
-        + revm::context_interface::MultiChainDatabase<Error = DatabaseError>,
+        + revm::context_interface::MultiChainDatabase<Error = DatabaseError>
+        + fmt::Debug,
     I: Inspector<EthEvmContext<DB>>,
 {
     /*
@@ -469,7 +472,7 @@ where
             journaled_state: {
                 let mut journal = Journal::new(db);
                 journal.set_spec_id(spec);
-                journal.set_tx_origin_chain_id(env.evm_env.cfg_env.chain_id);
+                journal.set_current_chain_id(env.evm_env.cfg_env.chain_id);
                 journal.set_parent_chain_id(Some(env.evm_env.cfg_env.chain_id));
                 journal
             },
@@ -486,9 +489,10 @@ where
             spec,
             xchain: false,
         };
+        let gwyneth_inspector = GwynethCompositeInspector::wrap(inspector);
         let eth_evm = RevmEvm::new_with_inspector(
             eth_context,
-            inspector,
+            gwyneth_inspector,
             EthInstructions::default(),
             PrecompilesMap::from_static(eth_precompiles.precompiles),
         );
@@ -497,17 +501,100 @@ where
     }
 }
 
-/// Creates a new EVM with the given inspector and wraps the database in a `WrapDatabaseRef`.
-pub fn new_evm_with_inspector_ref<'db, DB, I>(
-    db: &'db DB,
+#[derive(Clone, Copy)]
+pub(crate) struct RefDatabase<'db, DB: ?Sized>(&'db DB);
+
+impl<'db, DB> fmt::Debug for RefDatabase<'db, DB>
+where
+    DB: Db + ?Sized,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<'db, DB> DatabaseRef for RefDatabase<'db, DB>
+where
+    DB: Db + ?Sized,
+{
+    type Error = DatabaseError;
+
+    fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+        self.0.basic_ref(address)
+    }
+
+    fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        self.0.code_by_hash_ref(code_hash)
+    }
+
+    fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
+        self.0.storage_ref(address, index)
+    }
+
+    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
+        self.0.block_hash_ref(number)
+    }
+}
+
+impl<'db, DB> Database for RefDatabase<'db, DB>
+where
+    DB: Db + ?Sized,
+{
+    type Error = DatabaseError;
+
+    fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+        self.0.basic_ref(address)
+    }
+
+    fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        self.0.code_by_hash_ref(code_hash)
+    }
+
+    fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
+        self.0.storage_ref(address, index)
+    }
+
+    fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
+        self.0.block_hash_ref(number)
+    }
+}
+
+impl<'db, DB> revm::context_interface::MultiChainDatabase for RefDatabase<'db, DB>
+where
+    DB: Db + ?Sized,
+{
+    type Error = DatabaseError;
+
+    fn basic_multi(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        self.0.basic_ref_multi(address)
+    }
+
+    fn code_by_hash_multi(
+        &mut self,
+        chain_id: u64,
+        code_hash: B256,
+    ) -> Result<Bytecode, Self::Error> {
+        self.0.code_by_hash_ref_multi(chain_id, code_hash)
+    }
+
+    fn storage_multi(&mut self, address: ChainAddress, index: U256) -> Result<U256, Self::Error> {
+        self.0.storage_ref_multi(address, index)
+    }
+
+    fn block_hash_multi(&mut self, chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        self.0.block_hash_ref_multi(chain_id, number)
+    }
+}
+
+/// Creates a new EVM with the given inspector and wraps the database in a multi-chain aware
+/// reference adapter.
+pub fn new_evm_with_inspector_ref<'db, I>(
+    db: &'db (dyn Db + 'db),
     env: &Env,
     inspector: &'db mut I,
-) -> EthEvm<WrapDatabaseRef<&'db DB>, &'db mut I, PrecompilesMap>
+) -> EthEvm<RefDatabase<'db, dyn Db + 'db>, &'db mut I, PrecompilesMap>
 where
-    DB: DatabaseRef<Error = DatabaseError> + 'db + ?Sized,
-    I: Inspector<EthEvmContext<WrapDatabaseRef<&'db DB>>>,
-    WrapDatabaseRef<&'db DB>: Database<Error = DatabaseError>
-        + revm::context_interface::MultiChainDatabase<Error = DatabaseError>,
+    I: Inspector<EthEvmContext<RefDatabase<'db, dyn Db + 'db>>>,
 {
-    new_evm_with_inspector(WrapDatabaseRef(db), env, inspector)
+    new_evm_with_inspector(RefDatabase(db), env, inspector)
 }

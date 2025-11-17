@@ -17,17 +17,191 @@ use revm::{
     bytecode::Bytecode,
     context::BlockEnv,
     database::{CacheDB, DatabaseRef, DbAccount},
-    primitives::KECCAK_EMPTY,
-    state::AccountInfo,
+    primitives::{ChainAddress, KECCAK_EMPTY, StorageKey, StorageValue},
+    state::{Account, AccountInfo},
 };
 use serde::{
     Deserialize, Deserializer, Serialize,
-    de::{MapAccess, Visitor},
+    de::{Error as DeError, MapAccess, Visitor},
 };
-use std::{collections::BTreeMap, fmt, path::Path};
+use serde_json::Value;
+use std::{
+    collections::BTreeMap,
+    fmt,
+    ops::{Deref, DerefMut},
+    path::Path,
+    str::FromStr,
+};
+
+/// Multi-chain aware wrapper around [`revm::database::CacheDB`] that provides the
+/// additional trait implementations required by the Foundry fork.
+#[derive(Clone, Debug)]
+pub struct AnvilCacheDB<T> {
+    inner: CacheDB<T>,
+}
+
+impl<T> AnvilCacheDB<T> {
+    pub fn new(db: T) -> Self {
+        Self { inner: CacheDB::new(db) }
+    }
+
+    pub fn into_inner(self) -> CacheDB<T> {
+        self.inner
+    }
+}
+
+impl<T> From<CacheDB<T>> for AnvilCacheDB<T> {
+    fn from(inner: CacheDB<T>) -> Self {
+        Self { inner }
+    }
+}
+
+impl<T> Deref for AnvilCacheDB<T> {
+    type Target = CacheDB<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<T> DerefMut for AnvilCacheDB<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl<T> DatabaseRef for AnvilCacheDB<T>
+where
+    CacheDB<T>: DatabaseRef<Error = DatabaseError>,
+{
+    type Error = DatabaseError;
+
+    fn basic_ref(&self, address: Address) -> DatabaseResult<Option<AccountInfo>> {
+        self.inner.basic_ref(address)
+    }
+
+    fn code_by_hash_ref(&self, code_hash: B256) -> DatabaseResult<Bytecode> {
+        self.inner.code_by_hash_ref(code_hash)
+    }
+
+    fn storage_ref(&self, address: Address, index: U256) -> DatabaseResult<U256> {
+        self.inner.storage_ref(address, index)
+    }
+
+    fn block_hash_ref(&self, number: u64) -> DatabaseResult<B256> {
+        self.inner.block_hash_ref(number)
+    }
+}
+
+impl<T> Database for AnvilCacheDB<T>
+where
+    CacheDB<T>: Database<Error = DatabaseError> + DatabaseRef<Error = DatabaseError>,
+{
+    type Error = DatabaseError;
+
+    fn basic(&mut self, address: Address) -> DatabaseResult<Option<AccountInfo>> {
+        self.inner.basic(address)
+    }
+
+    fn code_by_hash(&mut self, code_hash: B256) -> DatabaseResult<Bytecode> {
+        self.inner.code_by_hash(code_hash)
+    }
+
+    fn storage(&mut self, address: Address, index: U256) -> DatabaseResult<U256> {
+        self.inner.storage(address, index)
+    }
+
+    fn block_hash(&mut self, number: u64) -> DatabaseResult<B256> {
+        self.inner.block_hash(number)
+    }
+}
+
+impl<T> DatabaseCommit for AnvilCacheDB<T>
+where
+    CacheDB<T>: DatabaseCommit,
+{
+    fn commit(&mut self, changes: HashMap<Address, Account>) {
+        self.inner.commit(changes)
+    }
+}
+
+impl<T> revm::context_interface::MultiChainDatabase for AnvilCacheDB<T>
+where
+    CacheDB<T>: Database<Error = DatabaseError> + DatabaseRef<Error = DatabaseError>,
+{
+    type Error = DatabaseError;
+
+    fn basic_multi(&mut self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        self.inner.basic(address.1)
+    }
+
+    fn code_by_hash_multi(
+        &mut self,
+        _chain_id: u64,
+        code_hash: B256,
+    ) -> Result<Bytecode, Self::Error> {
+        self.inner.code_by_hash(code_hash)
+    }
+
+    fn storage_multi(
+        &mut self,
+        address: ChainAddress,
+        index: StorageKey,
+    ) -> Result<StorageValue, Self::Error> {
+        self.inner.storage(address.1, index)
+    }
+
+    fn block_hash_multi(&mut self, _chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        self.inner.block_hash(number)
+    }
+}
+
+impl<T> revm::database_interface::MultiChainDatabaseCommit for AnvilCacheDB<T>
+where
+    CacheDB<T>: DatabaseCommit,
+{
+    fn commit_multi(&mut self, changes: HashMap<ChainAddress, Account>) {
+        let mut single_chain: HashMap<Address, Account> = HashMap::default();
+        for (ChainAddress(_, address), account) in changes {
+            single_chain.insert(address, account);
+        }
+        self.inner.commit(single_chain)
+    }
+}
+
+impl<T> revm::database_interface::MultiChainDatabaseRef for AnvilCacheDB<T>
+where
+    CacheDB<T>: DatabaseRef<Error = DatabaseError>,
+{
+    type Error = DatabaseError;
+
+    fn basic_ref_multi(&self, address: ChainAddress) -> Result<Option<AccountInfo>, Self::Error> {
+        self.inner.basic_ref(address.1)
+    }
+
+    fn code_by_hash_ref_multi(
+        &self,
+        _chain_id: u64,
+        code_hash: B256,
+    ) -> Result<Bytecode, Self::Error> {
+        self.inner.code_by_hash_ref(code_hash)
+    }
+
+    fn storage_ref_multi(
+        &self,
+        address: ChainAddress,
+        index: StorageKey,
+    ) -> Result<StorageValue, Self::Error> {
+        self.inner.storage_ref(address.1, index)
+    }
+
+    fn block_hash_ref_multi(&self, _chain_id: u64, number: u64) -> Result<B256, Self::Error> {
+        self.inner.block_hash_ref(number)
+    }
+}
 
 /// Helper trait get access to the full state data of the database
-pub trait MaybeFullDatabase: DatabaseRef<Error = DatabaseError> {
+pub trait MaybeFullDatabase: DatabaseRef<Error = DatabaseError> + fmt::Debug + Send + Sync {
     /// Returns a reference to the database as a `dyn DatabaseRef`.
     // TODO: Required until trait upcasting is stabilized: <https://github.com/rust-lang/rust/issues/65991>
     fn as_dyn(&self) -> &dyn DatabaseRef<Error = DatabaseError>;
@@ -90,6 +264,7 @@ pub trait Db:
     DatabaseRef<Error = DatabaseError>
     + Database<Error = DatabaseError>
     + revm::context_interface::MultiChainDatabase<Error = DatabaseError>
+    + revm::database_interface::MultiChainDatabaseRef<Error = DatabaseError>
     + revm::database_interface::MultiChainDatabaseCommit
     + DatabaseCommit
     + MaybeFullDatabase
@@ -169,8 +344,6 @@ pub trait Db:
                         Some(Bytecode::new_raw(alloy_primitives::Bytes(account.code.0)))
                     },
                     nonce,
-                    parent_code: None,
-                    parent_code_hash: Some(KECCAK_EMPTY),
                 },
             );
 
@@ -209,7 +382,7 @@ impl dyn Db {
 /// This is useful to create blocks without actually writing to the `Db`, but rather in the cache of
 /// the `CacheDB` see also
 /// [Backend::pending_block()](crate::eth::backend::mem::Backend::pending_block())
-impl<T: DatabaseRef<Error = DatabaseError> + Send + Sync + Clone + fmt::Debug> Db for CacheDB<T> {
+impl<T: DatabaseRef<Error = DatabaseError> + Send + Sync + fmt::Debug> Db for AnvilCacheDB<T> {
     fn insert_account(&mut self, address: Address, account: AccountInfo) {
         self.insert_account_info(address, account)
     }
@@ -246,7 +419,19 @@ impl<T: DatabaseRef<Error = DatabaseError> + Send + Sync + Clone + fmt::Debug> D
     }
 }
 
-impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
+impl<T: DatabaseRef<Error = DatabaseError> + Send + Sync + fmt::Debug> AnvilCacheDB<T> {
+    pub fn as_db(&self) -> &dyn Db {
+        self
+    }
+
+    pub fn as_db_mut(&mut self) -> &mut dyn Db {
+        self
+    }
+}
+
+impl<T: DatabaseRef<Error = DatabaseError> + Send + Sync + fmt::Debug> MaybeFullDatabase
+    for AnvilCacheDB<T>
+{
     fn as_dyn(&self) -> &dyn DatabaseRef<Error = DatabaseError> {
         self
     }
@@ -310,15 +495,71 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeFullDatabase for CacheDB<T> {
     }
 }
 
-// Multi-chain database implementations for CacheDB
-// ORPHAN RULE VIOLATION: These implementations violate Rust's orphan rule (E0117) because:
-// - MultiChainDatabase/MultiChainDatabaseCommit traits are defined in revm-private crate
-// - CacheDB<T> type is defined in revm crate
-// - This implementation is in anvil crate
-//
-// JUSTIFICATION: This is an INTENTIONAL architectural decision for the multi-chain Foundry fork.
-// The Db trait (lines 94-95) requires these bounds, making these implementations essential.
-// Until upstream changes are made, these violations are necessary for the fork to function.
+impl<T: DatabaseRef<Error = DatabaseError> + Send + Sync + fmt::Debug> MaybeFullDatabase
+    for CacheDB<T>
+{
+    fn as_dyn(&self) -> &dyn DatabaseRef<Error = DatabaseError> {
+        self
+    }
+
+    fn maybe_as_full_db(&self) -> Option<&HashMap<Address, DbAccount>> {
+        Some(&self.cache.accounts)
+    }
+
+    fn clear_into_state_snapshot(&mut self) -> StateSnapshot {
+        let db_accounts = std::mem::take(&mut self.cache.accounts);
+        let mut accounts = HashMap::default();
+        let mut account_storage = HashMap::default();
+
+        for (addr, mut acc) in db_accounts {
+            account_storage.insert(addr, std::mem::take(&mut acc.storage));
+            let mut info = acc.info;
+            info.code = self.cache.contracts.remove(&info.code_hash);
+            accounts.insert(addr, info);
+        }
+        let block_hashes = std::mem::take(&mut self.cache.block_hashes);
+        StateSnapshot { accounts, storage: account_storage, block_hashes }
+    }
+
+    fn read_as_state_snapshot(&self) -> StateSnapshot {
+        let db_accounts = self.cache.accounts.clone();
+        let mut accounts = HashMap::default();
+        let mut account_storage = HashMap::default();
+
+        for (addr, acc) in db_accounts {
+            account_storage.insert(addr, acc.storage.clone());
+            let mut info = acc.info;
+            info.code = self.cache.contracts.get(&info.code_hash).cloned();
+            accounts.insert(addr, info);
+        }
+
+        let block_hashes = self.cache.block_hashes.clone();
+        StateSnapshot { accounts, storage: account_storage, block_hashes }
+    }
+
+    fn clear(&mut self) {
+        self.clear_into_state_snapshot();
+    }
+
+    fn init_from_state_snapshot(&mut self, state_snapshot: StateSnapshot) {
+        let StateSnapshot { accounts, mut storage, block_hashes } = state_snapshot;
+
+        for (addr, mut acc) in accounts {
+            if let Some(code) = acc.code.take() {
+                self.cache.contracts.insert(acc.code_hash, code);
+            }
+            self.cache.accounts.insert(
+                addr,
+                DbAccount {
+                    info: acc,
+                    storage: storage.remove(&addr).unwrap_or_default(),
+                    ..Default::default()
+                },
+            );
+        }
+        self.cache.block_hashes = block_hashes;
+    }
+}
 
 impl<T: DatabaseRef<Error = DatabaseError>> MaybeForkedDatabase for CacheDB<T> {
     fn maybe_reset(&mut self, _url: Option<String>, _block_number: BlockId) -> Result<(), String> {
@@ -334,7 +575,32 @@ impl<T: DatabaseRef<Error = DatabaseError>> MaybeForkedDatabase for CacheDB<T> {
     }
 }
 
+// Multi-chain database implementations for CacheDB
+// ORPHAN RULE VIOLATION: These implementations violate Rust's orphan rule (E0117) because:
+// - MultiChainDatabase/MultiChainDatabaseCommit traits are defined in revm-private crate
+// - CacheDB<T> type is defined in revm crate
+// - This implementation is in anvil crate
+//
+// JUSTIFICATION: This is an INTENTIONAL architectural decision for the multi-chain Foundry fork.
+// The Db trait (lines 94-95) requires these bounds, making these implementations essential.
+// Until upstream changes are made, these violations are necessary for the fork to function.
+
+impl<T: DatabaseRef<Error = DatabaseError>> MaybeForkedDatabase for AnvilCacheDB<T> {
+    fn maybe_reset(&mut self, _url: Option<String>, _block_number: BlockId) -> Result<(), String> {
+        Err("not supported".to_string())
+    }
+
+    fn maybe_flush_cache(&self) -> Result<(), String> {
+        Err("not supported".to_string())
+    }
+
+    fn maybe_inner(&self) -> Result<&BlockchainDb, String> {
+        Err("not supported".to_string())
+    }
+}
+
 /// Represents a state at certain point
+#[derive(Debug)]
 pub struct StateDb(pub(crate) Box<dyn MaybeFullDatabase + Send + Sync>);
 
 impl StateDb {
@@ -399,6 +665,7 @@ pub struct SerializableState {
     /// The block number of the state
     ///
     /// Note: This is an Option for backwards compatibility: <https://github.com/foundry-rs/foundry/issues/5460>
+    #[serde(default, deserialize_with = "deserialize_block_env_option")]
     pub block: Option<BlockEnv>,
     pub accounts: BTreeMap<Address, SerializableAccountRecord>,
     /// The best block number of the state, can be different from block number (Arbitrum chain).
@@ -469,6 +736,28 @@ where
     }
 
     deserializer.deserialize_map(BTreeVisitor)
+}
+
+fn deserialize_block_env_option<'de, D>(deserializer: D) -> Result<Option<BlockEnv>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::<Value>::deserialize(deserializer)?;
+    let Some(mut value) = opt else {
+        return Ok(None);
+    };
+
+    if let Some(obj) = value.as_object_mut() {
+        if let Some(beneficiary) = obj.get_mut("beneficiary") {
+            if let Some(hex) = beneficiary.as_str() {
+                let address = Address::from_str(hex).map_err(DeError::custom)?;
+                // The chain id will be overwritten with the active chain during load_state.
+                *beneficiary = serde_json::json!([0u64, address]);
+            }
+        }
+    }
+
+    serde_json::from_value(value).map(Some).map_err(|err| DeError::custom(err.to_string()))
 }
 
 /// Defines a backwards-compatible enum for transactions.

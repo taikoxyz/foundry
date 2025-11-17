@@ -9,9 +9,7 @@ use alloy_primitives::{
 };
 use foundry_cheatcodes::{CheatcodesExecutor, Wallets};
 use foundry_evm_core::{
-    ContextExt, Env, InspectorExt,
-    backend::{JournaledState, MultiChainDatabaseExt},
-    evm::new_evm_with_inspector,
+    ContextExt, Env, InspectorExt, backend::MultiChainDatabaseExt, evm::new_evm_with_inspector,
 };
 use foundry_evm_coverage::HitMaps;
 use foundry_evm_traces::{SparsedTraceArena, TraceMode};
@@ -22,12 +20,13 @@ use revm::{
         result::{ExecutionResult, Output},
     },
     context_interface::CreateScheme,
+    inspector::inspectors::MultiChainGasInspector,
     interpreter::{
         CallInputs, CallOutcome, CallScheme, CreateInputs, CreateOutcome, Gas, InstructionResult,
-        Interpreter, InterpreterResult,
+        Interpreter, InterpreterResult, interpreter::EthInterpreter,
     },
     primitives::{ChainAddress, MultiChainTxKind},
-    state::{Account, AccountStatus},
+    state::Account,
 };
 use revm_inspectors::edge_cov::EdgeCovInspector;
 use std::{
@@ -66,6 +65,8 @@ pub struct InspectorStackBuilder {
     /// In isolation mode all top-level calls are executed as a separate transaction in a separate
     /// EVM context, enabling more precise gas accounting and transaction state changes.
     pub enable_isolation: bool,
+    /// Whether to enable the multi-chain gas inspector.
+    pub multichain_gas: bool,
     /// Whether to enable Odyssey features.
     pub odyssey: bool,
     /// The wallets to set in the cheatcodes context.
@@ -162,6 +163,13 @@ impl InspectorStackBuilder {
         self
     }
 
+    /// Set whether to enable multi-chain gas accounting.
+    #[inline]
+    pub fn multichain_gas(mut self, yes: bool) -> Self {
+        self.multichain_gas = yes;
+        self
+    }
+
     /// Set whether to enable Odyssey features.
     /// For description of call isolation, see [`InspectorStack::enable_isolation`].
     #[inline]
@@ -189,6 +197,7 @@ impl InspectorStackBuilder {
             print,
             chisel_state,
             enable_isolation,
+            multichain_gas,
             odyssey,
             wallets,
             create2_deployer,
@@ -197,11 +206,9 @@ impl InspectorStackBuilder {
 
         // inspectors
         if let Some(config) = cheatcodes {
-            let cheatcodes = Cheatcodes::new(config);
-            // Set wallets if they are provided
-            if let Some(_wallets) = wallets {
-                // TODO: Implement set_wallets method in cheatcodes
-                // cheatcodes.set_wallets(wallets);
+            let mut cheatcodes = Cheatcodes::new(config);
+            if let Some(wallets) = wallets {
+                cheatcodes.set_wallets(wallets);
             }
             stack.set_cheatcodes(cheatcodes);
         }
@@ -219,6 +226,9 @@ impl InspectorStackBuilder {
         stack.tracing(trace_mode);
 
         stack.enable_isolation(enable_isolation);
+        if multichain_gas {
+            stack.enable_multichain_gas(true);
+        }
         stack.odyssey(odyssey);
         stack.set_create2_deployer(create2_deployer);
 
@@ -265,6 +275,7 @@ pub struct InspectorData {
     pub edge_coverage: Option<Vec<u8>>,
     pub cheatcodes: Option<Cheatcodes>,
     pub chisel_state: Option<(Vec<U256>, Vec<u8>, InstructionResult)>,
+    pub call_count: u64,
 }
 
 /// Contains data about the state of outer/main EVM which created and invoked the inner EVM context.
@@ -280,8 +291,7 @@ pub struct InnerContextData {
 
 /// An inspector that calls multiple inspectors in sequence.
 ///
-/// If a call to an inspector returns a value other than [InstructionResult::Continue] (or
-/// equivalent) the remaining inspectors are not called.
+/// If a call to an inspector returns a value, the remaining inspectors are not called.
 ///
 /// Stack is divided into [Cheatcodes] and `InspectorStackInner`. This is done to allow assembling
 /// `InspectorStackRefMut` inside [Cheatcodes] to allow usage of it as [revm::Inspector]. This gives
@@ -303,6 +313,7 @@ pub struct InspectorStackInner {
     pub line_coverage: Option<LineCoverageCollector>,
     pub edge_coverage: Option<EdgeCovInspector>,
     pub fuzzer: Option<Fuzzer>,
+    pub multi_chain_gas: Option<MultiChainGasInspector>,
     pub log_collector: Option<LogCollector>,
     pub printer: Option<CustomPrintTracer>,
     pub tracer: Option<TracingInspector>,
@@ -316,6 +327,7 @@ pub struct InspectorStackInner {
     pub in_inner_context: bool,
     pub inner_context_data: Option<InnerContextData>,
     pub top_frame_journal: HashMap<ChainAddress, Account>,
+    pub call_count: u64,
 }
 
 /// Struct keeping mutable references to both parts of [InspectorStack] and implementing
@@ -446,6 +458,16 @@ impl InspectorStack {
         self.log_collector = yes.then(Default::default);
     }
 
+    /// Set whether to enable the multi-chain gas inspector.
+    #[inline]
+    pub fn enable_multichain_gas(&mut self, yes: bool) {
+        if yes {
+            self.multi_chain_gas.get_or_insert_with(Default::default);
+        } else {
+            self.multi_chain_gas = None;
+        }
+    }
+
     /// Set whether to enable the trace printer.
     #[inline]
     pub fn print(&mut self, yes: bool) {
@@ -483,6 +505,7 @@ impl InspectorStack {
             mut cheatcodes,
             inner:
                 InspectorStackInner {
+                    call_count,
                     chisel_state,
                     line_coverage,
                     edge_coverage,
@@ -521,6 +544,7 @@ impl InspectorStack {
             edge_coverage: edge_coverage.map(|edge_coverage| edge_coverage.into_hitcount()),
             cheatcodes,
             chisel_state: chisel_state.and_then(|state| state.state),
+            call_count,
         }
     }
 
@@ -551,6 +575,12 @@ impl InspectorStackRefMut<'_> {
         outcome: &mut CallOutcome,
     ) -> CallOutcome {
         let result = outcome.result.result;
+        if let Some(inspector) = self.multi_chain_gas.as_mut() {
+            <MultiChainGasInspector as Inspector<
+                EthEvmContext<&mut dyn MultiChainDatabaseExt>,
+                EthInterpreter,
+            >>::call_end(inspector, ecx, inputs, outcome);
+        }
         call_inspectors!(
             #[ret]
             [
@@ -583,6 +613,12 @@ impl InspectorStackRefMut<'_> {
         outcome: &mut CreateOutcome,
     ) -> CreateOutcome {
         let result = outcome.result.result;
+        if let Some(inspector) = self.multi_chain_gas.as_mut() {
+            <MultiChainGasInspector as Inspector<
+                EthEvmContext<&mut dyn MultiChainDatabaseExt>,
+                EthInterpreter,
+            >>::create_end(inspector, ecx, call, outcome);
+        }
         call_inspectors!(
             #[ret]
             [&mut self.tracer, &mut self.cheatcodes, &mut self.printer],
@@ -649,15 +685,8 @@ impl InspectorStackRefMut<'_> {
             evm.journaled_state.inner.state = {
                 let mut state = journal.state.clone();
 
-                for (addr, acc_mut) in &mut state {
-                    // mark all accounts cold, besides preloaded addresses
-                    if !journal.warm_preloaded_addresses.contains(addr) {
-                        acc_mut.mark_cold();
-                    }
-
-                    // mark all slots cold
+                for acc_mut in state.values_mut() {
                     for slot_mut in acc_mut.storage.values_mut() {
-                        slot_mut.is_cold = true;
                         slot_mut.original_value = slot_mut.present_value;
                     }
                 }
@@ -693,28 +722,14 @@ impl InspectorStackRefMut<'_> {
             return (result, None);
         };
 
-        for (addr, mut acc) in res.state {
-            let Some(acc_mut) = ecx.journaled_state.inner.state.get_mut(&addr) else {
-                ecx.journaled_state.inner.state.insert(addr, acc);
-                continue;
-            };
-
-            // make sure accounts that were warmed earlier do not become cold
-            if acc.status.contains(AccountStatus::Cold)
-                && !acc_mut.status.contains(AccountStatus::Cold)
-            {
-                acc.status -= AccountStatus::Cold;
-            }
-            acc_mut.info = acc.info;
-            acc_mut.status |= acc.status;
-
-            for (key, val) in acc.storage {
-                let Some(slot_mut) = acc_mut.storage.get_mut(&key) else {
-                    acc_mut.storage.insert(key, val);
-                    continue;
-                };
-                slot_mut.present_value = val.present_value;
-                slot_mut.is_cold &= val.is_cold;
+        for (addr, acc) in res.state {
+            match ecx.journaled_state.inner.state.entry(addr) {
+                std::collections::hash_map::Entry::Occupied(mut occupied) => {
+                    *occupied.get_mut() = acc;
+                }
+                std::collections::hash_map::Entry::Vacant(vacant) => {
+                    vacant.insert(acc);
+                }
             }
         }
 
@@ -804,6 +819,9 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
         interpreter: &mut Interpreter,
         ecx: &mut EthEvmContext<&mut dyn MultiChainDatabaseExt>,
     ) {
+        if let Some(inspector) = self.multi_chain_gas.as_mut() {
+            inspector.initialize_interp(interpreter, ecx);
+        }
         call_inspectors!(
             [
                 &mut self.line_coverage,
@@ -821,6 +839,9 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
         interpreter: &mut Interpreter,
         ecx: &mut EthEvmContext<&mut dyn MultiChainDatabaseExt>,
     ) {
+        if let Some(inspector) = self.multi_chain_gas.as_mut() {
+            inspector.step(interpreter, ecx);
+        }
         call_inspectors!(
             [
                 &mut self.fuzzer,
@@ -841,6 +862,9 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
         interpreter: &mut Interpreter,
         ecx: &mut EthEvmContext<&mut dyn MultiChainDatabaseExt>,
     ) {
+        if let Some(inspector) = self.multi_chain_gas.as_mut() {
+            inspector.step_end(interpreter, ecx);
+        }
         call_inspectors!(
             [
                 &mut self.tracer,
@@ -878,7 +902,17 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
         if ecx.journaled_state.inner.depth == 0 {
             self.top_level_frame_start(ecx);
         }
+        self.inner.call_count = self.inner.call_count.saturating_add(1);
 
+        if let Some(inspector) = self.multi_chain_gas.as_mut() {
+            if let Some(outcome) = <MultiChainGasInspector as Inspector<
+                EthEvmContext<&mut dyn MultiChainDatabaseExt>,
+                EthInterpreter,
+            >>::call(inspector, ecx, call)
+            {
+                return Some(outcome);
+            }
+        }
         call_inspectors!(
             #[ret]
             [
@@ -888,15 +922,7 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
                 &mut self.printer,
                 &mut self.revert_diag
             ],
-            |inspector| {
-                let mut out = None;
-                if let Some(output) = inspector.call(ecx, call)
-                    && output.result.result != InstructionResult::Continue
-                {
-                    out = Some(Some(output));
-                }
-                out
-            },
+            |inspector| inspector.call(ecx, call).map(Some),
         );
 
         if let Some(cheatcodes) = self.cheatcodes.as_deref_mut() {
@@ -911,9 +937,7 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
                 }
             }
 
-            if let Some(output) = cheatcodes.call_with_executor(ecx, call, self.inner)
-                && output.result.result != InstructionResult::Continue
-            {
+            if let Some(output) = cheatcodes.call_with_executor(ecx, call, self.inner) {
                 return Some(output);
             }
         }
@@ -921,7 +945,7 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
         if self.enable_isolation && !self.in_inner_context && ecx.journaled_state.inner.depth == 1 {
             match call.scheme {
                 // Isolate CALLs
-                CallScheme::Call | CallScheme::ExtCall => {
+                CallScheme::Call => {
                     let input = call.input.bytes(ecx);
                     let (result, _) = self.transact_inner(
                         ecx,
@@ -937,28 +961,9 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
                     });
                 }
                 // Mark accounts and storage cold before STATICCALLs
-                CallScheme::StaticCall | CallScheme::ExtStaticCall => {
-                    let JournaledState { state, warm_preloaded_addresses, .. } =
-                        &mut ecx.journaled_state.inner;
-                    for (addr, acc_mut) in state {
-                        // Do not mark accounts and storage cold accounts with arbitrary storage.
-                        if let Some(_cheatcodes) = &self.cheatcodes {
-                            // TODO: implement has_arbitrary_storage check
-                            // && cheatcodes.has_arbitrary_storage(addr)
-                            // For now, continue processing normally
-                        }
-
-                        if !warm_preloaded_addresses.contains(addr) {
-                            acc_mut.mark_cold();
-                        }
-
-                        for slot_mut in acc_mut.storage.values_mut() {
-                            slot_mut.is_cold = true;
-                        }
-                    }
-                }
+                CallScheme::StaticCall => {}
                 // Process other variants as usual
-                CallScheme::CallCode | CallScheme::DelegateCall | CallScheme::ExtDelegateCall => {}
+                CallScheme::CallCode | CallScheme::DelegateCall => {}
             }
         }
 
@@ -998,6 +1003,15 @@ impl Inspector<EthEvmContext<&mut dyn MultiChainDatabaseExt>> for InspectorStack
             self.top_level_frame_start(ecx);
         }
 
+        if let Some(inspector) = self.multi_chain_gas.as_mut() {
+            if let Some(outcome) = <MultiChainGasInspector as Inspector<
+                EthEvmContext<&mut dyn MultiChainDatabaseExt>,
+                EthInterpreter,
+            >>::create(inspector, ecx, create)
+            {
+                return Some(outcome);
+            }
+        }
         call_inspectors!(
             #[ret]
             [&mut self.tracer, &mut self.line_coverage, &mut self.cheatcodes],

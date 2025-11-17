@@ -1,6 +1,6 @@
 //! Support for generating the state root for memdb storage
 
-use crate::eth::error::BlockchainError;
+use crate::eth::{backend::db::AnvilCacheDB, error::BlockchainError};
 use alloy_primitives::{Address, B256, U256, keccak256, map::HashMap};
 use alloy_rlp::Encodable;
 use alloy_rpc_types::{BlockOverrides, state::StateOverride};
@@ -9,7 +9,7 @@ use foundry_evm::backend::DatabaseError;
 use revm::{
     bytecode::Bytecode,
     context::BlockEnv,
-    database::{CacheDB, DatabaseRef, DbAccount},
+    database::{DatabaseRef, DbAccount},
     primitives::ChainAddress,
     state::AccountInfo,
 };
@@ -71,10 +71,10 @@ pub fn trie_account_rlp(info: &AccountInfo, storage: &HashMap<U256, U256>) -> Ve
     out
 }
 
-/// Applies the given state overrides to the given CacheDB
+/// Applies the given state overrides to the given cache database wrapper.
 pub fn apply_state_overrides<D>(
     overrides: StateOverride,
-    cache_db: &mut CacheDB<D>,
+    cache_db: &mut AnvilCacheDB<D>,
 ) -> Result<(), BlockchainError>
 where
     D: DatabaseRef<Error = DatabaseError>,
@@ -126,7 +126,7 @@ where
 /// Applies the given block overrides to the env and updates overridden block hashes in the db.
 pub fn apply_block_overrides<DB>(
     overrides: BlockOverrides,
-    cache_db: &mut CacheDB<DB>,
+    cache_db: &mut AnvilCacheDB<DB>,
     env: &mut BlockEnv,
 ) {
     let BlockOverrides {
@@ -155,7 +155,7 @@ pub fn apply_block_overrides<DB>(
         env.difficulty = difficulty;
     }
     if let Some(time) = time {
-        env.timestamp = time;
+        env.timestamp = U256::from(time);
     }
     if let Some(gas_limit) = gas_limit {
         env.gas_limit = gas_limit;
